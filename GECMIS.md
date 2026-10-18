@@ -19,7 +19,20 @@ Projede yapılan işlerin kaydı.
 
 **2026-10-18 planı tamamlandı:** (1) Profili Düzenle + Oda Takip Et, (2) oda rolleri ve moderasyon, (3) özel mesajlarda anlık bildirim, (4) rulet oyunu ve hediye animasyonları.
 
-**Sıradaki adım (öneri):** kalan eksiklerden (aşağıdaki tablo) birini seçmek. Örneğin gerçek ses (WebRTC), dinleyici listesi ya da Bilardo/101 Okey gibi bir sonraki oyun.
+**Kod nerede:** GitHub, private repo `tahayasinakbay460-spec/Muti` (dal `main`). Commit mesajlarına Claude/Co-Authored-By satırı eklenmez.
+
+**Sıradaki adım (2026-10-19):** Müşteri bu hafta uygulamayı canlı görmek istiyor. Görüşmenin günü henüz belli değil; başlarken sorulacak. Sırayla:
+
+1. **Demo yayını.** Ücretli, uyumayan hosting onaylandı (bütçe ~500 TL). Yapılacaklar:
+   - Backend tek sunucuda çalışmalı (canlı durum bellek içi).
+   - Frontend'de API/WS adresi ayarlanabilir olmalı ve `https` / `wss` kullanılmalı.
+   - Yayın adresi CORS'a eklenmeli.
+   - Demo verisiyle çalışan ayrı bir ayar modu (staging) gerekli, çünkü `production` modu demo modunu reddediyor.
+2. **Giriş denemelerine hız sınırı.** Link herkese açılacağı için gerekli; demo hesapların parolası herkesçe bilinen `demo1234`.
+3. **Gerçek ses (WebRTC).** Müşteri görüşmesine yetişirse.
+4. **Kısa kod okuma.** Bugün eklenenler, özellikle WebSocket akışı (`room_socket`, `user_socket`, `hub`, `games`).
+
+Bu bir demo yayını, mağaza yayını değil. Gerçek ses, gerçek ödeme ve kendi görsellerimiz henüz yok.
 
 ### Henüz elle denenmeyenler
 
@@ -62,6 +75,29 @@ Kodda "DEMO KISAYOLU" diye işaretlidir. Mobil/canlı aşamasında değiştirile
 ---
 
 # Kayıtlar
+
+## 2026-10-18 — GitHub'a gönderim ve yarının planı
+
+**Amaç:** Kodu GitHub'a koymak ve müşteri demosu için yol haritasını belirlemek.
+
+### Ne yapıldı
+
+- **GitHub:** kullanıcı private `Muti` reposunu açtı; `main` dalı `https://github.com/tahayasinakbay460-spec/Muti.git` adresine gönderildi.
+- **Geçmiş temizlendi:** kullanıcı GitHub'da Claude simgesini görmek istemediği için, `Co-Authored-By: Claude` satırı taşıyan ilk 3 commit tek bir temiz başlangıç commit'inde birleştirildi ("Initial commit: FastAPI backend and mobile-first web demo"). Kod birebir aynı kaldı; günün 6 commit'i üstüne dizildi.
+  - Eski geçmiş yerelde `backup-before-rewrite` dalında duruyor, GitHub'a gönderilmedi. Gerek kalmayınca `git branch -D backup-before-rewrite` ile silinebilir.
+- **`auth.py`:** kullanıcının `routers/auth.py` içindeki kendi notu ayrı bir commit olarak eklendi. Bundan sonra kullanıcının koda bıraktığı notlar da normal şekilde commit'lenir.
+- **Müşteri demosu kararları:** bu hafta canlı demo yapılacak. Ücretli hosting onaylandı; plan "Şu an neredeyiz" bölümünde.
+
+### Doğrulama
+
+- GitHub'daki `main`, yereldeki `main` ile aynı.
+- Hiçbir commit mesajında Claude geçmiyor.
+- `.env`, `app.db` ve test yardımcısı `_shot.html` repoya girmedi.
+
+### Açık kalanlar
+
+- Müşteri görüşmesinin günü bilinmiyor.
+- Hosting sağlayıcısı henüz seçilmedi.
 
 ## 2026-10-18 — Rulet oyunu ve hediye animasyonları
 
