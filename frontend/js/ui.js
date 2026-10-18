@@ -29,6 +29,7 @@ const ICON_PATHS = {
   share: '<path d="M14 5l7 6-7 6v-4c-5 0-8 1.500-11 6 1-7 4-10 11-10z"/>',
   smile: '<circle cx="12" cy="12" r="9"/><path d="M8.500 14.500a4.500 4.500 0 0 0 7 0M9 10h.01M15 10h.01"/>',
   send: '<path d="M21 3 3 10.500l7 2.500 2.500 7z"/><path d="m10 13 5-5"/>',
+  trophy: '<path d="M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M7 6H4v1a3 3 0 0 0 3 3M17 6h3v1a3 3 0 0 1-3 3M12 14v4M8 21h8M9 18h6"/>',
   crown: '<path d="m3 8 4.500 4L12 5l4.500 7L21 8l-2 11H5z"/>',
   check: '<path d="m5 12.500 4.500 4.500L19 7.500"/>',
   close: '<path d="M6 6l12 12M18 6 6 18"/>',

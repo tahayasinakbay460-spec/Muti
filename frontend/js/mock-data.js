@@ -70,9 +70,9 @@ export const rooms = [
 ];
 
 export const banners = [
-  { id: 1, title: 'Gerçek insanlarla\ngerçek sohbetler', cta: "MUTI'de buluş", image_url: cover('banner1'), target: '#/explore' },
-  { id: 2, title: 'Oda içinde oyna,\nsohbeti bölme', cta: 'Oyun odalarını gör', image_url: cover('banner2'), target: '#/explore?category=game' },
-  { id: 3, title: 'İlk alımına özel\n%50 bonus coin', cta: 'Coin al', image_url: cover('banner3'), target: '#/wallet' },
+  { id: 1, title: "Sesin, Sohbetin,\nOyunların\nMuti'de!", cta: 'Hemen Katıl', image_url: cover('music'), target: '#/explore' },
+  { id: 2, title: 'Odana\nOyun Aç', cta: 'Oyun Odaları', image_url: cover('banner2'), target: '#/explore?category=game' },
+  { id: 3, title: 'İlk alımına\n%50 bonus', cta: 'Coin Al', image_url: cover('banner3'), target: '#/wallet' },
 ];
 
 export const gifts = [

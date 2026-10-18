@@ -10,11 +10,11 @@ Görsel yolları frontend'in kendi `assets/` klasörünü gösterir.
 """
 
 BANNERS = [
-    {"id": 1, "title": "Gerçek insanlarla\ngerçek sohbetler", "cta": "MUTI'de buluş",
-     "image_url": "assets/covers/banner1.jpg", "target": "#/explore"},
-    {"id": 2, "title": "Oda içinde oyna,\nsohbeti bölme", "cta": "Oyun odalarını gör",
+    {"id": 1, "title": "Sesin, Sohbetin,\nOyunların\nMuti'de!", "cta": "Hemen Katıl",
+     "image_url": "assets/covers/music.jpg", "target": "#/explore"},
+    {"id": 2, "title": "Odana\nOyun Aç", "cta": "Oyun Odaları",
      "image_url": "assets/covers/banner2.jpg", "target": "#/explore?category=game"},
-    {"id": 3, "title": "İlk alımına özel\n%50 bonus coin", "cta": "Coin al",
+    {"id": 3, "title": "İlk alımına\n%50 bonus", "cta": "Coin Al",
      "image_url": "assets/covers/banner3.jpg", "target": "#/wallet"},
 ]
 

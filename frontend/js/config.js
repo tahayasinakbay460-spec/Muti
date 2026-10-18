@@ -1,5 +1,5 @@
 // Uygulama genel ayarları. Marka adı ve API adresi yalnızca buradan değişir.
-export const APP_NAME = 'MUTI';
+export const APP_NAME = 'Muti';
 
 // false: veriler gerçek backend'den gelir (backend çalışıyor olmalı).
 // true: backend olmadan, sahte (mock) veriyle çalışır.

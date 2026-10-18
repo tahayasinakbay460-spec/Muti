@@ -19,14 +19,14 @@ const routes = [
   { pattern: /^\/chat\/(\d+)$/, render: renderChat, isFixed: true },
   { pattern: /^\/profile$/, render: renderProfile, tab: 'profile' },
   { pattern: /^\/profile\/(\d+)$/, render: renderProfile },
-  { pattern: /^\/wallet$/, render: renderWallet },
+  { pattern: /^\/wallet$/, render: renderWallet, tab: 'wallet' },
 ];
 
 const TABS = [
   { id: 'home', label: 'Ana Sayfa', icon: 'home', href: '#/home' },
-  { id: 'explore', label: 'Keşfet', icon: 'compass', href: '#/explore' },
-  { id: 'create', label: 'Oda Aç', icon: 'plus' },
   { id: 'messages', label: 'Mesajlar', icon: 'chat', href: '#/messages' },
+  { id: 'create', label: 'Oda Aç', icon: 'plus' },
+  { id: 'wallet', label: 'Cüzdan', icon: 'wallet', href: '#/wallet' },
   { id: 'profile', label: 'Profil', icon: 'user', href: '#/profile' },
 ];
 
@@ -40,7 +40,7 @@ function renderTabbar(activeTab) {
   if (!activeTab) return;
   tabbarEl.innerHTML = TABS.map((tab) => (
     tab.id === 'create'
-      ? `<button class="tab tab-create" data-action="create-room" aria-label="${tab.label}"><span class="tab-create-btn">${icon('plus', 26)}</span><span>${tab.label}</span></button>`
+      ? `<button class="tab tab-create" data-action="create-room" aria-label="${tab.label}"><span class="tab-create-btn">${icon('plus', 28)}</span></button>`
       : `<a class="tab ${tab.id === activeTab ? 'is-active' : ''}" href="${tab.href}">${icon(tab.icon, 24)}<span>${tab.label}</span></a>`
   )).join('');
 }

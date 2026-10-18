@@ -1,26 +1,100 @@
-// Ana sayfa: banner, popüler odalar, sıralama, tanışabileceğin kişiler
+// Ana sayfa: üst sekmeler, banner, hızlı kategoriler, öne çıkan odalar, oyunlar, popüler yayıncılar
 import { api } from '../api.js';
-import { APP_NAME, ROOM_CATEGORIES } from '../config.js';
-import { esc, icon, avatarImg, formatCoins, joinParts, toast } from '../ui.js';
-import { roomCard, roomRow, chips, coinPill } from './components.js';
+import { APP_NAME, CATEGORY_LABELS } from '../config.js';
+import { esc, icon, avatarImg, formatCoins, formatCount, toast } from '../ui.js';
+import { roomRow, coinPill } from './components.js';
+
+// Üst sekmeler. Henüz ekranı olmayanlar "Yakında" bildirimi gösterir.
+const TOP_TABS = [
+  { id: 'discover', label: 'Keşfet', icon: 'flame' },
+  { id: 'rooms', label: 'Odalar', icon: 'home', href: '#/explore' },
+  { id: 'games', label: 'Oyunlar', icon: 'gamepad', scrollTo: 'games' },
+  { id: 'events', label: 'Etkinlik', icon: 'trophy' },
+  { id: 'following', label: 'Takip', icon: 'users' },
+];
+
+const QUICK_TILES = [
+  { id: 'popular', label: 'Popüler Odalar', emoji: '🎙️', href: '#/explore' },
+  { id: 'streamers', label: 'Günün yayıncıları', emoji: '🏆', scrollTo: 'streamers' },
+  { id: 'game-rooms', label: 'Oyun Odaları', emoji: '🎮', href: '#/explore?category=game' },
+  { id: 'cities', label: '81 İl Odası', emoji: '📍' },
+  { id: 'vip', label: 'VIP Odalar', emoji: '👑' },
+];
+
+// Oda içi oyunlar. Henüz hiçbiri ana sayfadan açılmıyor (zar oyunu oda içinden oynanır).
+const GAMES = [
+  { id: 'roulette', name: 'Rulet', emoji: '🎡' },
+  { id: 'billiards', name: 'Bilardo', emoji: '🎱' },
+  { id: 'okey', name: '101 Okey', emoji: '🀄' },
+  { id: 'candy', name: 'Candy', emoji: '🍭' },
+];
+
+// Banner başlığının son satırı renkli vurguyla yazılır ("Muti'de!")
+function bannerTitle(title) {
+  const lines = esc(title).split('\n');
+  const last = lines.pop();
+  return [...lines, `<em>${last}</em>`].join('<br />');
+}
+
+function featuredRoomCard(room) {
+  return `
+    <a class="feature-card" href="#/room/${room.id}">
+      <img class="feature-card-cover" src="${esc(room.cover_url)}" alt="" loading="lazy" />
+      <div class="feature-card-top">
+        ${room.is_live ? '<span class="pill pill-live">CANLI</span>' : '<span></span>'}
+        <span class="pill pill-dark">${icon('users', 11)} ${formatCount(room.listener_count)}</span>
+      </div>
+      <div class="feature-card-body">
+        ${avatarImg(room.host)}
+        <span>
+          <b>${esc(room.title)}</b>
+          <small>${CATEGORY_LABELS[room.category] || ''} • Herkes</small>
+        </span>
+      </div>
+    </a>`;
+}
+
+// Popüler yayıncılar: önce şu an canlı odası olan ev sahipleri, sonra önerilen kişiler (kullanıcının kendisi hariç)
+function collectStreamers(rooms, suggested, meId) {
+  const seen = new Set([meId]);
+  const list = [];
+  for (const room of rooms) {
+    if (!room.is_live || seen.has(room.host.id)) continue;
+    seen.add(room.host.id);
+    list.push({ user: room.host, roomId: room.id });
+  }
+  for (const user of suggested) {
+    if (seen.has(user.id)) continue;
+    seen.add(user.id);
+    list.push({ user, roomId: null });
+  }
+  return list.slice(0, 12);
+}
 
 export async function renderHome(root) {
-  const [me, banners, suggested, gifters] = await Promise.all([
+  const [me, banners, suggested, gifters, rooms] = await Promise.all([
     api.getMe(), api.listBanners(), api.listSuggestedUsers(), api.listTopGifters(),
+    api.listRooms({ category: 'for_you' }),
   ]);
-  let activeCategory = 'for_you';
+  const sorted = [...rooms].sort((a, b) => a.hourly_rank - b.hourly_rank);
+  const featured = sorted.slice(0, 8);
+  const active = sorted.slice(8);
+  const streamers = collectStreamers(sorted, suggested, me.id);
 
   root.innerHTML = `
     <header class="topbar">
       <div class="logo"><span class="logo-mark">M</span><span class="logo-text">${APP_NAME}</span></div>
       <div class="topbar-actions">
-        <a class="icon-btn" href="#/explore" aria-label="Ara">${icon('search', 20)}</a>
+        <a class="icon-btn icon-btn-plain" href="#/explore" aria-label="Ara">${icon('search', 22)}</a>
+        <button class="icon-btn icon-btn-plain has-dot" data-action="notifications" aria-label="Bildirimler">${icon('bell', 22)}</button>
         ${coinPill(me.coin_balance)}
-        <button class="icon-btn has-dot" data-action="notifications" aria-label="Bildirimler">${icon('bell', 20)}</button>
       </div>
     </header>
 
-    <div id="category-chips">${chips(ROOM_CATEGORIES, activeCategory)}</div>
+    <nav class="top-tabs">
+      ${TOP_TABS.map((t) => `
+        <button class="top-tab ${t.id === 'discover' ? 'is-active' : ''}" data-top-tab="${t.id}">${icon(t.icon, 14)}${t.label}</button>`).join('')}
+    </nav>
 
     <section class="banner" id="banner">
       <div class="banner-track">
@@ -28,17 +102,50 @@ export async function renderHome(root) {
           <a class="banner-slide" href="${esc(b.target)}">
             <img src="${esc(b.image_url)}" alt="" />
             <div class="banner-text">
-              <h2>${esc(b.title).replace(/\n/g, '<br />')}</h2>
-              <span class="banner-cta">${esc(b.cta)} <i>${icon('chevron-right', 14)}</i></span>
+              <h2>${bannerTitle(b.title)}</h2>
+              <span class="banner-cta">${esc(b.cta)} ${icon('chevron-right', 13)}</span>
             </div>
+            <div class="banner-dots">${banners.map((_, i) => `<i class="${i === 0 ? 'is-active' : ''}"></i>`).join('')}</div>
           </a>`).join('')}
       </div>
-      <div class="banner-dots">${banners.map((_, i) => `<i class="${i === 0 ? 'is-active' : ''}"></i>`).join('')}</div>
     </section>
 
+    <div class="quick-cats">
+      ${QUICK_TILES.map((t) => `
+        <button class="quick-cat" data-quick="${t.id}"><i>${t.emoji}</i><span>${t.label}</span></button>`).join('')}
+    </div>
+
     <section class="section">
-      <div class="section-head"><h2>Popüler Odalar</h2><a href="#/explore">Tümünü Gör ${icon('chevron-right', 14)}</a></div>
-      <div class="room-grid" id="popular-rooms"></div>
+      <div class="section-head"><h2>Sana Özel Öne Çıkan Odalar</h2><a href="#/explore">Tümünü Gör ${icon('chevron-right', 13)}</a></div>
+      <div class="h-strip">
+        ${featured.map(featuredRoomCard).join('') || '<p class="muted">Şu an açık oda yok.</p>'}
+      </div>
+    </section>
+
+    <section class="section" id="games">
+      <div class="section-head"><h2>Oyunlar</h2><a href="#/explore?category=game">Tümünü Gör ${icon('chevron-right', 13)}</a></div>
+      <div class="game-grid">
+        ${GAMES.map((g) => `
+          <button class="game-card" data-game="${g.id}">
+            <span class="game-art game-${g.id}"><i>${g.emoji}</i></span>
+            <b>${g.name}</b>
+          </button>`).join('')}
+      </div>
+    </section>
+
+    <section class="section" id="streamers">
+      <div class="section-head"><h2>Popüler Yayıncılar</h2><a href="#/explore">Tümünü Gör ${icon('chevron-right', 13)}</a></div>
+      <div class="streamer-strip">
+        ${streamers.map(({ user, roomId }, i) => `
+          <a class="streamer" href="${roomId ? `#/room/${roomId}` : `#/profile/${user.id}`}">
+            <span class="streamer-ring ${i === 0 && roomId ? 'is-live' : ''}">
+              ${i === 0 && roomId ? '<i class="streamer-crown">👑</i>' : ''}
+              ${avatarImg(user)}
+              ${i === 0 && roomId ? '<span class="streamer-live">CANLI</span>' : (user.is_online ? '<span class="online-dot"></span>' : '')}
+            </span>
+            <b>${esc(user.display_name)}</b>
+          </a>`).join('')}
+      </div>
     </section>
 
     <section class="section">
@@ -54,69 +161,46 @@ export async function renderHome(root) {
       </div>
     </section>
 
-    <section class="section">
-      <div class="section-head"><h2>Tanışabileceğin Kişiler</h2><a href="#/explore">Tümünü Gör ${icon('chevron-right', 14)}</a></div>
-      <div class="people-strip">
-        ${suggested.map((u) => `
-          <div class="person" data-user="${u.id}">
-            <a class="person-avatar" href="#/profile/${u.id}">
-              ${avatarImg(u, 'avatar-lg')}
-              ${u.is_online ? '<span class="online-dot"></span>' : ''}
-            </a>
-            <button class="person-follow ${u.is_following ? 'is-following' : ''}" data-action="follow" aria-label="Takip et">${icon(u.is_following ? 'check' : 'plus', 14)}</button>
-            <b>${esc(u.display_name)}</b>
-            <small>${esc(joinParts([u.age, u.city]))}</small>
-          </div>`).join('')}
-      </div>
-    </section>
-
-    <section class="section">
+    <section class="section" ${active.length ? '' : 'hidden'}>
       <div class="section-head"><h2>Şu An Aktif</h2></div>
-      <div class="room-list" id="active-rooms"></div>
+      <div class="room-list">${active.map(roomRow).join('')}</div>
     </section>`;
 
-  const popularEl = root.querySelector('#popular-rooms');
-  const activeEl = root.querySelector('#active-rooms');
+  const scrollToSection = (id) => root.querySelector(`#${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  // Bağlantısı ya da kaydırma hedefi olmayan öğeler henüz yapılmadı
+  const follow = (item) => {
+    if (item.href) location.hash = item.href;
+    else if (item.scrollTo) scrollToSection(item.scrollTo);
+    else toast('Yakında');
+  };
 
-  async function loadRooms() {
-    const rooms = await api.listRooms({ category: activeCategory });
-    const sorted = [...rooms].sort((a, b) => a.hourly_rank - b.hourly_rank);
-    popularEl.innerHTML = sorted.slice(0, 4).map(roomCard).join('') || '<p class="muted">Bu kategoride oda yok.</p>';
-    activeEl.innerHTML = sorted.slice(4).map(roomRow).join('');
-    activeEl.closest('.section').hidden = sorted.length <= 4;
-  }
-  await loadRooms();
+  root.addEventListener('click', (event) => {
+    const topTab = event.target.closest('[data-top-tab]');
+    if (topTab && topTab.dataset.topTab !== 'discover') follow(TOP_TABS.find((t) => t.id === topTab.dataset.topTab));
 
-  root.querySelector('#category-chips').addEventListener('click', (event) => {
-    const chip = event.target.closest('[data-chip]');
-    if (!chip) return;
-    activeCategory = chip.dataset.chip;
-    root.querySelectorAll('#category-chips .chip').forEach((c) => c.classList.toggle('is-active', c === chip));
-    loadRooms();
-  });
+    const quick = event.target.closest('[data-quick]');
+    if (quick) follow(QUICK_TILES.find((t) => t.id === quick.dataset.quick));
 
-  root.addEventListener('click', async (event) => {
-    const followBtn = event.target.closest('[data-action="follow"]');
-    if (followBtn) {
-      const { is_following } = await api.toggleFollow(followBtn.closest('[data-user]').dataset.user);
-      followBtn.classList.toggle('is-following', is_following);
-      followBtn.innerHTML = icon(is_following ? 'check' : 'plus', 14);
-      toast(is_following ? 'Takip edildi' : 'Takipten çıkıldı');
-    }
+    const game = event.target.closest('[data-game]');
+    if (game) toast(`${GAMES.find((g) => g.id === game.dataset.game).name} yakında geliyor`);
+
     if (event.target.closest('[data-action="notifications"]')) toast('Yeni bildirimin yok');
   });
 
-  // Banner otomatik kaydırma; kullanıcı elle kaydırırsa noktalar da güncellenir
+  // Banner otomatik kaydırma; kullanıcı elle kaydırırsa noktalar da güncellenir.
+  // Slaytlar tam genişlik değil (yanda bir sonrakinin ucu görünür), bu yüzden slayt genişliğiyle hesaplanır.
   const track = root.querySelector('.banner-track');
-  const dots = [...root.querySelectorAll('.banner-dots i')];
-  const syncDots = () => {
-    const index = Math.round(track.scrollLeft / track.clientWidth);
-    dots.forEach((dot, i) => dot.classList.toggle('is-active', i === index));
-  };
-  track.addEventListener('scroll', syncDots, { passive: true });
+  const slideStep = () => (track.firstElementChild?.getBoundingClientRect().width ?? track.clientWidth) + 10;
+  const currentIndex = () => Math.round(track.scrollLeft / slideStep());
+  track.addEventListener('scroll', () => {
+    const index = currentIndex();
+    track.querySelectorAll('.banner-dots').forEach((group) => {
+      [...group.children].forEach((dot, i) => dot.classList.toggle('is-active', i === index));
+    });
+  }, { passive: true });
   const bannerTimer = setInterval(() => {
-    const next = (Math.round(track.scrollLeft / track.clientWidth) + 1) % banners.length;
-    track.scrollTo({ left: next * track.clientWidth, behavior: 'smooth' });
+    const next = (currentIndex() + 1) % banners.length;
+    track.scrollTo({ left: next * slideStep(), behavior: 'smooth' });
   }, 4500);
 
   return () => clearInterval(bannerTimer);

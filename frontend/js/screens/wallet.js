@@ -6,11 +6,7 @@ export async function renderWallet(root) {
   const [me, packages] = await Promise.all([api.getMe(), api.listCoinPackages()]);
 
   root.innerHTML = `
-    <header class="topbar topbar-solid">
-      <button class="icon-btn" data-action="back" aria-label="Geri">${icon('chevron-left', 22)}</button>
-      <h1 class="page-title page-title-center">Cüzdan</h1>
-      <span class="icon-btn-spacer"></span>
-    </header>
+    <header class="topbar"><h1 class="page-title">Cüzdan</h1></header>
 
     <section class="balance-card">
       <small>Coin bakiyen</small>
@@ -54,11 +50,6 @@ export async function renderWallet(root) {
   await loadTransactions();
 
   root.addEventListener('click', async (event) => {
-    if (event.target.closest('[data-action="back"]')) {
-      if (history.length > 1) history.back();
-      else location.hash = '#/home';
-      return;
-    }
     const button = event.target.closest('[data-package]');
     if (!button || button.disabled) return;
     button.disabled = true;

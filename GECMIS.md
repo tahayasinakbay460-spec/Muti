@@ -15,11 +15,12 @@ Projede yapılan işlerin kaydı.
 
 **Kod okuma turu (2026-10-14):** Auth, oda listesi akışı (`list_rooms` → `present_rooms` → `realtime/state.py`) ve `room_socket` okundu. Sırada ekonomi (`gift_service`, `wallet_service`) derinlemesine; diğer router/servisler yüzeysel; sonra `hub.py`.
 
-**Sıradaki adım:** `start.bat` çalıştırıp `http://127.0.0.1:5500` adresinde `muti` / `demo1234` ile giriş yapmak ve ekranları elle denemek. Şimdiye kadar yalnızca otomatik testler çalıştı.
+**Ana sayfa (2026-10-18):** kullanıcının verdiği referans görsele göre yeniden tasarlandı. Alt çubuk: Ana Sayfa · Mesajlar · (+) · Cüzdan · Profil.
+
+**Sıradaki adım:** 2026-10-18 için sırayla: (1) Profili Düzenle + Oda Takip Et, (2) oda rolleri ve moderasyon, (3) özel mesajlarda anlık bildirim, (4) ana sayfadaki oyunlar ve hediye animasyonları.
 
 ### Henüz elle denenmeyenler
 
-- Ekranlar tarayıcıda denenmedi.
 - Telefondan erişim denenmedi. Windows Güvenlik Duvarı 8000 ve 5500 portlarına izin vermeli.
 
 ### Eksik özellikler
@@ -57,6 +58,37 @@ Kodda "DEMO KISAYOLU" diye işaretlidir. Mobil/canlı aşamasında değiştirile
 ---
 
 # Kayıtlar
+
+## 2026-10-18 — Ana sayfa referans görsele göre yeniden tasarlandı
+
+**Amaç:** Ana sayfa, kullanıcının paylaştığı TopTop benzeri ekran görüntüsüne benzesin. İlk denemede yalnızca bölümler eklendi ve düzen görsele benzemedi; ikinci denemede ekran görüntüsü alınarak görselle karşılaştırıldı.
+
+### Ne yapıldı
+
+- **`screens/home.js`** baştan yazıldı. Yukarıdan aşağıya:
+  - Üst çubuk: logo, arama, bildirim, coin.
+  - Üst sekmeler: Keşfet, Odalar, Oyunlar, Etkinlik, Takip.
+  - Banner: yanda sonraki slaytın ucu görünüyor; başlığın son satırı pembe vurgulu.
+  - 5 hızlı kategori.
+  - "Sana Özel Öne Çıkan Odalar": yatay şerit, ekrana 3 kart sığıyor.
+  - Oyunlar: 4 kare kart.
+  - Popüler Yayıncılar: önce canlı odası olan ev sahipleri, sonra önerilen kişiler. Kullanıcının kendisi hariç; yalnızca ilk kişide taç ve CANLI etiketi var.
+  - Haftanın Yıldızları ve Şu An Aktif.
+- **Alt çubuk (`app.js`):** Keşfet sekmesi kalktı (aramadan ve "Odalar" sekmesinden açılıyor); yerine Cüzdan geldi. Cüzdan ekranının geri düğmesi kaldırıldı.
+- **`css/app.css`:** ana sayfa bloğu yenilendi. Çok renkli logo harfi, altın "+" eklendi. Kullanılmayan `room-card`, `room-grid` ve `person` stilleri ile `roomCard` bileşeni silindi.
+- **Banner metinleri:** `demo/content.py` ve `mock-data.js` içinde güncellendi ("Sesin, Sohbetin, Oyunların Muti'de!").
+- **Marka adı:** `APP_NAME` `MUTI` yerine `Muti` oldu.
+- Etkinlik, Takip, 81 İl Odası, VIP Odalar ve oyun kartları henüz "Yakında" bildirimi gösteriyor.
+
+### Doğrulama
+
+- Headless Chrome ile 390 px telefon genişliğinde ekran görüntüsü alındı ve referans görselle karşılaştırıldı.
+- Backend testleri 16/16 geçti.
+
+### Açık kalanlar
+
+- Görseldeki insan fotoğrafları yok. Kartlar oda kapağını, avatarlar 128 px `randomuser` görsellerini kullanıyor; kendi görsellerimiz gelince düzelecek.
+- Oyun kartları emoji ile çizildi, gerçek oyun görseli yok.
 
 ## 2026-10-14 — Oda listesi akışı kod okuma turu
 
