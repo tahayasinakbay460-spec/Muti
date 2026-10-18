@@ -12,7 +12,7 @@ from app.services import auth_service
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-
+#buradaki gelen veriyi fast api otomatik olarak mı alıyor bu veriyi request ten mi alıyor sor ? 
 @router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
 async def register(data: RegisterRequest, db: DbSession):
     """Yeni hesap açar ve doğrudan giriş yapmış olarak token döner."""
