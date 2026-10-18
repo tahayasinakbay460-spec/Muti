@@ -11,13 +11,13 @@ Projede yapılan işlerin kaydı.
 
 **Aşama:** Web demo. Frontend ekranları hazır ve gerçek backend'e bağlı (`USE_MOCK = false`).
 
-**Çalışan:** giriş/kayıt/misafir, oda listesi, oda içi sohbet, koltuklar, zar oyunu, hediye gönderme, coin satın alma, özel mesajlar, kullanıcı takibi, oda takibi, profil ve profil düzenleme, cüzdan, oda yöneticileri ve moderasyon (koltuk kilitleme, koltuktan indirme, odadan atma).
+**Çalışan:** giriş/kayıt/misafir, oda listesi, oda içi sohbet, koltuklar, zar oyunu, hediye gönderme, coin satın alma, özel mesajlar (anlık bildirimli), kullanıcı takibi, oda takibi, profil ve profil düzenleme, cüzdan, oda yöneticileri ve moderasyon (koltuk kilitleme, koltuktan indirme, odadan atma).
 
 **Kod okuma turu (2026-10-14):** Auth, oda listesi akışı (`list_rooms` → `present_rooms` → `realtime/state.py`) ve `room_socket` okundu. Sırada ekonomi (`gift_service`, `wallet_service`) derinlemesine; diğer router/servisler yüzeysel; sonra `hub.py`.
 
 **Ana sayfa (2026-10-18):** kullanıcının verdiği referans görsele göre yeniden tasarlandı. Alt çubuk: Ana Sayfa · Mesajlar · (+) · Cüzdan · Profil.
 
-**Sıradaki adım:** 2026-10-18 planı: ~~(1) Profili Düzenle + Oda Takip Et~~ (bitti), ~~(2) oda rolleri ve moderasyon~~ (bitti), (3) özel mesajlarda anlık bildirim, (4) ana sayfadaki oyunlar ve hediye animasyonları.
+**Sıradaki adım:** 2026-10-18 planı: ~~(1) Profili Düzenle + Oda Takip Et~~ (bitti), ~~(2) oda rolleri ve moderasyon~~ (bitti), ~~(3) özel mesajlarda anlık bildirim~~ (bitti), (4) ana sayfadaki oyunlar ve hediye animasyonları.
 
 ### Henüz elle denenmeyenler
 
@@ -28,7 +28,7 @@ Projede yapılan işlerin kaydı.
 | Eksik | Not |
 |---|---|
 | Gerçek ses (WebRTC) | Koltuktaki "konuşuyor" halkası bu yüzden yanmıyor |
-| Özel mesajlarda anlık bildirim | Karşı tarafın mesajı sohbet yeniden açılınca görünür |
+| Uygulama kapalıyken bildirim (push) | Anlık bildirim yalnızca uygulama açıkken (/ws/me bağlıyken) çalışır; mobilde APNs/FCM gerekir |
 | Oda içi `vip` rolü | `host` ve `admin` var; odaya özel VIP üyelik yazılmadı |
 | Dinleyici listesi | Moderatör yalnızca koltuktaki birini atabilir; koltukta olmayan dinleyicileri gösteren liste yok |
 | Admin uçları | Eski admin sayfası silindi, yenisi yazılmadı |
@@ -48,7 +48,7 @@ Kodda "DEMO KISAYOLU" diye işaretlidir. Mobil/canlı aşamasında değiştirile
 |---|---|---|
 | SQLite | `core/config.py` | PostgreSQL (`postgresql+asyncpg://`) |
 | Tablolar `create_all` ile oluşuyor | `main.py` | Alembic migration |
-| Oda durumu, odadan atma yasakları ve yayın bellek içi (tek sunucu süreci) | `realtime/state.py`, `realtime/hub.py` | Redis (aynı sözleşmeyle `RedisRoomStateStore`, pub/sub; yasaklar süreli anahtar) |
+| Oda durumu, odadan atma yasakları, oda ve kişi yayınları bellek içi (tek sunucu süreci) | `realtime/state.py`, `realtime/hub.py` (`RoomHub`, `UserHub`) | Redis (aynı sözleşmeyle `RedisRoomStateStore`, pub/sub; yasaklar süreli anahtar) |
 | Satın alma ödeme doğrulamadan coin ekliyor | `wallet_service.purchase` | App Store / Google Play makbuz doğrulama |
 | Banner ve profil ekleri sabit içerik | `demo/content.py` | Tablo + servis |
 | Avatar ve kapak yalnızca hazır listeden seçiliyor | `demo/content.py` (`AVATAR_CHOICES`, `COVER_CHOICES`) | Görsel yükleme (object storage + boyut/tür kontrolü) |
@@ -59,6 +59,52 @@ Kodda "DEMO KISAYOLU" diye işaretlidir. Mobil/canlı aşamasında değiştirile
 ---
 
 # Kayıtlar
+
+## 2026-10-18 — Özel mesajlarda anlık bildirim
+
+**Amaç:** Karşı tarafın mesajı sohbet yeniden açılınca değil, anında görünsün. Uygulamanın başka bir ekranındayken de yeni mesaj haber verilsin.
+
+### Ne yapıldı
+
+**Backend**
+
+- **Kişiye özel WebSocket `/ws/me?token=`** (`realtime/user_socket.py`): kullanıcı giriş yapmış olduğu sürece açık kalan hat.
+  - İstemci yalnızca `ping` gönderir; sunucu bununla kişiyi çevrimiçi sayar. Başka olaylar `unknown_event` ile reddedilir.
+  - Token geçersizse `4401` ile kapanır.
+- **`realtime/hub.py`:** yeni `UserHub` (kullanıcı → bağlantıları). Bir kişi birden fazla sekme/cihazdan bağlıysa hepsine gider. Gönderme yardımcısı (`_send`) iki hub için ortak.
+- **`message_service.send_message`:** mesaj kaydedildikten sonra karşı tarafa ve gönderenin diğer bağlantılarına `message:new` itiliyor: `{ conversation_id, sender, message }`. Her iki taraf `from_me` alanını kendi gözünden görür.
+- **Yeni uçlar:**
+  - `GET /conversations/unread-count`: toplam okunmamış (alt çubuk rozeti).
+  - `POST /conversations/{id}/read`: sohbet açıkken gelen mesajı okundu sayar. Başkasının sohbetinde 404 döner.
+- 2 yeni test: mesajın alıcıya itilmesi ve okunmamış sayacı; geçersiz token.
+
+**Frontend**
+
+- **`realtime.js`:** oda kanalı genel bir `WebSocketChannel(path)` sınıfına dönüştü (yeniden bağlanma mantığı ortak). `connectUser()` `/ws/me` kanalını açıyor ve 2 dakikada bir `ping` atıyor. Kanallara `off` eklendi.
+- **`inbox.js` (yeni):** kişiye özel kanalın tek sahibi.
+  - Giriş yapılıyken açık, giriş ekranında kapalı (`app.js`).
+  - Alt çubukta "Mesajlar" sekmesine kırmızı okunmamış rozeti koyuyor.
+  - Başka bir ekrandayken "💬 Merve: …" bildirimi gösteriyor.
+  - Ekranlar `onInbox(event, handler)` ile abone olup temizlikte bırakıyor.
+- **`screens/messages.js`:**
+  - Liste ekranı yeni mesajda kendini tazeliyor.
+  - Sohbet ekranında gelen mesaj anında ekleniyor ve okundu sayılıyor; o sohbet için bildirim çıkmıyor.
+  - Aynı mesaj hem POST cevabı hem kanal üzerinden gelebildiği için `data-id` ile iki kez basılmıyor.
+
+### Doğrulama
+
+- Backend testleri 22/22 geçti.
+- Headless Chrome ile, "muti" olarak açık sayfaya "merve" hesabından gerçek API ile mesaj gönderildi:
+  - Ana sayfada "Mesajlar" sekmesine `1` rozeti geldi.
+  - Cüzdan ekranında "💬 Merve: Neredesin? 😊" bildirimi çıktı.
+  - Sohbet açıkken mesaj sayfa yenilenmeden eklendi; okunmamış sayacı 0 kaldı.
+
+### Açık kalanlar
+
+- Test sırasında Merve'den muti'ye giden 3 deneme mesajı demo veritabanında kaldı (`app.db` silinirse örnek veri sıfırlanır).
+- "Yazıyor..." göstergesi ve okundu bilgisi (✓✓) yok.
+- Uygulama kapalıyken bildirim (push notification) yok; mobil aşamanın işi.
+- Rozet her ekran değişiminde sunucudan tazeleniyor (ekran başına bir küçük istek).
 
 ## 2026-10-18 — Oda rolleri ve moderasyon
 

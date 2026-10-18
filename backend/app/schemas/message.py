@@ -42,6 +42,10 @@ class ConversationOpenResult(BaseModel):
     id: int
 
 
+class UnreadCount(BaseModel):
+    unread_count: int
+
+
 class MessageSendRequest(BaseModel):
     text: str = Field(min_length=1, max_length=1000)
 

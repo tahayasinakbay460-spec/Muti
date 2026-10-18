@@ -1,5 +1,7 @@
 """
-Oda yayın merkezi (hub): bir odadaki herkese anlık mesaj gönderir.
+Yayın merkezleri (hub):
+  - RoomHub → bir odadaki herkese anlık mesaj gönderir (sohbet, hediye, koltuklar).
+  - UserHub → tek bir kişiye, hangi ekranda olursa olsun anlık mesaj gönderir (özel mesaj bildirimi).
 
 Her kullanıcı odaya girince sunucuyla arasında açık bir hat (WebSocket) kurulur.
 Hub, "hangi odada hangi hatlar açık" listesini tutar. Bir olay olduğunda
@@ -71,21 +73,57 @@ class RoomHub:
         if not sockets:
             return
         # Hepsine aynı anda gönder (sırayla beklemek yerine).
-        results = await asyncio.gather(*(self._send(ws, message) for ws in sockets))
+        results = await asyncio.gather(*(_send(ws, message) for ws in sockets))
         for websocket, delivered in zip(sockets, results):
             if not delivered:
                 self.remove(room_id, websocket)
 
-    @staticmethod
-    async def _send(websocket: WebSocket, message: str) -> bool:
-        try:
-            await asyncio.wait_for(websocket.send_text(message), SEND_TIMEOUT_SECONDS)
-            return True
-        except Exception:
-            # Bağlantı kopmuş ya da çok yavaş. Sessizce listeden çıkarılacak.
-            logger.debug("WebSocket send failed, dropping connection")
-            return False
+
+class UserHub:
+    """
+    Kişiye özel kanal. Kullanıcı giriş yapmış olduğu sürece (hangi ekranda olursa olsun)
+    sunucuyla arasında bir hat açık durur: /ws/me. Özel mesaj gelince buradan haber verilir.
+
+    Aynı kişi birden fazla cihaz/sekmeden bağlı olabilir; mesaj hepsine gider.
+    DEMO KISAYOLU: RoomHub gibi bellek içi; canlıda Redis pub/sub ile sunucular arası dağıtılacak.
+    """
+
+    def __init__(self) -> None:
+        self._connections: dict[int, set[WebSocket]] = {}
+
+    def add(self, user_id: int, websocket: WebSocket) -> None:
+        self._connections.setdefault(user_id, set()).add(websocket)
+
+    def remove(self, user_id: int, websocket: WebSocket) -> None:
+        sockets = self._connections.get(user_id)
+        if not sockets:
+            return
+        sockets.discard(websocket)
+        if not sockets:
+            del self._connections[user_id]
+
+    async def publish(self, user_id: int, event: str, payload: dict) -> None:
+        """Olayı kişinin açık olan bütün bağlantılarına gönderir. Bağlı değilse hiçbir şey olmaz."""
+        sockets = list(self._connections.get(user_id, ()))
+        if not sockets:
+            return
+        message = json.dumps({"event": event, "payload": payload}, ensure_ascii=False, default=str)
+        results = await asyncio.gather(*(_send(ws, message) for ws in sockets))
+        for websocket, delivered in zip(sockets, results):
+            if not delivered:
+                self.remove(user_id, websocket)
 
 
-# Uygulamanın kullandığı tek hub.
+async def _send(websocket: WebSocket, message: str) -> bool:
+    try:
+        await asyncio.wait_for(websocket.send_text(message), SEND_TIMEOUT_SECONDS)
+        return True
+    except Exception:
+        # Bağlantı kopmuş ya da çok yavaş. Sessizce listeden çıkarılacak.
+        logger.debug("WebSocket send failed, dropping connection")
+        return False
+
+
+# Uygulamanın kullandığı tek hub'lar.
 room_hub = RoomHub()
+user_hub = UserHub()

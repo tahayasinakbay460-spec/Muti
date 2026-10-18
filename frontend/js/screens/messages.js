@@ -1,15 +1,19 @@
-// Mesajlar: sohbet listesi ve birebir sohbet ekranı
+// Mesajlar: sohbet listesi ve birebir sohbet ekranı.
+// İkisi de kişiye özel kanaldaki `message:new` olayını dinler: yeni mesaj sayfa yenilemeden görünür.
 import { api } from '../api.js';
 import { USE_MOCK } from '../config.js';
 import { esc, icon, avatarImg } from '../ui.js';
+import { onInbox, setOpenConversation, refreshUnread } from '../inbox.js';
 
 export async function renderMessages(root) {
-  const conversations = await api.listConversations();
-
   root.innerHTML = `
     <header class="topbar"><h1 class="page-title">Mesajlar</h1></header>
-    <div class="conversation-list">
-      ${conversations.length ? conversations.map((c) => `
+    <div class="conversation-list" id="conversation-list"></div>`;
+  const listEl = root.querySelector('#conversation-list');
+
+  async function load() {
+    const conversations = await api.listConversations();
+    listEl.innerHTML = conversations.length ? conversations.map((c) => `
         <a class="conversation" href="#/chat/${c.id}">
           <span class="conversation-avatar">${avatarImg(c.user, 'avatar-md')}${c.user.is_online ? '<span class="online-dot"></span>' : ''}</span>
           <span class="conversation-body">
@@ -20,8 +24,12 @@ export async function renderMessages(root) {
             <small>${esc(c.last_message?.time || '')}</small>
             ${c.unread_count ? `<i class="unread">${c.unread_count}</i>` : ''}
           </span>
-        </a>`).join('') : '<div class="empty"><p>Henüz mesajın yok.</p></div>'}
-    </div>`;
+        </a>`).join('') : '<div class="empty"><p>Henüz mesajın yok.</p></div>';
+  }
+  await load();
+
+  // Yeni mesaj gelince listeyi sunucudan tazele (sıra, son mesaj ve okunmamış sayısı değişir)
+  return onInbox('message:new', () => load());
 }
 
 const AUTO_REPLIES = ['Tamamdır 🙂', 'Odada görüşürüz!', 'Haha aynen 😄', 'Birazdan yazıyorum.'];
@@ -30,7 +38,8 @@ export async function renderChat(root, { params }) {
   const conversation = await api.getConversation(params[0]);
   const { user } = conversation;
 
-  const bubble = (m) => `<div class="bubble ${m.from_me ? 'is-mine' : ''}"><p>${esc(m.text)}</p><small>${esc(m.time)}</small></div>`;
+  // data-id: aynı mesaj hem POST cevabı hem de kanal üzerinden (diğer sekmeler için) gelebilir; iki kez basılmasın
+  const bubble = (m) => `<div class="bubble ${m.from_me ? 'is-mine' : ''}" ${m.id ? `data-id="${m.id}"` : ''}><p>${esc(m.text)}</p><small>${esc(m.time)}</small></div>`;
 
   root.innerHTML = `
     <div class="chat-screen">
@@ -52,6 +61,21 @@ export async function renderChat(root, { params }) {
   const scrollDown = () => { thread.scrollTop = thread.scrollHeight; };
   scrollDown();
 
+  const appendMessage = (message) => {
+    if (message.id && thread.querySelector(`[data-id="${message.id}"]`)) return;
+    thread.insertAdjacentHTML('beforeend', bubble(message));
+    scrollDown();
+  };
+
+  // Bu sohbet açıkken gelen mesaj anında görünür ve okundu sayılır (bildirim çıkmaz)
+  setOpenConversation(conversation.id);
+  refreshUnread();
+  const stopListening = onInbox('message:new', ({ conversation_id: conversationId, message }) => {
+    if (conversationId !== conversation.id) return;
+    appendMessage(message);
+    if (!message.from_me) api.markConversationRead(conversation.id).catch(() => {});
+  });
+
   let replyTimer;
   root.querySelector('#composer').addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -59,12 +83,10 @@ export async function renderChat(root, { params }) {
     const text = input.value.trim();
     if (!text) return;
     input.value = '';
-    const message = await api.sendMessage(conversation.id, text);
-    thread.insertAdjacentHTML('beforeend', bubble(message));
-    scrollDown();
+    appendMessage(await api.sendMessage(conversation.id, text));
 
-    // Yalnızca mock: karşı taraf kısa süre sonra yanıt verir. Gerçek backend'de
-    // karşı tarafın mesajı sohbet yeniden açılınca görünür (anlık bildirim henüz yok).
+    // Yalnızca mock: karşı taraf kısa süre sonra yanıt verir. Gerçek backend'de karşı
+    // tarafın mesajı kişiye özel kanaldan (`message:new`) gelir.
     if (!USE_MOCK) return;
     clearTimeout(replyTimer);
     replyTimer = setTimeout(() => {
@@ -75,5 +97,9 @@ export async function renderChat(root, { params }) {
     }, 1600);
   });
 
-  return () => clearTimeout(replyTimer);
+  return () => {
+    clearTimeout(replyTimer);
+    stopListening();
+    setOpenConversation(null);
+  };
 }

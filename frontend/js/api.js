@@ -358,6 +358,15 @@ const mockApi = {
     return conversation.id;
   },
 
+  async markConversationRead(conversationId) {
+    const conversation = db.conversations.find((c) => c.id === Number(conversationId));
+    if (conversation) conversation.unread_count = 0;
+  },
+
+  async getUnreadCount() {
+    return db.conversations.reduce((sum, c) => sum + (c.unread_count || 0), 0);
+  },
+
   async sendMessage(conversationId, text) {
     await delay(80);
     const conversation = db.conversations.find((c) => c.id === Number(conversationId));
@@ -495,6 +504,8 @@ const httpApi = {
   getConversation: (id) => request(`/conversations/${id}`),
   openConversationWith: async (userId) => (await request('/conversations', { method: 'POST', body: { user_id: userId } })).id,
   sendMessage: (id, text) => request(`/conversations/${id}/messages`, { method: 'POST', body: { text } }),
+  markConversationRead: (id) => request(`/conversations/${id}/read`, { method: 'POST' }),
+  getUnreadCount: async () => (await request('/conversations/unread-count')).unread_count,
 };
 
 export const api = USE_MOCK ? mockApi : httpApi;

@@ -1,8 +1,10 @@
 """
 Özel mesajlar (iki kişi arası sohbet).
 
-Not: Mesajlar şimdilik yalnızca HTTP ile gönderilip okunuyor. Karşı tarafa anında
-bildirim (WebSocket / push notification) sonraki aşamada eklenecek.
+Mesaj REST ile gönderilir (POST). Kaydedildikten sonra karşı tarafa kişiye özel
+WebSocket'ten (/ws/me) `message:new` olayı itilir; böylece sohbet açıksa mesaj anında
+görünür, değilse bildirim çıkar. Uygulama kapalıyken bildirim (push notification)
+mobil aşamanın işi.
 """
 from datetime import datetime
 
@@ -14,6 +16,8 @@ from app.core.database import utcnow
 from app.core.errors import AppError, NotFoundError
 from app.core.timefmt import as_utc, clock_label
 from app.models import Conversation, Message
+from app.realtime import events
+from app.realtime.hub import user_hub
 from app.schemas.message import ConversationDetail, ConversationSummary, MessageOut
 from app.services import user_service
 
@@ -43,6 +47,12 @@ async def _get_conversation(db: AsyncSession, me: int, conversation_id: int) -> 
     if conversation is None or me not in (conversation.user_low_id, conversation.user_high_id):
         raise NotFoundError("Sohbet bulunamadı.")
     return conversation
+
+
+async def _reset_my_unread(db: AsyncSession, conversation: Conversation, me: int) -> None:
+    unread_column = "unread_low" if conversation.user_low_id == me else "unread_high"
+    await db.execute(update(Conversation).where(Conversation.id == conversation.id).values({unread_column: 0}))
+    await db.commit()
 
 
 # ── İşlemler ──────────────────────────────────────────────────────────────────
@@ -92,9 +102,7 @@ async def get_conversation(
     messages = list(await db.scalars(statement))[::-1]
 
     # Sohbeti açtım → benim tarafımdaki okunmamış sayacı sıfırla.
-    unread_column = "unread_low" if conversation.user_low_id == me else "unread_high"
-    await db.execute(update(Conversation).where(Conversation.id == conversation.id).values({unread_column: 0}))
-    await db.commit()
+    await _reset_my_unread(db, conversation, me)
 
     other_id = _other_user_id(conversation, me)
     other = await user_service.present_user(db, await user_service.get_user(db, other_id), me)
@@ -150,4 +158,28 @@ async def send_message(db: AsyncSession, me: int, conversation_id: int, text: st
         })
     )
     await db.commit()
+
+    # Anlık bildirim: karşı tarafa ve (başka sekmede/cihazda açık olabilir diye) bana.
+    # Her iki taraf `from_me` alanını kendi gözünden görür.
+    other_id = _other_user_id(conversation, me)
+    sender = await user_service.present_user(db, await user_service.get_user(db, me), viewer_id=None)
+    for receiver_id in (other_id, me):
+        await user_hub.publish(receiver_id, events.MESSAGE_NEW, {
+            "conversation_id": conversation.id,
+            "sender": sender.model_dump(mode="json"),
+            "message": _message_out(me, text, now, receiver_id, message.id).model_dump(mode="json"),
+        })
     return _message_out(me, text, now, me, message.id)
+
+
+async def mark_read(db: AsyncSession, me: int, conversation_id: int) -> None:
+    """Sohbet ekranı açıkken gelen mesajı okundu say (sayaç sıfırlanır)."""
+    conversation = await _get_conversation(db, me, conversation_id)
+    await _reset_my_unread(db, conversation, me)
+
+
+async def total_unread(db: AsyncSession, me: int) -> int:
+    """Bütün sohbetlerimdeki okunmamış mesaj toplamı (alt çubuktaki "Mesajlar" rozeti)."""
+    low = select(func.coalesce(func.sum(Conversation.unread_low), 0)).where(Conversation.user_low_id == me)
+    high = select(func.coalesce(func.sum(Conversation.unread_high), 0)).where(Conversation.user_high_id == me)
+    return (await db.scalar(low)) + (await db.scalar(high))

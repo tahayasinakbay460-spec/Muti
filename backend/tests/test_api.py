@@ -305,3 +305,35 @@ def test_kicked_user_is_disconnected_and_banned(client, guest):
         assert socket.receive()["code"] == 4403
     assert client.post(f"{API}/rooms/{room['id']}/seats/1", headers=member).json()["code"] == "room_banned"
     assert client.get(f"{API}/rooms/{room['id']}", headers=host).json()["seats"][1]["user_id"] is None
+
+
+# ── Kişiye özel kanal (özel mesaj bildirimi) ──────────────────────────────────
+
+def test_private_message_is_pushed_to_receiver(client, guest):
+    sender, receiver = guest, new_guest(client)
+    sender_id, receiver_id = me(client, sender)["id"], me(client, receiver)["id"]
+    token = receiver["Authorization"].removeprefix("Bearer ")
+
+    with client.websocket_connect(f"/ws/me?token={token}") as socket:
+        conversation_id = client.post(f"{API}/conversations", headers=sender, json={"user_id": receiver_id}).json()["id"]
+        client.post(f"{API}/conversations/{conversation_id}/messages", headers=sender, json={"text": " Merhaba "})
+
+        pushed = receive_until(socket, "message:new")
+        assert pushed["conversation_id"] == conversation_id and pushed["sender"]["id"] == sender_id
+        # Alıcı mesajı kendi gözünden görür: "benden değil".
+        assert pushed["message"]["text"] == "Merhaba" and pushed["message"]["from_me"] is False
+
+        # Sunucu ping dışında bir şey kabul etmez.
+        socket.send_json({"event": "chat:message", "payload": {"text": "x"}})
+        assert receive_until(socket, "error")["code"] == "unknown_event"
+
+    assert client.get(f"{API}/conversations/unread-count", headers=receiver).json() == {"unread_count": 1}
+    assert client.post(f"{API}/conversations/{conversation_id}/read", headers=receiver).status_code == 204
+    assert client.get(f"{API}/conversations/unread-count", headers=receiver).json() == {"unread_count": 0}
+    # Başkasının sohbetini okundu sayamaz.
+    assert client.post(f"{API}/conversations/{conversation_id}/read", headers=new_guest(client)).status_code == 404
+
+
+def test_user_socket_rejects_bad_token(client):
+    with client.websocket_connect("/ws/me?token=bozuk") as socket:
+        assert socket.receive()["code"] == 4401

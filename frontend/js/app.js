@@ -1,6 +1,7 @@
 // Uygulama girişi: hash tabanlı yönlendirme ve alt sekme çubuğu.
 import { api } from './api.js';
 import { icon, closeAllSheets, toast } from './ui.js';
+import { startInbox, stopInbox, refreshUnread, paintUnreadBadge } from './inbox.js';
 import { renderAuth } from './screens/auth.js';
 import { renderHome } from './screens/home.js';
 import { renderExplore } from './screens/explore.js';
@@ -43,8 +44,9 @@ function renderTabbar(activeTab) {
   tabbarEl.innerHTML = TABS.map((tab) => (
     tab.id === 'create'
       ? `<button class="tab tab-create" data-action="create-room" aria-label="${tab.label}"><span class="tab-create-btn">${icon('plus', 28)}</span></button>`
-      : `<a class="tab ${tab.id === activeTab ? 'is-active' : ''}" href="${tab.href}">${icon(tab.icon, 24)}<span>${tab.label}</span></a>`
+      : `<a class="tab ${tab.id === activeTab ? 'is-active' : ''}" href="${tab.href}" data-tab="${tab.id}">${icon(tab.icon, 24)}<span>${tab.label}</span></a>`
   )).join('');
+  paintUnreadBadge();
 }
 
 tabbarEl.addEventListener('click', (event) => {
@@ -68,6 +70,15 @@ async function handleRoute() {
   if (route.isPublic && api.isAuthenticated()) {
     location.hash = '#/home';
     return;
+  }
+
+  // Kişiye özel kanal giriş yapılıyken açık, giriş ekranında kapalı
+  if (route.isPublic) {
+    stopInbox();
+  } else {
+    startInbox();
+    // Sohbet ekranında okunanlar sayacı düşürür; ekran değişince rozeti sunucudan tazele
+    refreshUnread();
   }
 
   // Önceki ekranın zamanlayıcı/bağlantılarını kapat

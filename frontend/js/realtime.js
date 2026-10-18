@@ -1,5 +1,6 @@
-// Oda içi gerçek zamanlı kanal. Event adları `domain:action` biçimindedir ve
-// backend WebSocket'i ile aynıdır; mock sürüm bunları zamanlayıcıyla üretir.
+// Gerçek zamanlı kanallar. Event adları `domain:action` biçimindedir ve backend ile aynıdır.
+//   - connectRoom → oda kanalı (/ws/rooms/:id): sohbet, hediye, koltuklar. Mock sürüm zamanlayıcıyla üretir.
+//   - connectUser → kişiye özel kanal (/ws/me): `message:new` (özel mesaj). Giriş yapılı olduğu sürece açık.
 //
 // İstemci yalnızca şunları gönderir: `chat:message` { text } ve `game:dice_rolled` {}.
 // Moderasyon (koltuk kilitleme, atma) REST ile yapılır; sonucu sunucu `room:seats_updated`,
@@ -19,6 +20,10 @@ class BaseChannel {
   on(event, handler) {
     (this.handlers[event] ||= []).push(handler);
     return this;
+  }
+
+  off(event, handler) {
+    this.handlers[event] = (this.handlers[event] || []).filter((h) => h !== handler);
   }
 
   emit(event, payload) {
@@ -102,10 +107,11 @@ const CLOSE_BANNED = 4403;
 const CLOSE_ROOM_NOT_FOUND = 4404;
 const MAX_RECONNECT_ATTEMPTS = 5;
 
-class WebSocketRoomChannel extends BaseChannel {
-  constructor(room) {
+// Kopunca yeniden bağlanan WebSocket kanalı. `path`: '/rooms/12' ya da '/me'
+class WebSocketChannel extends BaseChannel {
+  constructor(path) {
     super();
-    this.room = room;
+    this.path = path;
     this.isClosed = false;
     this.attempts = 0;
     this.queue = [];
@@ -114,7 +120,7 @@ class WebSocketRoomChannel extends BaseChannel {
 
   connect() {
     const token = localStorage.getItem(STORAGE_KEYS.accessToken) || '';
-    const socket = new WebSocket(`${WS_BASE_URL}/rooms/${this.room.id}?token=${encodeURIComponent(token)}`);
+    const socket = new WebSocket(`${WS_BASE_URL}${this.path}?token=${encodeURIComponent(token)}`);
     this.socket = socket;
 
     socket.addEventListener('open', () => {
@@ -136,7 +142,7 @@ class WebSocketRoomChannel extends BaseChannel {
         return;
       }
       if (++this.attempts > MAX_RECONNECT_ATTEMPTS) {
-        this.emit('error', { code: 'connection_lost', detail: 'Oda bağlantısı koptu. Odaya yeniden gir.' });
+        this.emit('error', { code: 'connection_lost', detail: 'Bağlantı koptu. Sayfayı yenile.' });
         return;
       }
       try {
@@ -158,11 +164,26 @@ class WebSocketRoomChannel extends BaseChannel {
 
   close() {
     this.isClosed = true;
+    clearInterval(this.pingTimer);
     this.socket.close();
     this.handlers = {};
   }
 }
 
+// Sunucu kişiyi son mesajından 5 dk sonrasına kadar çevrimiçi sayar; arada "buradayım" diyoruz
+const PING_INTERVAL_MS = 2 * 60 * 1000;
+
 export function connectRoom(room, me) {
-  return USE_MOCK ? new MockRoomChannel(room, me) : new WebSocketRoomChannel(room);
+  if (USE_MOCK) return new MockRoomChannel(room, me);
+  const channel = new WebSocketChannel(`/rooms/${room.id}`);
+  channel.room = room;
+  return channel;
+}
+
+// Mock'ta kişiye özel olay yok (karşı tarafın cevabını sohbet ekranı kendisi taklit eder)
+export function connectUser() {
+  if (USE_MOCK) return Object.assign(new BaseChannel(), { close() {} });
+  const channel = new WebSocketChannel('/me');
+  channel.pingTimer = setInterval(() => channel.send('ping', {}), PING_INTERVAL_MS);
+  return channel;
 }

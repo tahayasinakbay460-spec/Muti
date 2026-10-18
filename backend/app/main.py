@@ -26,7 +26,7 @@ from app.core.database import Base, SessionLocal, engine
 from app.core.errors import register_error_handlers
 from app import models  # noqa: F401  (tablolar SQLAlchemy'ye tanıtılsın diye import ediliyor)
 from app.demo import seed
-from app.realtime import room_socket
+from app.realtime import room_socket, user_socket
 from app.realtime.state import room_state
 from app.routers import auth, content, conversations, economy, rooms, users
 
@@ -78,6 +78,7 @@ app.include_router(api_v1)
 
 # WebSocket: /ws/rooms/{room_id}
 app.include_router(room_socket.router)
+app.include_router(user_socket.router)
 
 
 @app.get("/health", tags=["system"])

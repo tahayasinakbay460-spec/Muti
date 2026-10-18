@@ -18,6 +18,10 @@ ROOM_ROLES_UPDATED = "room:roles_updated"      # { admin_ids: [...] }
 ROOM_USER_KICKED = "room:user_kicked"          # { user }  (atılan kişinin bağlantısı ardından kapanır)
 ERROR = "error"                                # { code, detail }  (yalnızca hatayı yapan kişiye)
 
+# Kişiye özel kanal (/ws/me)
+MESSAGE_NEW = "message:new"                    # { conversation_id, sender, message }
+PING = "ping"                                  # istemci → sunucu: "hâlâ buradayım" (çevrimiçi durumu)
+
 # ── WebSocket kapanış kodları ─────────────────────────────────────────────────
 # 4000-4999 arası uygulamalara ayrılmıştır. İstemci koda bakıp ne yapacağına karar verir.
 CLOSE_UNAUTHORIZED = 4401    # token yok/geçersiz → token yenile ya da giriş yap
