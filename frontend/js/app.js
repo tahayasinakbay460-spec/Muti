@@ -4,6 +4,7 @@ import { icon, closeAllSheets, toast } from './ui.js';
 import { renderAuth } from './screens/auth.js';
 import { renderHome } from './screens/home.js';
 import { renderExplore } from './screens/explore.js';
+import { renderFollowing } from './screens/following.js';
 import { renderRoom } from './screens/room.js';
 import { renderMessages, renderChat } from './screens/messages.js';
 import { renderProfile } from './screens/profile.js';
@@ -14,6 +15,7 @@ const routes = [
   { pattern: /^\/auth$/, render: renderAuth, isPublic: true },
   { pattern: /^\/home$/, render: renderHome, tab: 'home' },
   { pattern: /^\/explore$/, render: renderExplore, tab: 'explore' },
+  { pattern: /^\/following$/, render: renderFollowing, tab: 'home' },
   { pattern: /^\/room\/(\d+)$/, render: renderRoom, isFixed: true },
   { pattern: /^\/messages$/, render: renderMessages, tab: 'messages' },
   { pattern: /^\/chat\/(\d+)$/, render: renderChat, isFixed: true },

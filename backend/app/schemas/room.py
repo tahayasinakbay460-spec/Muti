@@ -29,6 +29,13 @@ class RoomOut(BaseModel):
     announcement: str
     host: UserOut
     seats: list[SeatOut]
+    # Bakan kişiye göre değişir: isteği atan kişi bu odayı takip ediyor mu?
+    # Herkese giden yayınlarda (viewer yok) her zaman false'tur.
+    is_following: bool = False
+
+
+class RoomFollowResult(BaseModel):
+    is_following: bool
 
 
 class RoomCreateRequest(BaseModel):

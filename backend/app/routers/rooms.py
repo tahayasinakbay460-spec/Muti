@@ -1,12 +1,12 @@
 """
-/api/v1/rooms — oda listesi, oda oluşturma, koltuk ve mikrofon işlemleri.
+/api/v1/rooms — oda listesi, oda oluşturma, oda takibi, koltuk ve mikrofon işlemleri.
 """
 from typing import Annotated
 
 from fastapi import APIRouter, Query, status
 
 from app.core.deps import CurrentUserId, DbSession
-from app.schemas.room import RoomCreateRequest, RoomOut
+from app.schemas.room import RoomCreateRequest, RoomFollowResult, RoomOut
 from app.services import room_service
 
 router = APIRouter(prefix="/rooms", tags=["rooms"])
@@ -31,9 +31,22 @@ async def create_room(data: RoomCreateRequest, user_id: CurrentUserId, db: DbSes
     return await room_service.create_room(db, user_id, data)
 
 
+# SIRA ÖNEMLİ: "/followed" sabit adresi "/{room_id}" adresinden önce tanımlanmalı.
+@router.get("/followed", response_model=list[RoomOut])
+async def list_followed_rooms(user_id: CurrentUserId, db: DbSession):
+    """Takip ettiğim odalar (ana sayfadaki "Takip" sekmesi)."""
+    return await room_service.list_followed_rooms(db, user_id)
+
+
 @router.get("/{room_id}", response_model=RoomOut)
 async def get_room(room_id: int, user_id: CurrentUserId, db: DbSession):
     return await room_service.get_room(db, user_id, room_id)
+
+
+@router.post("/{room_id}/follow", response_model=RoomFollowResult)
+async def toggle_room_follow(room_id: int, user_id: CurrentUserId, db: DbSession):
+    """Odayı takip ediyorsan bırakır, etmiyorsan takip eder."""
+    return RoomFollowResult(is_following=await room_service.toggle_room_follow(db, user_id, room_id))
 
 
 @router.post("/{room_id}/seats/{seat_index}", response_model=RoomOut)

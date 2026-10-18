@@ -11,13 +11,13 @@ Projede yapılan işlerin kaydı.
 
 **Aşama:** Web demo. Frontend ekranları hazır ve gerçek backend'e bağlı (`USE_MOCK = false`).
 
-**Çalışan:** giriş/kayıt/misafir, oda listesi, oda içi sohbet, koltuklar, zar oyunu, hediye gönderme, coin satın alma, özel mesajlar, takip, profil, cüzdan.
+**Çalışan:** giriş/kayıt/misafir, oda listesi, oda içi sohbet, koltuklar, zar oyunu, hediye gönderme, coin satın alma, özel mesajlar, kullanıcı takibi, oda takibi, profil ve profil düzenleme, cüzdan.
 
 **Kod okuma turu (2026-10-14):** Auth, oda listesi akışı (`list_rooms` → `present_rooms` → `realtime/state.py`) ve `room_socket` okundu. Sırada ekonomi (`gift_service`, `wallet_service`) derinlemesine; diğer router/servisler yüzeysel; sonra `hub.py`.
 
 **Ana sayfa (2026-10-18):** kullanıcının verdiği referans görsele göre yeniden tasarlandı. Alt çubuk: Ana Sayfa · Mesajlar · (+) · Cüzdan · Profil.
 
-**Sıradaki adım:** 2026-10-18 için sırayla: (1) Profili Düzenle + Oda Takip Et, (2) oda rolleri ve moderasyon, (3) özel mesajlarda anlık bildirim, (4) ana sayfadaki oyunlar ve hediye animasyonları.
+**Sıradaki adım:** 2026-10-18 planı: ~~(1) Profili Düzenle + Oda Takip Et~~ (bitti), (2) oda rolleri ve moderasyon, (3) özel mesajlarda anlık bildirim, (4) ana sayfadaki oyunlar ve hediye animasyonları.
 
 ### Henüz elle denenmeyenler
 
@@ -29,7 +29,6 @@ Projede yapılan işlerin kaydı.
 |---|---|
 | Gerçek ses (WebRTC) | Koltuktaki "konuşuyor" halkası bu yüzden yanmıyor |
 | Özel mesajlarda anlık bildirim | Karşı tarafın mesajı sohbet yeniden açılınca görünür |
-| Oda takibi ("Takip Et") ve "Profili Düzenle" | Yalnızca arayüz var, backend ucu yok |
 | Oda rolleri (`admin` / `vip`) ve koltuk kilitleme | Yazılmadı |
 | Admin uçları | Eski admin sayfası silindi, yenisi yazılmadı |
 | HTTP hız sınırı | Özellikle giriş denemeleri için gerekli |
@@ -51,6 +50,7 @@ Kodda "DEMO KISAYOLU" diye işaretlidir. Mobil/canlı aşamasında değiştirile
 | Oda durumu ve yayın bellek içi (tek sunucu süreci) | `realtime/state.py`, `realtime/hub.py` | Redis (aynı sözleşmeyle `RedisRoomStateStore`, pub/sub) |
 | Satın alma ödeme doğrulamadan coin ekliyor | `wallet_service.purchase` | App Store / Google Play makbuz doğrulama |
 | Banner ve profil ekleri sabit içerik | `demo/content.py` | Tablo + servis |
+| Avatar ve kapak yalnızca hazır listeden seçiliyor | `demo/content.py` (`AVATAR_CHOICES`, `COVER_CHOICES`) | Görsel yükleme (object storage + boyut/tür kontrolü) |
 | Zaman etiketlerini ("3 gün önce") sunucu üretiyor | `core/timefmt.py` | İstemci `created_at` alanından üretir |
 | Oda sırası ve liderlik her istekte hesaplanıyor | `state.room_ranks`, `gift_service.list_top_gifters` | Redis sorted set |
 | Örnek odalarda sahte dinleyici sayısı | `demo/seed.py` | Kaldırılır |
@@ -58,6 +58,50 @@ Kodda "DEMO KISAYOLU" diye işaretlidir. Mobil/canlı aşamasında değiştirile
 ---
 
 # Kayıtlar
+
+## 2026-10-18 — Profili Düzenle ve Oda Takip Et
+
+**Amaç:** Arayüzde olup arkasında backend olmayan iki özelliği çalışır hale getirmek: profil sayfasındaki "Profili Düzenle" ve oda başlığındaki "Takip Et".
+
+### Ne yapıldı
+
+**Backend**
+
+- **`PATCH /api/v1/users/me`** (`ProfileUpdateRequest`): görünen ad, hakkımda, yaş, şehir, avatar ve kapak.
+  - PATCH olduğu için yalnızca gönderilen alanlar değişir. Servis `model_fields_set` ile "alan gönderilmedi" ile "null gönderildi" durumlarını ayırır.
+  - Kurallar: ad boş olamaz (1-40), yaş 13-99, hakkımda en çok 300, şehir en çok 60 karakter. Boşluklar kırpılır.
+  - Avatar ve kapak yalnızca `demo/content.py` içindeki hazır listeden seçilebilir; dışarıdan rastgele bir adres yazılamaz (`invalid_avatar`, `invalid_cover`).
+- **`GET /api/v1/users/me/media-options`:** seçilebilecek hazır görseller.
+- **Yeni tablo `room_follows`** (`RoomFollow`, `models/room.py`): `(user_id, room_id)` birincil anahtar.
+  - `create_all` yeni tabloyu mevcut `app.db` içinde de kendiliğinden oluşturur; eski tablolarda kolon değişmedi.
+- **`POST /api/v1/rooms/{id}/follow`:** takip et / bırak. Kullanıcı takibiyle aynı kalıpta: önce silmeyi dener; aynı anda gelen çift tıklama `IntegrityError` ile yakalanır.
+- **`GET /api/v1/rooms/followed`:** takip edilen açık odalar, en son takip edilen en üstte.
+- **`RoomOut.is_following`:** bakan kişiye göre dolar. `present_rooms` içinde tek sorguyla hesaplanır; herkese giden yayınlarda `false` kalır.
+- 2 yeni test eklendi: profil güncelleme kuralları ve oda takibi.
+
+**Frontend**
+
+- **`screens/edit-profile.js`** (yeni): alttan açılan panel. Yatay kaydırılan avatar ve kapak seçici (seçili olan ortaya kaydırılır), ad, hakkımda, yaş, şehir. Yalnızca değişen alanlar gönderilir; kaydedince profil ekranı yeniden çizilir.
+- **`screens/room.js`:** "Takip Et" düğmesi artık API'ye bağlı. Açılışta `room.is_following` ile doğru durumda geliyor.
+- **`screens/following.js`** (yeni, `#/following`): ana sayfadaki "Takip" sekmesi buraya gidiyor. Takip edilen oda yoksa açıklama ve "Odaları keşfet" düğmesi gösteriliyor.
+- **`api.js`:** `updateProfile`, `getMediaOptions`, `toggleRoomFollow`, `listFollowedRooms`. Hem `httpApi` hem `mockApi` içinde var.
+- **`app.css`:** `textarea`, iki kolonlu form satırı ve görsel seçici stilleri.
+
+### Doğrulama
+
+- Backend testleri 18/18 geçti.
+- Headless Chrome ile gerçek backend'e karşı elle denendi:
+  - Profili Düzenle paneli açıldı.
+  - Avatar seçilip kaydedildi; profil yeni avatarla yeniden çizildi.
+  - Odada "Takip Et" düğmesi "Takipte" oldu.
+  - `#/following` takip edilen odayı listeledi.
+- Denemede değişen demo verisi API ile eski haline döndürüldü.
+
+### Açık kalanlar
+
+- `USE_MOCK = true` modu tarayıcıda denenmedi; yalnızca sözdizimi kontrol edildi.
+- Oda takip sayısı (kaç kişi takip ediyor) tutulmuyor ve gösterilmiyor.
+- Takip edilen oda canlıya geçince bildirim yok.
 
 ## 2026-10-18 — Ana sayfa referans görsele göre yeniden tasarlandı
 

@@ -1,5 +1,5 @@
 """
-Oda tablosu.
+Oda tabloları: rooms, room_follows.
 
 DİKKAT: Burada yalnızca odanın KALICI bilgileri durur (adı, sahibi, kategorisi).
 "Şu an hangi koltukta kim oturuyor, kaç kişi dinliyor" gibi saniyede defalarca
@@ -34,4 +34,17 @@ class Room(Base):
     is_live: Mapped[bool] = mapped_column(Boolean, default=True)
     # false: oda kapatılmış, listelerde görünmez (satırı silmiyoruz, geçmiş kalsın).
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class RoomFollow(Base):
+    """
+    Kim hangi odayı takip ediyor. Bir satır = "user, room'u takip ediyor".
+    Ana sayfadaki "Takip" sekmesi bu tablodan dolar.
+    """
+    __tablename__ = "room_follows"
+
+    # İkisi birlikte birincil anahtar: aynı kişi aynı odayı iki kez takip edemez.
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    room_id: Mapped[int] = mapped_column(ForeignKey("rooms.id", ondelete="CASCADE"), primary_key=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

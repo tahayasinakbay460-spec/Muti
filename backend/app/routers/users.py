@@ -1,11 +1,11 @@
 """
-/api/v1/users — profil, takip, öneriler.
+/api/v1/users — profil, profil düzenleme, takip, öneriler.
 """
 from fastapi import APIRouter
 
 from app.core.deps import CurrentUser, CurrentUserId, DbSession
 from app.demo import content
-from app.schemas.user import FollowResult, ProfileExtras, UserOut
+from app.schemas.user import FollowResult, MediaOptions, ProfileExtras, ProfileUpdateRequest, UserOut
 from app.services import user_service
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -18,6 +18,18 @@ router = APIRouter(prefix="/users", tags=["users"])
 async def get_me(user: CurrentUser, db: DbSession):
     """Giriş yapmış kullanıcının kendi profili (bakiye dahil)."""
     return await user_service.present_user(db, user, viewer_id=user.id)
+
+
+@router.patch("/me", response_model=UserOut)
+async def update_me(data: ProfileUpdateRequest, user: CurrentUser, db: DbSession):
+    """Kendi profilini düzenler. Yalnızca gönderilen alanlar değişir."""
+    return await user_service.update_profile(db, user, data)
+
+
+@router.get("/me/media-options", response_model=MediaOptions)
+async def get_media_options(_user_id: CurrentUserId):
+    """Profil düzenlemede seçilebilecek hazır avatar/kapak listesi. DEMO KISAYOLU: görsel yükleme yok."""
+    return MediaOptions(avatars=content.AVATAR_CHOICES, covers=content.COVER_CHOICES)
 
 
 @router.get("/suggested", response_model=list[UserOut])

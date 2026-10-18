@@ -26,7 +26,7 @@ Yapılan her işin kaydı kök dizindeki `GECMIS.md` dosyasındadır. **Her çal
 - `backend/` — FastAPI + async SQLAlchemy 2.0, SQLite (`backend/app.db`, aiosqlite), PyJWT + bcrypt. Frontend'in `httpApi` sözleşmesini (`/api/v1/...`) ve oda WebSocket'ini karşılar. Katmanlı yapı; istek `routers → services → models` yolunu izler:
   - `app/main.py` — uygulama girişi, lifespan (tablo oluşturma + demo seed), CORS, router bağlama
   - `app/core/` — `config.py` (`.env` ayarları), `database.py` (engine, `SessionLocal`, `Base`, `get_db`), `security.py` (bcrypt, JWT, refresh token), `errors.py` (`AppError` ve `{code, detail}` hata biçimi), `deps.py` (`DbSession`, `CurrentUserId`, `CurrentUser`), `timefmt.py`
-  - `app/models/` — `user.py` (`User`, `Follow`, `RefreshToken`), `room.py`, `economy.py` (`Gift`, `CoinPackage`, `Transaction`), `message.py` (`Conversation`, `Message`); hepsi `models/__init__.py` içinde import edilir
+  - `app/models/` — `user.py` (`User`, `Follow`, `RefreshToken`), `room.py` (`Room`, `RoomFollow`), `economy.py` (`Gift`, `CoinPackage`, `Transaction`), `message.py` (`Conversation`, `Message`); hepsi `models/__init__.py` içinde import edilir
   - `app/schemas/` — Pydantic istek/yanıt şemaları (alan başına bir dosya)
   - `app/services/` — iş kuralları: `auth_service`, `user_service`, `room_service`, `wallet_service` (bakiyeyi değiştiren tek yer: `change_balance`), `gift_service`, `message_service`
   - `app/routers/` — ince HTTP katmanı: `auth`, `users`, `rooms`, `economy` (gifts/wallet/leaderboards), `conversations`, `content` (banners)
@@ -40,7 +40,7 @@ Yapılan her işin kaydı kök dizindeki `GECMIS.md` dosyasındadır. **Her çal
   - `js/api.js` — tek veri katmanı: `mockApi` ve `httpApi` aynı metodları sunar. `httpApi` 401'de token'ı kendisi yeniler (`refreshSession`), para harcayan isteklere `Idempotency-Key` ekler
   - `js/realtime.js` — oda kanalı (`chat:message`, `gift:sent`, `room:seats_updated`, `room:listener_count`, `room:user_joined`, `game:dice_rolled`, `error`; `room:speaking` yalnızca mock'ta); mock ve WebSocket sürümü aynı arayüzde, WebSocket koparsa yeniden bağlanır
   - `js/mock-data.js` — sahte kullanıcı/oda/hediye verisi (alan adları API JSON'u ile aynı)
-  - `js/app.js` — hash yönlendirme (`#/home`, `#/explore`, `#/room/:id`, `#/messages`, `#/chat/:id`, `#/profile/:id`, `#/wallet`, `#/auth`) ve alt sekme çubuğu
+  - `js/app.js` — hash yönlendirme (`#/home`, `#/explore`, `#/following`, `#/room/:id`, `#/messages`, `#/chat/:id`, `#/profile/:id`, `#/wallet`, `#/auth`) ve alt sekme çubuğu
   - `js/screens/` — ekran başına bir modül; her biri `render(root, { params, query })` ve isteğe bağlı temizlik fonksiyonu döner
   - `assets/` — yer tutucu görseller (kapaklar picsum.photos, avatarlar randomuser.me); yayın öncesi kendi görsellerimizle değiştirilecek
 

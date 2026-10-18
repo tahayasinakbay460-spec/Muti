@@ -1,15 +1,16 @@
 """
-Odalar: listeleme, oluşturma, koltuğa oturma/kalkma, mikrofon.
+Odalar: listeleme, oluşturma, takip, koltuğa oturma/kalkma, mikrofon.
 
 Bir odanın bilgisi iki yerden gelir ve burada birleştirilir:
   - kalıcı bilgiler (ad, sahip, kategori)      → veritabanı (models/room.py)
   - canlı bilgiler (koltuklar, dinleyici sayısı) → canlı durum deposu (realtime/state.py)
 """
-from sqlalchemy import select
+from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import ConflictError, NotFoundError
-from app.models import Room
+from app.models import Room, RoomFollow
 from app.realtime import events
 from app.realtime.hub import room_hub
 from app.realtime.state import room_state
@@ -51,6 +52,13 @@ async def present_rooms(db: AsyncSession, rooms: list[Room], viewer_id: int | No
         user_ids.update(seat.user_id for seat in seats if seat.user_id is not None)
     users = await user_service.load_users_out(db, user_ids, viewer_id)
 
+    # Bakan kişinin bu odalardan hangilerini takip ettiği (tek sorgu).
+    followed_ids: set[int] = set()
+    if viewer_id is not None:
+        followed_ids = set(await db.scalars(
+            select(RoomFollow.room_id).where(RoomFollow.user_id == viewer_id, RoomFollow.room_id.in_(room_ids))
+        ))
+
     return [
         RoomOut(
             id=room.id,
@@ -70,6 +78,7 @@ async def present_rooms(db: AsyncSession, rooms: list[Room], viewer_id: int | No
                 )
                 for seat in seats_by_room[room.id]
             ],
+            is_following=room.id in followed_ids,
         )
         for room in rooms
     ]
@@ -116,6 +125,41 @@ async def create_room(db: AsyncSession, host_id: int, data: RoomCreateRequest) -
     await room_state.ensure_room(room.id, room.seat_count)
     await room_state.take_seat(room.id, 0, host_id)
     return (await present_rooms(db, [room], host_id))[0]
+
+
+# ── Oda takibi ────────────────────────────────────────────────────────────────
+
+async def toggle_room_follow(db: AsyncSession, user_id: int, room_id: int) -> bool:
+    """Odayı takip ediyorsa bırakır, etmiyorsa takip eder. Yeni durumu döner (True = takipte)."""
+    await _get_room_row(db, room_id)
+
+    # Önce silmeyi dene: bir satır silindiyse zaten takip ediyormuş → artık etmiyor.
+    deleted = await db.execute(
+        delete(RoomFollow).where(RoomFollow.user_id == user_id, RoomFollow.room_id == room_id)
+    )
+    if deleted.rowcount:
+        await db.commit()
+        return False
+
+    db.add(RoomFollow(user_id=user_id, room_id=room_id))
+    try:
+        await db.commit()
+    except IntegrityError:
+        # Aynı anda gelen ikinci istek (çift tıklama) satırı bizden önce eklemiş; sonuç yine "takipte".
+        await db.rollback()
+    return True
+
+
+async def list_followed_rooms(db: AsyncSession, user_id: int, limit: int = 50) -> list[RoomOut]:
+    """Kullanıcının takip ettiği açık odalar, en son takip edilen en üstte."""
+    rooms = await db.scalars(
+        select(Room)
+        .join(RoomFollow, RoomFollow.room_id == Room.id)
+        .where(RoomFollow.user_id == user_id, Room.is_active)
+        .order_by(RoomFollow.created_at.desc())
+        .limit(limit)
+    )
+    return await present_rooms(db, list(rooms), user_id)
 
 
 # ── Koltuk işlemleri ──────────────────────────────────────────────────────────

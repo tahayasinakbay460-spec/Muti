@@ -30,7 +30,7 @@ export async function renderRoom(root, { params }) {
           <h1>${esc(room.title)}</h1>
           <p>ID ${room.id} • <span id="listener-count">${room.listener_count}</span> kişi • ${CATEGORY_LABELS[room.category]}</p>
         </div>
-        <button class="btn btn-primary btn-sm" data-action="follow-room">Takip Et</button>
+        <button class="btn btn-sm ${room.is_following ? 'btn-glass' : 'btn-primary'}" data-action="follow-room">${room.is_following ? 'Takipte' : 'Takip Et'}</button>
         <button class="icon-btn icon-btn-glass" data-action="more" aria-label="Menü">${icon('more', 20)}</button>
       </header>
 
@@ -342,10 +342,19 @@ export async function renderRoom(root, { params }) {
       input.value += '😊';
       input.focus();
     } else if (action === 'follow-room') {
-      const following = button.classList.toggle('is-following');
-      button.textContent = following ? 'Takipte' : 'Takip Et';
-      button.classList.toggle('btn-primary', !following);
-      button.classList.toggle('btn-glass', following);
+      button.disabled = true;
+      try {
+        const { is_following } = await api.toggleRoomFollow(room.id);
+        room.is_following = is_following;
+        button.textContent = is_following ? 'Takipte' : 'Takip Et';
+        button.classList.toggle('btn-primary', !is_following);
+        button.classList.toggle('btn-glass', is_following);
+        toast(is_following ? 'Oda takip edildi' : 'Oda takipten çıkarıldı');
+      } catch (error) {
+        toast(error.message, 'error');
+      } finally {
+        button.disabled = false;
+      }
     }
   });
 

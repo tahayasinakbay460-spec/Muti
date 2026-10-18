@@ -10,7 +10,7 @@ const TOP_TABS = [
   { id: 'rooms', label: 'Odalar', icon: 'home', href: '#/explore' },
   { id: 'games', label: 'Oyunlar', icon: 'gamepad', scrollTo: 'games' },
   { id: 'events', label: 'Etkinlik', icon: 'trophy' },
-  { id: 'following', label: 'Takip', icon: 'users' },
+  { id: 'following', label: 'Takip', icon: 'users', href: '#/following' },
 ];
 
 const QUICK_TILES = [

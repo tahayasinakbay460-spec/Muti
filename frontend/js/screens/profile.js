@@ -2,6 +2,7 @@
 import { api } from '../api.js';
 import { DEFAULT_COVER_URL } from '../config.js';
 import { esc, icon, avatarImg, formatCount, joinParts, vipBadge, levelBadge, toast, openSheet } from '../ui.js';
+import { openEditProfileSheet } from './edit-profile.js';
 
 const TABS = [
   { id: 'wall', label: 'Duvar' },
@@ -188,7 +189,11 @@ export async function renderProfile(root, { params }) {
     } else if (action === 'like') {
       const liked = button.classList.toggle('is-liked');
       button.querySelector('span').textContent = Number(button.dataset.count) + (liked ? 1 : 0);
-    } else if (action === 'edit' || action === 'soon') {
+    } else if (action === 'edit') {
+      // Kaydedilince ekranı yeniden çiz (yönlendirici aynı adresi baştan yükler)
+      openEditProfileSheet(user, () => window.dispatchEvent(new HashChangeEvent('hashchange')))
+        .catch((error) => toast(error.message, 'error'));
+    } else if (action === 'soon') {
       toast('Bu özellik yakında geliyor');
     }
   });

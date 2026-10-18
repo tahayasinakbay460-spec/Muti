@@ -49,3 +49,14 @@ PROFILE_EXTRAS = {
         {"id": 4, "name": "1000 Coin", "emoji": "🪙", "date_label": "20.08.2026"},
     ],
 }
+
+# Profil düzenlemede seçilebilecek hazır görseller.
+# DEMO KISAYOLU: Görsel yükleme (upload) yokken kullanıcı yalnızca bu listeden seçebilir.
+# Sunucu gelen adresi bu listeyle karşılaştırır; böylece profile dışarıdan rastgele
+# bir adres (ör. kötü amaçlı bir site) yazılamaz.
+AVATAR_CHOICES = [f"assets/avatars/{gender}{number}.jpg" for gender in ("w", "m") for number in range(1, 11)]
+COVER_CHOICES = [
+    f"assets/covers/{name}.jpg"
+    for name in ("sky", "coast", "city", "night", "beach", "cafe", "canal", "canyon",
+                 "coffee", "guitar", "lighthouse", "mountain", "music", "terrace", "profile")
+]

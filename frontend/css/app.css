@@ -317,7 +317,29 @@ small { font-size: 12px; color: var(--muted); }
   outline: none;
   font-size: 16px; /* iOS'ta odaklanınca otomatik yakınlaştırmayı engeller */
 }
-.field input:focus, .composer input:focus { border-color: var(--purple); }
+.field textarea {
+  width: 100%;
+  padding: 12px 16px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  outline: none;
+  resize: none;
+  font: inherit;
+  font-size: 16px;
+  color: inherit;
+}
+.field input:focus, .field textarea:focus, .composer input:focus { border-color: var(--purple); }
+.field-row { display: grid; grid-template-columns: 1fr 2fr; gap: 10px; }
+
+/* Profil düzenleme: yatay kaydırılan görsel seçiciler */
+.picker-row { display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 6px; scrollbar-width: none; }
+.picker-row::-webkit-scrollbar { display: none; }
+.picker-avatar, .picker-cover { flex: none; border: 2px solid transparent; overflow: hidden; opacity: 0.7; transition: opacity 0.15s, border-color 0.15s; }
+.picker-avatar { width: 56px; height: 56px; border-radius: 50%; }
+.picker-cover { width: 92px; height: 56px; border-radius: 12px; }
+.picker-avatar img, .picker-cover img { width: 100%; height: 100%; object-fit: cover; }
+.picker-avatar.is-active, .picker-cover.is-active { opacity: 1; border-color: var(--pink); box-shadow: 0 0 0 2px rgba(255, 77, 157, 0.3); }
 .search-box {
   display: flex;
   align-items: center;
@@ -561,6 +583,7 @@ small { font-size: 12px; color: var(--muted); }
 
 .room-list { display: grid; gap: 10px; padding: 0 var(--pad); }
 .section .room-list { padding: 0; }
+.following-list { padding-top: 14px; }
 .room-row { display: flex; align-items: center; gap: 12px; padding: 10px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--line); }
 .room-row:active { background: var(--surface-2); }
 .room-row-cover { flex: none; width: 68px; height: 68px; border-radius: 14px; object-fit: cover; }

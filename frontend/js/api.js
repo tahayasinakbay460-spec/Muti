@@ -8,6 +8,7 @@ const DEFAULT_STATE = {
   is_authenticated: false,
   coin_balance: 12450,
   following_ids: [2001, 2003],
+  followed_room_ids: [],
   profile: {},
   transactions: [
     { id: 1, type: 'purchase', label: 'Coin satın alma', amount: 3680, time_label: '3 gün önce' },
@@ -62,6 +63,7 @@ function withMeta(user) {
 function expandRoom(room) {
   return {
     ...room,
+    is_following: state.followed_room_ids.includes(room.id),
     host: withMeta(findUser(room.host_id)),
     seats: room.seats.map((s) => ({ ...s, user: s.user_id ? withMeta(findUser(s.user_id)) : null })),
   };
@@ -133,6 +135,43 @@ const mockApi = {
     else state.following_ids.push(id);
     saveState();
     return { is_following: index < 0 };
+  },
+
+  async updateProfile(changes) {
+    await delay(200);
+    if ('display_name' in changes && !changes.display_name?.trim()) {
+      throw new ApiError('invalid_display_name', 'Görünen ad boş olamaz.');
+    }
+    state.profile = { ...state.profile, ...changes };
+    saveState();
+    return withMeta(findUser(db.CURRENT_USER_ID));
+  },
+
+  async getMediaOptions() {
+    await delay(60);
+    return {
+      avatars: ['w', 'm'].flatMap((g) => Array.from({ length: 10 }, (_, i) => `assets/avatars/${g}${i + 1}.jpg`)),
+      covers: ['sky', 'coast', 'city', 'night', 'beach', 'cafe', 'canal', 'canyon', 'coffee', 'guitar', 'lighthouse', 'mountain', 'music', 'terrace', 'profile']
+        .map((name) => `assets/covers/${name}.jpg`),
+    };
+  },
+
+  async toggleRoomFollow(roomId) {
+    await delay(120);
+    const id = Number(roomId);
+    const index = state.followed_room_ids.indexOf(id);
+    if (index >= 0) state.followed_room_ids.splice(index, 1);
+    else state.followed_room_ids.unshift(id);
+    saveState();
+    return { is_following: index < 0 };
+  },
+
+  async listFollowedRooms() {
+    await delay();
+    return state.followed_room_ids
+      .map((id) => db.rooms.find((r) => r.id === id))
+      .filter(Boolean)
+      .map(expandRoom);
   },
 
   async listBanners() {
@@ -389,6 +428,10 @@ const httpApi = {
   getUser: (id) => request(`/users/${id}`),
   getProfileExtras: (id) => request(`/users/${id}/profile`),
   toggleFollow: (id) => request(`/users/${id}/follow`, { method: 'POST' }),
+  updateProfile: (changes) => request('/users/me', { method: 'PATCH', body: changes }),
+  getMediaOptions: () => request('/users/me/media-options'),
+  toggleRoomFollow: (id) => request(`/rooms/${id}/follow`, { method: 'POST' }),
+  listFollowedRooms: () => request('/rooms/followed'),
   listBanners: () => request('/banners'),
   listRooms: ({ category = '', query = '' } = {}) => request(`/rooms?category=${encodeURIComponent(category)}&query=${encodeURIComponent(query)}`),
   getRoom: (id) => request(`/rooms/${id}`),

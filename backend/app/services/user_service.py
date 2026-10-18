@@ -11,9 +11,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import AppError, NotFoundError
 from app.core.timefmt import as_utc, days_since
+from app.demo import content
 from app.models import Follow, User
 from app.realtime.state import room_state
-from app.schemas.user import UserOut
+from app.schemas.user import ProfileUpdateRequest, UserOut
 
 
 async def get_user(db: AsyncSession, user_id: int) -> User:
@@ -140,6 +141,36 @@ async def toggle_follow(db: AsyncSession, viewer_id: int, target_id: int) -> boo
 
     await db.commit()
     return now_following
+
+
+# ── Profil düzenleme ──────────────────────────────────────────────────────────
+
+async def update_profile(db: AsyncSession, user: User, data: ProfileUpdateRequest) -> UserOut:
+    """
+    Kullanıcının kendi profilini günceller. Yalnızca istekte gönderilen alanlar değişir.
+
+    `model_fields_set` = istemcinin JSON'da gerçekten yazdığı alanlar. Böylece
+    "alanı hiç göndermedi" (dokunma) ile "null gönderdi" (temizle) birbirinden ayrılır.
+    """
+    changes = {field: getattr(data, field) for field in data.model_fields_set}
+
+    if "display_name" in changes and not changes["display_name"]:
+        raise AppError("Görünen ad boş olamaz.", code="invalid_display_name")
+    if "bio" in changes and changes["bio"] is None:
+        changes["bio"] = ""
+    if "city" in changes and not changes["city"]:
+        changes["city"] = None
+    # Görseller yalnızca hazır listeden seçilebilir (bkz. demo/content.py).
+    if changes.get("avatar_url") is not None and changes["avatar_url"] not in content.AVATAR_CHOICES:
+        raise AppError("Bu avatar seçilemez.", code="invalid_avatar")
+    if changes.get("cover_url") is not None and changes["cover_url"] not in content.COVER_CHOICES:
+        raise AppError("Bu kapak seçilemez.", code="invalid_cover")
+
+    for field, value in changes.items():
+        setattr(user, field, value)
+    await db.commit()
+    await db.refresh(user)
+    return await present_user(db, user, viewer_id=user.id)
 
 
 async def list_suggested(db: AsyncSession, viewer_id: int, limit: int = 8) -> list[UserOut]:

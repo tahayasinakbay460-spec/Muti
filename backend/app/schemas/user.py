@@ -6,7 +6,7 @@ tabloda `password_hash` vardır ama şemada yoktur, böylece yanlışlıkla dı�
 """
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 
 
 class UserOut(BaseModel):
@@ -41,6 +41,32 @@ class UserOut(BaseModel):
 
 class FollowResult(BaseModel):
     is_following: bool
+
+
+class ProfileUpdateRequest(BaseModel):
+    """
+    "Profili Düzenle" formu. PATCH isteğidir: yalnızca gönderilen alanlar değişir,
+    gönderilmeyenler olduğu gibi kalır. (Servis bunu `model_fields_set` ile ayırt eder.)
+    """
+    display_name: str | None = Field(default=None, min_length=1, max_length=40)
+    bio: str | None = Field(default=None, max_length=300)
+    age: int | None = Field(default=None, ge=13, le=99)
+    city: str | None = Field(default=None, max_length=60)
+    # Yalnızca hazır listeden (demo/content.py) bir adres kabul edilir; kontrol serviste.
+    avatar_url: str | None = Field(default=None, max_length=500)
+    cover_url: str | None = Field(default=None, max_length=500)
+
+    @field_validator("display_name", "bio", "city", mode="before")
+    @classmethod
+    def strip_text(cls, value):
+        # Baştaki/sondaki boşlukları at; "   " gibi boş bir ad min_length kontrolüne takılsın.
+        return value.strip() if isinstance(value, str) else value
+
+
+class MediaOptions(BaseModel):
+    """Profil düzenlemede seçilebilecek hazır avatar ve kapak görselleri."""
+    avatars: list[str]
+    covers: list[str]
 
 
 class TopGifter(BaseModel):

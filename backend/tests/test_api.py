@@ -149,6 +149,40 @@ def test_follow_toggle_updates_counter(client, guest):
     assert client.post(f"{API}/users/2002/follow", headers=guest).json() == {"is_following": False}
 
 
+def test_profile_update_changes_only_sent_fields(client, guest):
+    before = me(client, guest)
+    response = client.patch(f"{API}/users/me", headers=guest, json={
+        "display_name": "  Yeni Ad  ", "bio": "Merhaba", "city": "İzmir", "avatar_url": "assets/avatars/w3.jpg",
+    })
+    assert response.status_code == 200, response.text
+    updated = response.json()
+    assert updated["display_name"] == "Yeni Ad" and updated["bio"] == "Merhaba" and updated["city"] == "İzmir"
+    assert updated["avatar_url"] == "assets/avatars/w3.jpg"
+    # Gönderilmeyen alanlar olduğu gibi kalır.
+    assert updated["age"] == before["age"] and updated["cover_url"] == before["cover_url"]
+    assert me(client, guest)["display_name"] == "Yeni Ad"
+
+    # Boş görünen ad, listede olmayan görsel ve sınır dışı yaş reddedilir.
+    assert client.patch(f"{API}/users/me", headers=guest, json={"display_name": "   "}).status_code == 422
+    bad_avatar = client.patch(f"{API}/users/me", headers=guest, json={"avatar_url": "https://evil.example/x.jpg"})
+    assert bad_avatar.json()["code"] == "invalid_avatar"
+    assert client.patch(f"{API}/users/me", headers=guest, json={"age": 7}).status_code == 422
+
+    options = client.get(f"{API}/users/me/media-options", headers=guest).json()
+    assert "assets/avatars/w3.jpg" in options["avatars"] and options["covers"]
+
+
+def test_room_follow_toggle_and_followed_list(client, guest):
+    assert client.get(f"{API}/rooms/followed", headers=guest).json() == []
+    assert client.post(f"{API}/rooms/104211/follow", headers=guest).json() == {"is_following": True}
+    assert client.get(f"{API}/rooms/104211", headers=guest).json()["is_following"] is True
+    assert [room["id"] for room in client.get(f"{API}/rooms/followed", headers=guest).json()] == [104211]
+
+    assert client.post(f"{API}/rooms/104211/follow", headers=guest).json() == {"is_following": False}
+    assert client.get(f"{API}/rooms/followed", headers=guest).json() == []
+    assert client.post(f"{API}/rooms/999999/follow", headers=guest).status_code == 404
+
+
 def test_conversation_flow_and_privacy(client, muti, guest):
     listed = client.get(f"{API}/conversations", headers=muti).json()
     assert len(listed) == 4 and listed[0]["user"]["username"] == "merve" and listed[0]["unread_count"] == 2
