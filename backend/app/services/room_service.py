@@ -41,9 +41,9 @@ async def present_rooms(db: AsyncSession, rooms: list[Room], viewer_id: int | No
     for room in rooms:
         await room_state.ensure_room(room.id, room.seat_count)
 
-    seats_by_room = await room_state.get_seats(room_ids)
-    listener_counts = await room_state.listener_counts(room_ids)
-    ranks = await room_state.room_ranks(room_ids)
+    seats_by_room = await room_state.get_seats(room_ids)# odaların koltuk durumları 
+    listener_counts = await room_state.listener_counts(room_ids)#kac dinleyici var
+    ranks = await room_state.room_ranks(room_ids)#oda sıralaması (canlı depoda tutuluyor, Redis'ten gelecek)
 
     # Ekranda görünecek herkesin id'sini topla: oda sahipleri + koltukta oturanlar.
     user_ids = {room.host_id for room in rooms}

@@ -21,7 +21,7 @@ Referans her zaman gerçek TopTop uygulamasıdır: ekran düzeni, akışlar ve �
 
 ## Mevcut Durum (repodaki kod)
 
-Yapılan her işin kaydı kök dizindeki `GECMIS.md` dosyasındadır. **Her çalışma sonunda `GECMIS.md` dosyasının en üstüne tarihli bir kayıt eklenir** (ne yapıldı, neden, hangi dosyalar, açık kalanlar). Yeni bir oturumda bağlam için önce o dosya okunur.
+Yapılan her işin kaydı kök dizindeki `GECMIS.md` dosyasındadır. **Her çalışma sonunda `GECMIS.md` içindeki "Kayıtlar" bölümünün en üstüne tarihli bir kayıt eklenir** (amaç, ne yapıldı, doğrulama, açık kalanlar) **ve dosyanın başındaki "Şu an neredeyiz" özeti güncellenir.** Yeni bir oturumda bağlam için önce o dosya okunur.
 
 - `backend/` — FastAPI + async SQLAlchemy 2.0, SQLite (`backend/app.db`, aiosqlite), PyJWT + bcrypt. Frontend'in `httpApi` sözleşmesini (`/api/v1/...`) ve oda WebSocket'ini karşılar. Katmanlı yapı; istek `routers → services → models` yolunu izler:
   - `app/main.py` — uygulama girişi, lifespan (tablo oluşturma + demo seed), CORS, router bağlama
