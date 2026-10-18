@@ -2,7 +2,8 @@
 //   - connectRoom → oda kanalı (/ws/rooms/:id): sohbet, hediye, koltuklar. Mock sürüm zamanlayıcıyla üretir.
 //   - connectUser → kişiye özel kanal (/ws/me): `message:new` (özel mesaj). Giriş yapılı olduğu sürece açık.
 //
-// İstemci yalnızca şunları gönderir: `chat:message` { text } ve `game:dice_rolled` {}.
+// İstemci yalnızca şunları gönderir: `chat:message` { text }, `game:dice_rolled` {},
+// `game:roulette_start` {} ve `game:roulette_bet` { color }.
 // Moderasyon (koltuk kilitleme, atma) REST ile yapılır; sonucu sunucu `room:seats_updated`,
 // `room:roles_updated` ve `room:user_kicked` olarak yayınlar.
 // Mesajın sahibini ve zarın sonucunu sunucu belirler, sonra tüm odaya yayınlar.
@@ -11,6 +12,7 @@ import { refreshSession } from './api.js';
 import { users, gifts, chatLines, CURRENT_USER_ID } from './mock-data.js';
 
 const pick = (list) => list[Math.floor(Math.random() * list.length)];
+const MOCK_RED_NUMBERS = new Set([1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36]);
 
 class BaseChannel {
   constructor() {
@@ -88,6 +90,19 @@ class MockRoomChannel extends BaseChannel {
     } else if (event === 'game:dice_rolled') {
       const values = [1, 2].map(() => 1 + Math.floor(Math.random() * 6));
       this.timers.push(setTimeout(() => this.emit(event, { user: this.me, values }), 150));
+    } else if (event === 'game:roulette_start' && !this.roulette) {
+      this.roulette = { round_id: Date.now(), bets: new Map() };
+      this.emit('game:roulette_started', { round_id: this.roulette.round_id, started_by: this.me, betting_seconds: 10 });
+      this.timers.push(setTimeout(() => {
+        const number = Math.floor(Math.random() * 37);
+        const color = number === 0 ? 'green' : MOCK_RED_NUMBERS.has(number) ? 'red' : 'black';
+        const winners = [...this.roulette.bets.values()].filter((b) => b.color === color).map((b) => b.user);
+        this.emit('game:roulette_result', { round_id: this.roulette.round_id, number, color, winners, player_count: this.roulette.bets.size });
+        this.roulette = null;
+      }, 10000));
+    } else if (event === 'game:roulette_bet' && this.roulette) {
+      this.roulette.bets.set(this.me.id, { user: this.me, color: payload.color });
+      this.emit('game:roulette_bet_placed', { round_id: this.roulette.round_id, user: this.me, color: payload.color });
     }
   }
 

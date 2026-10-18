@@ -21,9 +21,9 @@ const QUICK_TILES = [
   { id: 'vip', label: 'VIP Odalar', emoji: '👑' },
 ];
 
-// Oda içi oyunlar. Henüz hiçbiri ana sayfadan açılmıyor (zar oyunu oda içinden oynanır).
+// Oda içi oyunlar. Oynanabilenler (isPlayable) oda içinden açılır: kart oyun odalarına götürür.
 const GAMES = [
-  { id: 'roulette', name: 'Rulet', emoji: '🎡' },
+  { id: 'roulette', name: 'Rulet', emoji: '🎡', isPlayable: true },
   { id: 'billiards', name: 'Bilardo', emoji: '🎱' },
   { id: 'okey', name: '101 Okey', emoji: '🀄' },
   { id: 'candy', name: 'Candy', emoji: '🍭' },
@@ -182,7 +182,15 @@ export async function renderHome(root) {
     if (quick) follow(QUICK_TILES.find((t) => t.id === quick.dataset.quick));
 
     const game = event.target.closest('[data-game]');
-    if (game) toast(`${GAMES.find((g) => g.id === game.dataset.game).name} yakında geliyor`);
+    if (game) {
+      const item = GAMES.find((g) => g.id === game.dataset.game);
+      if (item.isPlayable) {
+        location.hash = '#/explore?category=game';
+        toast(`${item.name} oda içinden oynanır: bir odaya gir, alttaki oyun düğmesine dokun`);
+      } else {
+        toast(`${item.name} yakında geliyor`);
+      }
+    }
 
     if (event.target.closest('[data-action="notifications"]')) toast('Yeni bildirimin yok');
   });

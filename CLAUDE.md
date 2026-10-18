@@ -30,7 +30,7 @@ Yapılan her işin kaydı kök dizindeki `GECMIS.md` dosyasındadır. **Her çal
   - `app/schemas/` — Pydantic istek/yanıt şemaları (alan başına bir dosya)
   - `app/services/` — iş kuralları: `auth_service`, `user_service`, `room_service`, `wallet_service` (bakiyeyi değiştiren tek yer: `change_balance`), `gift_service`, `message_service`, `moderation_service` (oda rolleri ve yetki kontrolleri)
   - `app/routers/` — ince HTTP katmanı: `auth`, `users`, `rooms`, `economy` (gifts/wallet/leaderboards), `conversations`, `content` (banners)
-  - `app/realtime/` — `state.py` (`RoomStateStore` sözleşmesi + bellek içi uygulama: koltuk, dinleyici, odadan atılanlar, çevrimiçi), `hub.py` (`RoomHub` odaya yayın + kişiyi odadan çıkarma, `UserHub` kişiye özel yayın), `events.py` (event adları, WebSocket kapanış kodları), `room_socket.py` (`/ws/rooms/{id}?token=`), `user_socket.py` (`/ws/me?token=`, özel mesaj bildirimi)
+  - `app/realtime/` — `state.py` (`RoomStateStore` sözleşmesi + bellek içi uygulama: koltuk, dinleyici, odadan atılanlar, çevrimiçi), `hub.py` (`RoomHub` odaya yayın + kişiyi odadan çıkarma, `UserHub` kişiye özel yayın), `events.py` (event adları, WebSocket kapanış kodları), `room_socket.py` (`/ws/rooms/{id}?token=`), `user_socket.py` (`/ws/me?token=`, özel mesaj bildirimi), `games.py` (oda içi rulet: tur durumu ve sunucunun çektiği sonuç)
   - `app/demo/` — `seed.py` (mock-data.js ile aynı örnek veri; tüm hesapların parolası `demo1234`), `content.py` (banner ve profil ekleri için sabit içerik)
   - `tests/` — uçtan uca API/WebSocket testleri (`python -m pytest`)
   - `.env` (git'e girmez, `SECRET_KEY` zorunlu) — örnek: `.env.example`
@@ -39,7 +39,7 @@ Yapılan her işin kaydı kök dizindeki `GECMIS.md` dosyasındadır. **Her çal
   - `js/config.js` — marka adı (`APP_NAME`, şu an "Muti"), `USE_MOCK`, API/WS adresleri, varsayılan avatar/kapak
   - `js/api.js` — tek veri katmanı: `mockApi` ve `httpApi` aynı metodları sunar. `httpApi` 401'de token'ı kendisi yeniler (`refreshSession`), para harcayan isteklere `Idempotency-Key` ekler
   - `js/inbox.js` — kişiye özel kanalın (`/ws/me`, `message:new`) sahibi: okunmamış rozeti ve yeni mesaj bildirimi; ekranlar `onInbox` ile abone olur
-  - `js/realtime.js` — `connectUser` (kişiye özel kanal) ve oda kanalı (`chat:message`, `gift:sent`, `room:seats_updated`, `room:listener_count`, `room:user_joined`, `room:roles_updated`, `room:user_kicked`, `game:dice_rolled`, `error`; `room:speaking` yalnızca mock'ta); mock ve WebSocket sürümü aynı arayüzde, WebSocket koparsa yeniden bağlanır
+  - `js/realtime.js` — `connectUser` (kişiye özel kanal) ve oda kanalı (`chat:message`, `gift:sent`, `room:seats_updated`, `room:listener_count`, `room:user_joined`, `room:roles_updated`, `room:user_kicked`, `game:dice_rolled`, `game:roulette_started` / `_bet_placed` / `_result`, `error`; `room:speaking` yalnızca mock'ta); mock ve WebSocket sürümü aynı arayüzde, WebSocket koparsa yeniden bağlanır
   - `js/mock-data.js` — sahte kullanıcı/oda/hediye verisi (alan adları API JSON'u ile aynı)
   - `js/app.js` — hash yönlendirme (`#/home`, `#/explore`, `#/following`, `#/room/:id`, `#/messages`, `#/chat/:id`, `#/profile/:id`, `#/wallet`, `#/auth`) ve alt sekme çubuğu
   - `js/screens/` — ekran başına bir modül; her biri `render(root, { params, query })` ve isteğe bağlı temizlik fonksiyonu döner

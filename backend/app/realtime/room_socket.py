@@ -30,6 +30,7 @@ from app.core.errors import AppError
 from app.core.security import decode_access_token
 from app.models import Room, User
 from app.realtime import events
+from app.realtime.games import roulette
 from app.realtime.hub import room_hub
 from app.realtime.state import room_state
 from app.services import room_service, user_service
@@ -108,6 +109,7 @@ async def room_socket(websocket: WebSocket, room_id: int, token: str = "") -> No
     is_first_connection = await room_state.add_listener(room_id, user_id)
     chat_limiter = RateLimiter(limit=5, period=5)    # 5 saniyede en fazla 5 mesaj
     dice_limiter = RateLimiter(limit=1, period=1.5)  # 1.5 saniyede en fazla 1 zar
+    game_limiter = RateLimiter(limit=5, period=5)    # rulet: 5 saniyede en fazla 5 işlem
 
     try:
         if is_first_connection:
@@ -149,6 +151,17 @@ async def room_socket(websocket: WebSocket, room_id: int, token: str = "") -> No
                 # herkes kendine hep 6-6 gönderirdi. `secrets` tahmin edilemez sayı üretir.
                 values = [secrets.randbelow(6) + 1, secrets.randbelow(6) + 1]
                 await room_hub.publish(room_id, events.GAME_DICE_ROLLED, {"user": user_payload, "values": values})
+
+            elif event in (events.GAME_ROULETTE_START, events.GAME_ROULETTE_BET):
+                if not game_limiter.allow():
+                    continue
+                try:
+                    if event == events.GAME_ROULETTE_START:
+                        await roulette.start(room_id, user_payload)
+                    else:
+                        await roulette.bet(room_id, user_id, user_payload, str(payload.get("color", "")))
+                except AppError as error:
+                    await _send_error(websocket, error.code, error.detail)
 
             elif event == events.GIFT_SENT:
                 # Bilerek yok sayılıyor. Hediye yayını yalnızca POST /gifts/send başarılı

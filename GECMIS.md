@@ -11,13 +11,15 @@ Projede yapılan işlerin kaydı.
 
 **Aşama:** Web demo. Frontend ekranları hazır ve gerçek backend'e bağlı (`USE_MOCK = false`).
 
-**Çalışan:** giriş/kayıt/misafir, oda listesi, oda içi sohbet, koltuklar, zar oyunu, hediye gönderme, coin satın alma, özel mesajlar (anlık bildirimli), kullanıcı takibi, oda takibi, profil ve profil düzenleme, cüzdan, oda yöneticileri ve moderasyon (koltuk kilitleme, koltuktan indirme, odadan atma).
+**Çalışan:** giriş/kayıt/misafir, oda listesi, oda içi sohbet, koltuklar, zar ve rulet oyunları, kademeli hediye animasyonları, hediye gönderme, coin satın alma, özel mesajlar (anlık bildirimli), kullanıcı takibi, oda takibi, profil ve profil düzenleme, cüzdan, oda yöneticileri ve moderasyon (koltuk kilitleme, koltuktan indirme, odadan atma).
 
 **Kod okuma turu (2026-10-14):** Auth, oda listesi akışı (`list_rooms` → `present_rooms` → `realtime/state.py`) ve `room_socket` okundu. Sırada ekonomi (`gift_service`, `wallet_service`) derinlemesine; diğer router/servisler yüzeysel; sonra `hub.py`.
 
 **Ana sayfa (2026-10-18):** kullanıcının verdiği referans görsele göre yeniden tasarlandı. Alt çubuk: Ana Sayfa · Mesajlar · (+) · Cüzdan · Profil.
 
-**Sıradaki adım:** 2026-10-18 planı: ~~(1) Profili Düzenle + Oda Takip Et~~ (bitti), ~~(2) oda rolleri ve moderasyon~~ (bitti), ~~(3) özel mesajlarda anlık bildirim~~ (bitti), (4) ana sayfadaki oyunlar ve hediye animasyonları.
+**2026-10-18 planı tamamlandı:** (1) Profili Düzenle + Oda Takip Et, (2) oda rolleri ve moderasyon, (3) özel mesajlarda anlık bildirim, (4) rulet oyunu ve hediye animasyonları.
+
+**Sıradaki adım (öneri):** kalan eksiklerden (aşağıdaki tablo) birini seçmek. Örneğin gerçek ses (WebRTC), dinleyici listesi ya da Bilardo/101 Okey gibi bir sonraki oyun.
 
 ### Henüz elle denenmeyenler
 
@@ -29,6 +31,7 @@ Projede yapılan işlerin kaydı.
 |---|---|
 | Gerçek ses (WebRTC) | Koltuktaki "konuşuyor" halkası bu yüzden yanmıyor |
 | Uygulama kapalıyken bildirim (push) | Anlık bildirim yalnızca uygulama açıkken (/ws/me bağlıyken) çalışır; mobilde APNs/FCM gerekir |
+| Bilardo, 101 Okey, Candy | Ana sayfada kartları var, "Yakında" diyor. Oynanabilen oyunlar: Zar, Rulet |
 | Oda içi `vip` rolü | `host` ve `admin` var; odaya özel VIP üyelik yazılmadı |
 | Dinleyici listesi | Moderatör yalnızca koltuktaki birini atabilir; koltukta olmayan dinleyicileri gösteren liste yok |
 | Admin uçları | Eski admin sayfası silindi, yenisi yazılmadı |
@@ -48,7 +51,7 @@ Kodda "DEMO KISAYOLU" diye işaretlidir. Mobil/canlı aşamasında değiştirile
 |---|---|---|
 | SQLite | `core/config.py` | PostgreSQL (`postgresql+asyncpg://`) |
 | Tablolar `create_all` ile oluşuyor | `main.py` | Alembic migration |
-| Oda durumu, odadan atma yasakları, oda ve kişi yayınları bellek içi (tek sunucu süreci) | `realtime/state.py`, `realtime/hub.py` (`RoomHub`, `UserHub`) | Redis (aynı sözleşmeyle `RedisRoomStateStore`, pub/sub; yasaklar süreli anahtar) |
+| Oda durumu, odadan atma yasakları, rulet turları, oda ve kişi yayınları bellek içi (tek sunucu süreci) | `realtime/state.py`, `realtime/hub.py` (`RoomHub`, `UserHub`), `realtime/games.py` | Redis (aynı sözleşmeyle `RedisRoomStateStore`, pub/sub; yasaklar süreli anahtar) |
 | Satın alma ödeme doğrulamadan coin ekliyor | `wallet_service.purchase` | App Store / Google Play makbuz doğrulama |
 | Banner ve profil ekleri sabit içerik | `demo/content.py` | Tablo + servis |
 | Avatar ve kapak yalnızca hazır listeden seçiliyor | `demo/content.py` (`AVATAR_CHOICES`, `COVER_CHOICES`) | Görsel yükleme (object storage + boyut/tür kontrolü) |
@@ -59,6 +62,56 @@ Kodda "DEMO KISAYOLU" diye işaretlidir. Mobil/canlı aşamasında değiştirile
 ---
 
 # Kayıtlar
+
+## 2026-10-18 — Rulet oyunu ve hediye animasyonları
+
+**Amaç:** Odada zar dışında, herkesin aynı anda katıldığı gerçek bir çok oyunculu oyun olsun. Hediyeler değerine göre farklı büyüklükte animasyonla görünsün.
+
+### Ne yapıldı
+
+**Backend: Rulet (`realtime/games.py`, yeni)**
+
+- **Akış:**
+  - Odadaki biri turu başlatır (`game:roulette_start`); herkese `game:roulette_started` gider.
+  - 10 saniye içinde herkes renk seçer (`game:roulette_bet` → `game:roulette_bet_placed`). Seçim süre içinde değiştirilebilir.
+  - Süre bitince **sunucu** `secrets` ile 0-36 arası bir sayı çeker. Rengi bilenler kazanır: `game:roulette_result` `{ number, color, winners, player_count }`.
+- **Kurallar:** odada aynı anda tek tur olur (`roulette_running`). Tur yokken seçim yapılamaz (`no_active_round`). Geçersiz renk reddedilir (`invalid_color`). Bağlantı başına 5 saniyede en fazla 5 işlem.
+- **Coin bahsi yok**, oyun yalnızca eğlence. Paralı olursa `wallet_service` üzerinden yapılmalı (dosyada not var).
+- **DEMO KISAYOLU:** tur durumu bellekte, süre `asyncio` zamanlayıcısıyla bitiyor. Çok sunucuda Redis + tek bitirici gerekir.
+- `room_socket.py` yeni olayları `games.roulette`'a yönlendiriyor; olay adları `events.py`'de.
+- 1 yeni test: tur başlatma, çift başlatma, geçersiz renk, seçim, sonucun ve kazananın sunucuda hesaplanması. Testte süre 0.3 sn'ye indiriliyor.
+
+**Frontend**
+
+- **Oyun paneli (`screens/room.js`):** "Rulet | Zar" sekmeleri.
+  - Rulet sekmesinde: tur sürerken dönen çark, geri sayım, Kırmızı/Siyah/Yeşil düğmeleri, seçim yapanların avatarları (seçtikleri renkte halka). Sonuçta çarkın ortasında sayı ve renk görünüyor.
+  - Rulet durumu panel kapalıyken de tutuluyor.
+  - Sohbete "X rulet turu başlattı … [Katıl]" ve sonuç satırı düşüyor. Kazanana "🎉 Rulette kazandın!" bildirimi çıkıyor.
+  - Eski "Yakında" oyun kutuları kaldırıldı.
+- **Hediye animasyonları (toplam değer = fiyat × adet):**
+  - 99'un altı: sağ alttan yukarı süzülen emojiler.
+  - 99-998: ortada patlayan emoji ve isim şeridi (eski animasyon).
+  - 999 ve üstü: tam ekran parıltı, konfeti, üstten kayan duyuru şeridi ve dev emoji. Büyük animasyonlar sıraya alınıyor, üst üste binmiyor. Büyük hediyede hediye paneli kapanıyor ki animasyon görünsün.
+  - **Kombo:** aynı kişi aynı hediyeyi aynı kişiye 4 sn içinde tekrar gönderirse hediye akışında tek satırda sayaç artıyor (x3, altın renk).
+- **`realtime.js`:** mock kanalı ruleti de taklit ediyor.
+- **`screens/home.js`:** "Rulet" kartı artık "Yakında" demiyor; oyun odalarına götürüp nasıl oynanacağını söylüyor.
+
+### Doğrulama
+
+- Backend testleri 23/23 geçti.
+- Tarayıcıda gerçek zamanlı denendi. Headless Chrome DevTools Protocol ile sürüldü; önceki ekran görüntüsü yöntemi saati hızlandırdığı için WebSocket akışlarında yanıltıcıydı.
+  - Rulet turu başlatıldı, Kırmızı seçildi, sonuç "5 Kırmızı" geldi ve kazanma bildirimi çıktı.
+  - Spor Araba (999) ile tam ekran animasyon görüldü.
+  - 3 kez art arda gönderilen Gül ile süzülen emojiler ve x3 kombo görüldü.
+- Denemede bulunup düzeltilen iki CSS hatası:
+  - Konfeti kutusu ızgarada yer kaplayıp dev emojiyi itiyordu.
+  - Emoji animasyonu yalnızca son karede `opacity` tanımladığı için baştan sona soluyordu.
+
+### Açık kalanlar
+
+- Odaya tur ortasında giren kişi o turu görmüyor; bir sonraki turdan itibaren görüyor (sunucu "şu an süren tur" bilgisini katılanlara göndermiyor).
+- Bilardo, 101 Okey ve Candy hâlâ yok.
+- Denemeler için demo veritabanında birkaç misafir hesabı, demo coin alımları ve hediye kayıtları oluştu (`app.db` silinirse sıfırlanır).
 
 ## 2026-10-18 — Özel mesajlarda anlık bildirim
 

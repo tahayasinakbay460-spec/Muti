@@ -9,12 +9,26 @@ const QUANTITIES = [1, 5, 10, 99];
 const DICE_FACES = ['⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
 const DICE_SPIN_MS = 900;
 const DICE_COOLDOWN_MS = 1600;
+const ROULETTE_COLORS = [
+  { id: 'red', label: 'Kırmızı', hint: '18 sayı' },
+  { id: 'black', label: 'Siyah', hint: '18 sayı' },
+  { id: 'green', label: 'Yeşil', hint: 'yalnızca 0' },
+];
+const COLOR_LABELS = { red: 'Kırmızı', black: 'Siyah', green: 'Yeşil' };
+// Hediyenin toplam değerine (fiyat × adet) göre animasyon büyüklüğü
+const GIFT_MEDIUM_FROM = 99;
+const GIFT_BIG_FROM = 999;
+const GIFT_COMBO_MS = 4000;
+const CONFETTI_COLORS = ['#ff4d9d', '#ffc53d', '#8b5cff', '#2ee6a6', '#3d8bff'];
 
 export async function renderRoom(root, { params }) {
   let [room, me, gifts] = await Promise.all([api.getRoom(params[0]), api.getMe(), api.listGifts()]);
   let speakingIndexes = [];
   // Zar atıp sonucunu bekliyorsak, sonuç gelince çağrılacak fonksiyon
   let pendingDiceRoll = null;
+  // Odadaki rulet turunun durumu (panel kapalıyken de güncel tutulur; panel açılınca buradan çizilir)
+  const roulette = { roundId: null, endsAt: 0, bets: new Map(), last: null };
+  let rouletteView = null;   // rulet paneli açıkken { render } nesnesi
   const channel = connectRoom(room, me);
 
   const mySeat = () => room.seats.find((s) => s.user?.id === me.id);
@@ -135,20 +149,92 @@ export async function renderRoom(root, { params }) {
   const addDiceLine = ({ user, values }) => addSystemLine(`🎲 <b>${esc(user.display_name)}</b> zar attı: ${values.map((v) => DICE_FACES[v - 1]).join(' ')} (toplam ${values[0] + values[1]})`);
 
   // ─── HEDİYE ────────────────────────────────────────────────────────────────
+  // Aynı kişi aynı hediyeyi aynı kişiye art arda gönderirse tek satırda "kombo" olarak sayılır
+  let combo = null;
+  // Büyük (tam ekran) animasyonlar üst üste binmesin diye sıraya alınır
+  const bigGiftQueue = [];
+  let isPlayingBigGift = false;
+
   function showGift({ sender, receiver, gift, quantity }) {
     addSystemLine(`<b>${esc(sender.display_name)}</b>, <b>${esc(receiver.display_name)}</b> kişisine ${gift.emoji} ${esc(gift.name)} x${quantity} gönderdi`);
 
-    const feedItem = document.createElement('div');
-    feedItem.className = 'gift-feed-item';
-    feedItem.innerHTML = `<i>${gift.emoji}</i><b>x${quantity}</b>`;
-    giftFeedEl.prepend(feedItem);
-    while (giftFeedEl.children.length > 4) giftFeedEl.lastElementChild.remove();
+    const total = gift.price * quantity;
+    addToGiftFeed({ sender, receiver, gift, quantity });
+    if (total >= GIFT_BIG_FROM) {
+      bigGiftQueue.push({ sender, receiver, gift, quantity });
+      playNextBigGift();
+    } else if (total >= GIFT_MEDIUM_FROM) {
+      playMediumGift({ sender, receiver, gift, quantity });
+    } else {
+      playSmallGift(gift);
+    }
+  }
 
+  function addToGiftFeed({ sender, receiver, gift, quantity }) {
+    const key = `${sender.id}:${receiver.id}:${gift.id}`;
+    if (combo && combo.key === key && combo.el.isConnected) {
+      combo.count += quantity;
+      combo.el.querySelector('b').textContent = `x${combo.count}`;
+      combo.el.classList.remove('is-combo');
+      void combo.el.offsetWidth;   // animasyonu baştan oynatmak için tarayıcıya yeniden hesaplatıyoruz
+      combo.el.classList.add('is-combo');
+    } else {
+      const el = document.createElement('div');
+      el.className = 'gift-feed-item';
+      el.innerHTML = `<i>${gift.emoji}</i><b>x${quantity}</b>`;
+      giftFeedEl.prepend(el);
+      while (giftFeedEl.children.length > 4) giftFeedEl.lastElementChild.remove();
+      combo = { key, count: quantity, el };
+    }
+    clearTimeout(combo.timer);
+    combo.timer = setTimeout(() => { combo = null; }, GIFT_COMBO_MS);
+  }
+
+  // Küçük hediye: sağ alttan yukarı süzülen birkaç emoji
+  function playSmallGift(gift) {
+    for (let i = 0; i < 3; i += 1) {
+      const el = document.createElement('i');
+      el.className = 'gift-float';
+      el.textContent = gift.emoji;
+      el.style.setProperty('--drift', `${Math.round(Math.random() * 60 - 30)}px`);
+      el.style.animationDelay = `${i * 140}ms`;
+      giftStageEl.appendChild(el);
+      setTimeout(() => el.remove(), 2200 + i * 140);
+    }
+  }
+
+  // Orta hediye: ekranın ortasında patlayan emoji ve isim şeridi
+  function playMediumGift({ sender, receiver, gift, quantity }) {
     const burst = document.createElement('div');
-    burst.className = `gift-burst ${gift.price >= 999 ? 'is-big' : ''}`;
+    burst.className = 'gift-burst';
     burst.innerHTML = `<i>${gift.emoji}</i><span>${esc(sender.display_name)} → ${esc(receiver.display_name)} <b>x${quantity}</b></span>`;
     giftStageEl.appendChild(burst);
     setTimeout(() => burst.remove(), 2400);
+  }
+
+  // Büyük hediye: tam ekran parıltı, konfeti ve üstten kayan duyuru şeridi
+  function playNextBigGift() {
+    if (isPlayingBigGift || !bigGiftQueue.length) return;
+    isPlayingBigGift = true;
+    const { sender, receiver, gift, quantity } = bigGiftQueue.shift();
+
+    const confetti = Array.from({ length: 28 }, () => {
+      const color = CONFETTI_COLORS[Math.floor(Math.random() * CONFETTI_COLORS.length)];
+      return `<span style="left:${Math.round(Math.random() * 100)}%;background:${color};animation-delay:${Math.round(Math.random() * 600)}ms;--spin:${Math.round(Math.random() * 720 - 360)}deg"></span>`;
+    }).join('');
+    const show = document.createElement('div');
+    show.className = 'gift-fullscreen';
+    show.innerHTML = `
+      <div class="gift-fullscreen-glow"></div>
+      <div class="gift-confetti">${confetti}</div>
+      <div class="gift-banner">🎉 <b>${esc(sender.display_name)}</b> → <b>${esc(receiver.display_name)}</b> ${esc(gift.name)} x${quantity}</div>
+      <i class="gift-fullscreen-emoji">${gift.emoji}</i>`;
+    giftStageEl.appendChild(show);
+    setTimeout(() => {
+      show.remove();
+      isPlayingBigGift = false;
+      playNextBigGift();
+    }, 3400);
   }
 
   function openGiftSheet(preselectedReceiverId) {
@@ -196,7 +282,8 @@ export async function renderRoom(root, { params }) {
           sheet.el.querySelector('#gift-balance').textContent = formatCoins(result.coin_balance);
           // Animasyonu odaya sunucu yayınlar; bu satır yalnızca mock'ta bir şey yapar
           channel.simulateServerEvent('gift:sent', { sender: me, receiver: result.receiver, gift: result.gift, quantity });
-          if (result.gift.price >= 999) sheet.close();
+          // Büyük hediyede panel kapanır ki tam ekran animasyon görünsün
+          if (result.gift.price * quantity >= GIFT_BIG_FROM) sheet.close();
         } catch (error) {
           toast(error.code === 'insufficient_balance' ? 'Coin bakiyen yetersiz. Cüzdandan coin alabilirsin.' : error.message, 'error');
         }
@@ -208,21 +295,97 @@ export async function renderRoom(root, { params }) {
   function openGameSheet() {
     const sheet = openSheet(`
       <h2 class="sheet-title">Oda Oyunları</h2>
+      <div class="segmented game-tabs">
+        <button class="is-active" data-game-tab="roulette">🎡 Rulet</button>
+        <button data-game-tab="dice">🎲 Zar</button>
+      </div>
+      <div id="game-panel"></div>`, { className: 'sheet-dark' });
+
+    const panel = sheet.el.querySelector('#game-panel');
+    let unmount = null;
+    const showTab = (tab) => {
+      unmount?.();
+      sheet.el.querySelectorAll('[data-game-tab]').forEach((b) => b.classList.toggle('is-active', b.dataset.gameTab === tab));
+      unmount = tab === 'roulette' ? mountRoulette(panel) : mountDice(panel);
+    };
+    sheet.el.querySelector('.game-tabs').addEventListener('click', (event) => {
+      const tab = event.target.closest('[data-game-tab]');
+      if (tab) showTab(tab.dataset.gameTab);
+    });
+    showTab('roulette');
+
+    // Panel kapanınca (arka plana dokunma) zamanlayıcıları durdur
+    const observer = new MutationObserver(() => {
+      if (!sheet.el.isConnected) {
+        unmount?.();
+        observer.disconnect();
+      }
+    });
+    observer.observe(document.getElementById('overlay-root'), { childList: true });
+  }
+
+  // Rulet: turu sunucu yönetir; biz yalnızca "başlat" ve "renk seç" gönderip gelen olayları çizeriz
+  function mountRoulette(panel) {
+    function render() {
+      const active = roulette.roundId !== null;
+      const secondsLeft = Math.max(0, Math.ceil((roulette.endsAt - Date.now()) / 1000));
+      const myBet = roulette.bets.get(me.id)?.color;
+      const last = roulette.last;
+      const status = active
+        ? (secondsLeft > 0 ? `Renk seç: <b>${secondsLeft} sn</b>` : 'Top dönüyor...')
+        : last
+          ? `Son tur: <b class="roulette-text-${last.color}">${last.number} ${COLOR_LABELS[last.color]}</b> · ${last.winners.length ? `${last.winners.length} kişi kazandı` : 'kimse bilemedi'}`
+          : 'Turu başlat, odadaki herkes 10 saniye içinde renk seçsin.';
+
+      panel.innerHTML = `
+        <div class="roulette">
+          <div class="roulette-wheel ${active ? 'is-spinning' : ''}">
+            <span class="roulette-number ${last && !active ? `roulette-bg-${last.color}` : ''}">${active ? '?' : last ? last.number : '🎡'}</span>
+          </div>
+          <p class="roulette-status">${status}</p>
+          ${active ? `
+            <div class="roulette-colors">
+              ${ROULETTE_COLORS.map((c) => `
+                <button class="roulette-color roulette-bg-${c.id} ${myBet === c.id ? 'is-active' : ''}" data-color="${c.id}" ${secondsLeft > 0 ? '' : 'disabled'}>
+                  <b>${c.label}</b><small>${c.hint}</small>
+                </button>`).join('')}
+            </div>
+            <div class="roulette-bets">
+              ${[...roulette.bets.values()].map(({ user, color }) => `<span class="roulette-bet roulette-ring-${color}" title="${esc(user.display_name)}">${avatarImg(user, 'avatar-xs')}</span>`).join('')
+                || '<small>Henüz kimse seçmedi</small>'}
+            </div>`
+          : '<button class="btn btn-primary btn-block" data-roulette="start">Turu Başlat</button>'}
+        </div>`;
+    }
+
+    const onClick = (event) => {
+      if (event.target.closest('[data-roulette="start"]')) channel.send('game:roulette_start', {});
+      const color = event.target.closest('[data-color]')?.dataset.color;
+      if (color) channel.send('game:roulette_bet', { color });
+    };
+    panel.addEventListener('click', onClick);
+    rouletteView = { render };
+    render();
+    const ticker = setInterval(() => { if (roulette.roundId !== null) render(); }, 500);
+
+    return () => {
+      clearInterval(ticker);
+      panel.removeEventListener('click', onClick);
+      rouletteView = null;
+    };
+  }
+
+  function mountDice(panel) {
+    panel.innerHTML = `
       <div class="dice-game">
         <div class="dice" id="dice"><span>🎲</span><span>🎲</span></div>
         <p id="dice-result">Zarı at, sonucu tüm oda görsün.</p>
         <button class="btn btn-primary btn-block" id="dice-roll">Zar At</button>
-      </div>
-      <div class="game-list">
-        <div class="game-tile"><i>🎡</i><b>Şans Çarkı</b><small>Yakında</small></div>
-        <div class="game-tile"><i>🀄</i><b>Okey</b><small>Yakında</small></div>
-        <div class="game-tile"><i>🎯</i><b>Ludo</b><small>Yakında</small></div>
-        <div class="game-tile"><i>🃏</i><b>Pişti</b><small>Yakında</small></div>
-      </div>`, { className: 'sheet-dark' });
+      </div>`;
 
-    const diceEl = sheet.el.querySelector('#dice');
-    const resultEl = sheet.el.querySelector('#dice-result');
-    const rollBtn = sheet.el.querySelector('#dice-roll');
+    const diceEl = panel.querySelector('#dice');
+    const resultEl = panel.querySelector('#dice-result');
+    const rollBtn = panel.querySelector('#dice-roll');
 
     // Zarı sunucu atar (istemci atsaydı hile yapılabilirdi). Biz yalnızca istek
     // gönderir, sonucu `game:dice_rolled` event'i gelince gösteririz.
@@ -256,6 +419,7 @@ export async function renderRoom(root, { params }) {
       };
       channel.send('game:dice_rolled', {});
     });
+    return () => { pendingDiceRoll = null; };
   }
 
   // ─── KOLTUK / KULLANICI PANELLERİ ──────────────────────────────────────────
@@ -441,6 +605,24 @@ export async function renderRoom(root, { params }) {
         ...room,
         seats: seats.map((s) => (s.user ? { ...s, user: { ...s.user, is_following: Boolean(known.get(s.user.id)?.is_following) } } : s)),
       });
+    })
+    .on('game:roulette_started', ({ round_id: roundId, started_by: startedBy, betting_seconds: seconds }) => {
+      Object.assign(roulette, { roundId, endsAt: Date.now() + seconds * 1000, last: null });
+      roulette.bets.clear();
+      addSystemLine(`🎡 <b>${esc(startedBy.display_name)}</b> rulet turu başlattı, ${Math.round(seconds)} sn içinde renk seç! <button class="chat-join" data-action="game">Katıl</button>`);
+      rouletteView?.render();
+    })
+    .on('game:roulette_bet_placed', ({ round_id: roundId, user, color }) => {
+      if (roundId !== roulette.roundId) return;
+      roulette.bets.set(user.id, { user, color });
+      rouletteView?.render();
+    })
+    .on('game:roulette_result', (result) => {
+      Object.assign(roulette, { roundId: null, last: result });
+      const names = result.winners.map((w) => esc(w.display_name)).join(', ');
+      addSystemLine(`🎡 Rulet: <b>${result.number} ${COLOR_LABELS[result.color]}</b> · ${names ? `Kazananlar: <b>${names}</b>` : 'kimse bilemedi'}`);
+      if (result.winners.some((w) => w.id === me.id)) toast(`🎉 Rulette kazandın! ${result.number} ${COLOR_LABELS[result.color]}`, 'success');
+      rouletteView?.render();
     })
     .on('room:roles_updated', ({ admin_ids }) => {
       updateRoom({ ...room, admin_ids });

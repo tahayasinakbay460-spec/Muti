@@ -11,6 +11,9 @@ from pydantic import BaseModel, Field, field_validator
 CHAT_MESSAGE = "chat:message"                  # { user, text }
 GIFT_SENT = "gift:sent"                        # { sender, receiver, gift, quantity }
 GAME_DICE_ROLLED = "game:dice_rolled"          # { user, values: [zar1, zar2] }
+GAME_ROULETTE_STARTED = "game:roulette_started"      # { round_id, started_by, betting_seconds }
+GAME_ROULETTE_BET_PLACED = "game:roulette_bet_placed"  # { round_id, user, color }
+GAME_ROULETTE_RESULT = "game:roulette_result"        # { round_id, number, color, winners, player_count }
 ROOM_USER_JOINED = "room:user_joined"          # { user }
 ROOM_LISTENER_COUNT = "room:listener_count"    # { listener_count }
 ROOM_SEATS_UPDATED = "room:seats_updated"      # { seats: [...] }
@@ -29,6 +32,11 @@ CLOSE_BANNED = 4403          # odadan atıldı, yasak süresi dolmadı → odaya
 CLOSE_ROOM_NOT_FOUND = 4404  # oda yok ya da kapatılmış
 
 # room:speaking (kim konuşuyor) henüz yok: gerçek ses (WebRTC) eklenince gelecek.
+
+
+# ── İstemciden sunucuya gelen olaylar (yukarıdakilerden farklı olanlar) ────────
+GAME_ROULETTE_START = "game:roulette_start"    # {}  → turu başlat
+GAME_ROULETTE_BET = "game:roulette_bet"        # { color: "red" | "black" | "green" }
 
 
 # ── İstemciden sunucuya gelen veriler ─────────────────────────────────────────

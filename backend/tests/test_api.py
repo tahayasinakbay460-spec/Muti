@@ -337,3 +337,38 @@ def test_private_message_is_pushed_to_receiver(client, guest):
 def test_user_socket_rejects_bad_token(client):
     with client.websocket_connect("/ws/me?token=bozuk") as socket:
         assert socket.receive()["code"] == 4401
+
+
+# ── Oda içi oyun: Rulet ───────────────────────────────────────────────────────
+
+def test_roulette_round_is_run_by_server(client, guest, monkeypatch):
+    from app.realtime.games import roulette, roulette_color
+
+    assert [roulette_color(n) for n in (0, 1, 2, 36)] == ["green", "red", "black", "red"]
+    monkeypatch.setattr(roulette, "betting_seconds", 0.3)   # testte 10 sn beklemeyelim
+
+    room = client.post(f"{API}/rooms", headers=guest, json={"title": "Rulet Masası"}).json()
+    token = guest["Authorization"].removeprefix("Bearer ")
+    my_id = me(client, guest)["id"]
+
+    with client.websocket_connect(f"/ws/rooms/{room['id']}?token={token}") as socket:
+        socket.send_json({"event": "game:roulette_bet", "payload": {"color": "red"}})
+        assert receive_until(socket, "error")["code"] == "no_active_round"
+
+        socket.send_json({"event": "game:roulette_start", "payload": {}})
+        started = receive_until(socket, "game:roulette_started")
+        assert started["started_by"]["id"] == my_id and started["betting_seconds"] == 0.3
+
+        socket.send_json({"event": "game:roulette_start", "payload": {}})
+        assert receive_until(socket, "error")["code"] == "roulette_running"
+        socket.send_json({"event": "game:roulette_bet", "payload": {"color": "mor"}})
+        assert receive_until(socket, "error")["code"] == "invalid_color"
+
+        socket.send_json({"event": "game:roulette_bet", "payload": {"color": "red"}})
+        assert receive_until(socket, "game:roulette_bet_placed")["color"] == "red"
+
+        result = receive_until(socket, "game:roulette_result")
+        assert 0 <= result["number"] <= 36 and result["color"] == roulette_color(result["number"])
+        assert result["player_count"] == 1
+        # Kazananı istemci değil sunucu belirler: kırmızı geldiyse kazandım, gelmediyse kaybettim.
+        assert [w["id"] for w in result["winners"]] == ([my_id] if result["color"] == "red" else [])
