@@ -1,0 +1,16 @@
+# Python
+backend/venv/
+__pycache__/
+*.pyc
+
+# Yerel veritabanı ve sırlar
+*.db
+.env
+
+# Editör / işletim sistemi
+.vscode/
+.idea/
+Thumbs.db
+
+# Test önbelleği
+.pytest_cache/
