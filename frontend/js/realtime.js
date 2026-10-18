@@ -2,6 +2,8 @@
 // backend WebSocket'i ile aynıdır; mock sürüm bunları zamanlayıcıyla üretir.
 //
 // İstemci yalnızca şunları gönderir: `chat:message` { text } ve `game:dice_rolled` {}.
+// Moderasyon (koltuk kilitleme, atma) REST ile yapılır; sonucu sunucu `room:seats_updated`,
+// `room:roles_updated` ve `room:user_kicked` olarak yayınlar.
 // Mesajın sahibini ve zarın sonucunu sunucu belirler, sonra tüm odaya yayınlar.
 import { USE_MOCK, WS_BASE_URL, STORAGE_KEYS } from './config.js';
 import { refreshSession } from './api.js';
@@ -96,6 +98,7 @@ class MockRoomChannel extends BaseChannel {
 
 // Sunucunun özel kapanış kodları (bkz. backend realtime/room_socket.py)
 const CLOSE_UNAUTHORIZED = 4401;
+const CLOSE_BANNED = 4403;
 const CLOSE_ROOM_NOT_FOUND = 4404;
 const MAX_RECONNECT_ATTEMPTS = 5;
 
@@ -127,6 +130,11 @@ class WebSocketRoomChannel extends BaseChannel {
 
     socket.addEventListener('close', async ({ code }) => {
       if (this.isClosed || code === CLOSE_ROOM_NOT_FOUND) return;
+      // Odadan atıldı: yasak süresince yeniden bağlanmayı denemenin anlamı yok
+      if (code === CLOSE_BANNED) {
+        this.emit('error', { code: 'room_banned', detail: 'Bu odadan çıkarıldın, bir süre giremezsin.' });
+        return;
+      }
       if (++this.attempts > MAX_RECONNECT_ATTEMPTS) {
         this.emit('error', { code: 'connection_lost', detail: 'Oda bağlantısı koptu. Odaya yeniden gir.' });
         return;

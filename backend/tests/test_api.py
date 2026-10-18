@@ -245,3 +245,63 @@ def test_room_socket_rejects_bad_token(client):
     with client.websocket_connect("/ws/rooms/107340?token=bozuk") as socket:
         closed = socket.receive()
         assert closed["type"] == "websocket.close" and closed["code"] == 4401
+
+
+# ── Moderasyon ────────────────────────────────────────────────────────────────
+
+def new_guest(client) -> dict:
+    return auth_headers(client.post(f"{API}/auth/guest").json())
+
+
+def test_moderation_roles_and_seat_rules(client, guest):
+    host = guest
+    room = client.post(f"{API}/rooms", headers=host, json={"title": "Moderasyon"}).json()
+    rooms = f"{API}/rooms/{room['id']}"
+    helper, member = new_guest(client), new_guest(client)
+    helper_id, member_id, host_id = me(client, helper)["id"], me(client, member)["id"], room["host_id"]
+
+    # Sıradan dinleyici yönetim işlemi yapamaz, yönetici de atayamaz.
+    assert client.put(f"{rooms}/seats/3/lock", headers=member).json()["code"] == "not_room_moderator"
+    assert client.put(f"{rooms}/admins/{member_id}", headers=helper).json()["code"] == "not_room_host"
+
+    # Oda sahibi yönetici atar.
+    assert client.put(f"{rooms}/admins/{helper_id}", headers=host).json()["admin_ids"] == [helper_id]
+
+    # Yönetici, dinleyiciyi koltuktan indirebilir ama oda sahibini indiremez.
+    client.post(f"{rooms}/seats/2", headers=member)
+    assert client.delete(f"{rooms}/seats/2/user", headers=helper).json()["seats"][2]["user_id"] is None
+    assert client.delete(f"{rooms}/seats/0/user", headers=helper).json()["code"] == "target_outranks_you"
+
+    # Kilitli koltuğa oturulamaz; dolu koltuk kilitlenince oturan kişi iner.
+    client.post(f"{rooms}/seats/4", headers=member)
+    locked = client.put(f"{rooms}/seats/4/lock", headers=helper).json()
+    assert locked["seats"][4]["is_locked"] and locked["seats"][4]["user_id"] is None
+    assert client.post(f"{rooms}/seats/4", headers=member).json()["code"] == "seat_locked"
+    assert client.delete(f"{rooms}/seats/4/lock", headers=helper).json()["seats"][4]["is_locked"] is False
+
+    # Yöneticilik geri alınınca yetki de gider.
+    assert client.delete(f"{rooms}/admins/{helper_id}", headers=host).json()["admin_ids"] == []
+    assert client.put(f"{rooms}/seats/5/lock", headers=helper).json()["code"] == "not_room_moderator"
+    assert client.post(f"{rooms}/kicks/{host_id}", headers=helper).status_code == 403
+
+
+def test_kicked_user_is_disconnected_and_banned(client, guest):
+    host = guest
+    room = client.post(f"{API}/rooms", headers=host, json={"title": "Atma Testi"}).json()
+    member = new_guest(client)
+    member_id = me(client, member)["id"]
+    token = member["Authorization"].removeprefix("Bearer ")
+
+    with client.websocket_connect(f"/ws/rooms/{room['id']}?token={token}") as socket:
+        receive_until(socket, "room:listener_count")
+        client.post(f"{API}/rooms/{room['id']}/seats/1", headers=member)
+        assert client.post(f"{API}/rooms/{room['id']}/kicks/{member_id}", headers=host).status_code == 204
+        assert receive_until(socket, "room:user_kicked")["user"]["id"] == member_id
+        closed = socket.receive()
+        assert closed["type"] == "websocket.close" and closed["code"] == 4403
+
+    # Yasak süresince ne bağlanabilir ne de koltuğa oturabilir; koltuğu da boşalmıştır.
+    with client.websocket_connect(f"/ws/rooms/{room['id']}?token={token}") as socket:
+        assert socket.receive()["code"] == 4403
+    assert client.post(f"{API}/rooms/{room['id']}/seats/1", headers=member).json()["code"] == "room_banned"
+    assert client.get(f"{API}/rooms/{room['id']}", headers=host).json()["seats"][1]["user_id"] is None

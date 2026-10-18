@@ -1,5 +1,5 @@
 """
-Canlı oda durumu deposu: koltuklar, dinleyiciler, kim çevrimiçi.
+Canlı oda durumu deposu: koltuklar, dinleyiciler, odadan atılanlar, kim çevrimiçi.
 
 NEDEN VERİTABANINDA DEĞİL?
 Bu bilgiler saniyede defalarca değişir ve oda kapanınca anlamını yitirir. Bunları
@@ -57,6 +57,23 @@ class RoomStateStore(ABC):
     async def toggle_mute(self, room_id: int, user_id: int) -> bool:
         """Kullanıcının mikrofonunu aç/kapa yapar. Oturmuyorsa False döner."""
 
+    @abstractmethod
+    async def clear_seat(self, room_id: int, seat_index: int) -> int | None:
+        """Koltuktaki kişiyi kaldırır (moderasyon). Kaldırılan kişinin id'sini döner, boşsa None."""
+
+    @abstractmethod
+    async def set_seat_locked(self, room_id: int, seat_index: int, locked: bool) -> None:
+        """Koltuğu kilitler/açar. Kilitlemeden önce koltuk boşaltılmış olmalı."""
+
+    # ── Odadan atılanlar ──────────────────────────────────────────────────────
+    @abstractmethod
+    async def ban_from_room(self, room_id: int, user_id: int, seconds: int) -> None:
+        """Kullanıcı `seconds` saniye boyunca odaya giremez."""
+
+    @abstractmethod
+    async def is_banned(self, room_id: int, user_id: int) -> bool:
+        """Kullanıcının odaya girişi şu an yasaklı mı?"""
+
     # ── Dinleyiciler ──────────────────────────────────────────────────────────
     @abstractmethod
     async def add_listener(self, room_id: int, user_id: int) -> bool:
@@ -100,6 +117,8 @@ class InMemoryRoomStateStore(RoomStateStore):
         # bağlanabilir; onu iki kişi saymamak için bağlantıları kişi başına tutuyoruz.
         self._listeners: dict[int, dict[int, int]] = {}
         self._last_seen: dict[int, float] = {}
+        # (oda, kullanıcı) → yasağın bittiği an. Redis'te süreli anahtar olacak (SET ... EX).
+        self._bans: dict[tuple[int, int], float] = {}
         # Yalnızca demo verisi için (bkz. demo/seed.py): hazır odalar boş görünmesin.
         self.demo_listener_base: dict[int, int] = {}
         self.demo_always_online: set[int] = set()
@@ -148,6 +167,38 @@ class InMemoryRoomStateStore(RoomStateStore):
                 seat.is_muted = not seat.is_muted
                 return True
         return False
+
+    def _seat_at(self, room_id: int, seat_index: int) -> Seat:
+        seats = self._seats.get(room_id, [])
+        if not 0 <= seat_index < len(seats):
+            raise NotFoundError("Koltuk bulunamadı.", code="seat_not_found")
+        return seats[seat_index]
+
+    async def clear_seat(self, room_id: int, seat_index: int) -> int | None:
+        seat = self._seat_at(room_id, seat_index)
+        removed = seat.user_id
+        seat.user_id = None
+        seat.is_muted = False
+        return removed
+
+    async def set_seat_locked(self, room_id: int, seat_index: int, locked: bool) -> None:
+        seat = self._seat_at(room_id, seat_index)
+        if locked and seat.user_id is not None:
+            raise ConflictError("Önce koltuktaki kişiyi indir.", code="seat_taken")
+        seat.is_locked = locked
+
+    # ── Odadan atılanlar ──────────────────────────────────────────────────────
+    async def ban_from_room(self, room_id: int, user_id: int, seconds: int) -> None:
+        self._bans[(room_id, user_id)] = time.monotonic() + seconds
+
+    async def is_banned(self, room_id: int, user_id: int) -> bool:
+        until = self._bans.get((room_id, user_id))
+        if until is None:
+            return False
+        if until <= time.monotonic():
+            del self._bans[(room_id, user_id)]   # süresi dolmuş yasağı temizle
+            return False
+        return True
 
     # ── Dinleyiciler ──────────────────────────────────────────────────────────
     async def add_listener(self, room_id: int, user_id: int) -> bool:

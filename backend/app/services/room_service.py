@@ -9,8 +9,8 @@ from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.errors import ConflictError, NotFoundError
-from app.models import Room, RoomFollow
+from app.core.errors import ConflictError, ForbiddenError, NotFoundError
+from app.models import Room, RoomAdmin, RoomFollow
 from app.realtime import events
 from app.realtime.hub import room_hub
 from app.realtime.state import room_state
@@ -22,7 +22,7 @@ from app.services import user_service
 DEFAULT_COVER_URL = "assets/covers/sky.jpg"
 
 
-async def _get_room_row(db: AsyncSession, room_id: int) -> Room:
+async def get_room_row(db: AsyncSession, room_id: int) -> Room:
     room = await db.get(Room, room_id)
     if room is None or not room.is_active:
         raise NotFoundError("Oda bulunamadı.")
@@ -52,6 +52,13 @@ async def present_rooms(db: AsyncSession, rooms: list[Room], viewer_id: int | No
         user_ids.update(seat.user_id for seat in seats if seat.user_id is not None)
     users = await user_service.load_users_out(db, user_ids, viewer_id)
 
+    # Odaların yöneticileri (tek sorgu).
+    admin_ids: dict[int, list[int]] = {room_id: [] for room_id in room_ids}
+    for room_id, admin_id in await db.execute(
+        select(RoomAdmin.room_id, RoomAdmin.user_id).where(RoomAdmin.room_id.in_(room_ids)).order_by(RoomAdmin.created_at)
+    ):
+        admin_ids[room_id].append(admin_id)
+
     # Bakan kişinin bu odalardan hangilerini takip ettiği (tek sorgu).
     followed_ids: set[int] = set()
     if viewer_id is not None:
@@ -78,6 +85,7 @@ async def present_rooms(db: AsyncSession, rooms: list[Room], viewer_id: int | No
                 )
                 for seat in seats_by_room[room.id]
             ],
+            admin_ids=admin_ids[room.id],
             is_following=room.id in followed_ids,
         )
         for room in rooms
@@ -106,7 +114,7 @@ async def list_rooms(
 
 
 async def get_room(db: AsyncSession, viewer_id: int, room_id: int) -> RoomOut:
-    room = await _get_room_row(db, room_id)
+    room = await get_room_row(db, room_id)
     return (await present_rooms(db, [room], viewer_id))[0]
 
 
@@ -131,7 +139,7 @@ async def create_room(db: AsyncSession, host_id: int, data: RoomCreateRequest) -
 
 async def toggle_room_follow(db: AsyncSession, user_id: int, room_id: int) -> bool:
     """Odayı takip ediyorsa bırakır, etmiyorsa takip eder. Yeni durumu döner (True = takipte)."""
-    await _get_room_row(db, room_id)
+    await get_room_row(db, room_id)
 
     # Önce silmeyi dene: bir satır silindiyse zaten takip ediyormuş → artık etmiyor.
     deleted = await db.execute(
@@ -167,21 +175,24 @@ async def list_followed_rooms(db: AsyncSession, user_id: int, limit: int = 50) -
 # odadaki herkese yeni koltuk düzenini yayınla → isteği atana odanın son halini dön.
 
 async def take_seat(db: AsyncSession, user_id: int, room_id: int, seat_index: int) -> RoomOut:
-    room = await _get_room_row(db, room_id)
+    room = await get_room_row(db, room_id)
+    # Odadan atılan kişi yasak süresince WebSocket'e bağlanamaz; REST ile koltuğa da oturamasın.
+    if await room_state.is_banned(room.id, user_id):
+        raise ForbiddenError("Bu odadan çıkarıldın, bir süre giremezsin.", code="room_banned")
     await room_state.take_seat(room.id, seat_index, user_id)
     await publish_seats(db, room)
     return (await present_rooms(db, [room], user_id))[0]
 
 
 async def leave_seat(db: AsyncSession, user_id: int, room_id: int) -> RoomOut:
-    room = await _get_room_row(db, room_id)
+    room = await get_room_row(db, room_id)
     if await room_state.leave_seat(room.id, user_id):
         await publish_seats(db, room)
     return (await present_rooms(db, [room], user_id))[0]
 
 
 async def toggle_mute(db: AsyncSession, user_id: int, room_id: int) -> RoomOut:
-    room = await _get_room_row(db, room_id)
+    room = await get_room_row(db, room_id)
     if not await room_state.toggle_mute(room.id, user_id):
         raise ConflictError("Önce bir koltuğa oturmalısın.", code="not_seated")
     await publish_seats(db, room)

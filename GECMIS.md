@@ -11,13 +11,13 @@ Projede yapılan işlerin kaydı.
 
 **Aşama:** Web demo. Frontend ekranları hazır ve gerçek backend'e bağlı (`USE_MOCK = false`).
 
-**Çalışan:** giriş/kayıt/misafir, oda listesi, oda içi sohbet, koltuklar, zar oyunu, hediye gönderme, coin satın alma, özel mesajlar, kullanıcı takibi, oda takibi, profil ve profil düzenleme, cüzdan.
+**Çalışan:** giriş/kayıt/misafir, oda listesi, oda içi sohbet, koltuklar, zar oyunu, hediye gönderme, coin satın alma, özel mesajlar, kullanıcı takibi, oda takibi, profil ve profil düzenleme, cüzdan, oda yöneticileri ve moderasyon (koltuk kilitleme, koltuktan indirme, odadan atma).
 
 **Kod okuma turu (2026-10-14):** Auth, oda listesi akışı (`list_rooms` → `present_rooms` → `realtime/state.py`) ve `room_socket` okundu. Sırada ekonomi (`gift_service`, `wallet_service`) derinlemesine; diğer router/servisler yüzeysel; sonra `hub.py`.
 
 **Ana sayfa (2026-10-18):** kullanıcının verdiği referans görsele göre yeniden tasarlandı. Alt çubuk: Ana Sayfa · Mesajlar · (+) · Cüzdan · Profil.
 
-**Sıradaki adım:** 2026-10-18 planı: ~~(1) Profili Düzenle + Oda Takip Et~~ (bitti), (2) oda rolleri ve moderasyon, (3) özel mesajlarda anlık bildirim, (4) ana sayfadaki oyunlar ve hediye animasyonları.
+**Sıradaki adım:** 2026-10-18 planı: ~~(1) Profili Düzenle + Oda Takip Et~~ (bitti), ~~(2) oda rolleri ve moderasyon~~ (bitti), (3) özel mesajlarda anlık bildirim, (4) ana sayfadaki oyunlar ve hediye animasyonları.
 
 ### Henüz elle denenmeyenler
 
@@ -29,7 +29,8 @@ Projede yapılan işlerin kaydı.
 |---|---|
 | Gerçek ses (WebRTC) | Koltuktaki "konuşuyor" halkası bu yüzden yanmıyor |
 | Özel mesajlarda anlık bildirim | Karşı tarafın mesajı sohbet yeniden açılınca görünür |
-| Oda rolleri (`admin` / `vip`) ve koltuk kilitleme | Yazılmadı |
+| Oda içi `vip` rolü | `host` ve `admin` var; odaya özel VIP üyelik yazılmadı |
+| Dinleyici listesi | Moderatör yalnızca koltuktaki birini atabilir; koltukta olmayan dinleyicileri gösteren liste yok |
 | Admin uçları | Eski admin sayfası silindi, yenisi yazılmadı |
 | HTTP hız sınırı | Özellikle giriş denemeleri için gerekli |
 | Görsel yükleme | `assets/` içindeki görseller hâlâ yer tutucu |
@@ -47,7 +48,7 @@ Kodda "DEMO KISAYOLU" diye işaretlidir. Mobil/canlı aşamasında değiştirile
 |---|---|---|
 | SQLite | `core/config.py` | PostgreSQL (`postgresql+asyncpg://`) |
 | Tablolar `create_all` ile oluşuyor | `main.py` | Alembic migration |
-| Oda durumu ve yayın bellek içi (tek sunucu süreci) | `realtime/state.py`, `realtime/hub.py` | Redis (aynı sözleşmeyle `RedisRoomStateStore`, pub/sub) |
+| Oda durumu, odadan atma yasakları ve yayın bellek içi (tek sunucu süreci) | `realtime/state.py`, `realtime/hub.py` | Redis (aynı sözleşmeyle `RedisRoomStateStore`, pub/sub; yasaklar süreli anahtar) |
 | Satın alma ödeme doğrulamadan coin ekliyor | `wallet_service.purchase` | App Store / Google Play makbuz doğrulama |
 | Banner ve profil ekleri sabit içerik | `demo/content.py` | Tablo + servis |
 | Avatar ve kapak yalnızca hazır listeden seçiliyor | `demo/content.py` (`AVATAR_CHOICES`, `COVER_CHOICES`) | Görsel yükleme (object storage + boyut/tür kontrolü) |
@@ -58,6 +59,66 @@ Kodda "DEMO KISAYOLU" diye işaretlidir. Mobil/canlı aşamasında değiştirile
 ---
 
 # Kayıtlar
+
+## 2026-10-18 — Oda rolleri ve moderasyon
+
+**Amaç:** Odalarda oda sahibi dışında yönetici olabilsin; oda sahibi ve yöneticiler koltukları ve kişileri yönetebilsin. Bütün yetki kontrolleri sunucuda.
+
+### Roller
+
+- **Sıralama:** `host` (oda sahibi, `rooms.host_id`) > `admin` (oda sahibinin atadığı yönetici) > `listener` (diğer herkes; koltukta oturan da yetki bakımından listener).
+- **Kural:** bir işlem ancak kendinden alt rütbedeki birine yapılabilir.
+  - Yönetici, oda sahibine ya da başka bir yöneticiye dokunamaz (`target_outranks_you`).
+  - Kimse kendine moderasyon işlemi yapamaz.
+
+### Ne yapıldı
+
+**Backend**
+
+- **Yeni tablo `room_admins`** (`RoomAdmin`, `models/room.py`). `RoomOut.admin_ids` ile dönüyor; `present_rooms` içinde tek sorguyla hesaplanıyor.
+- **Yeni servis `services/moderation_service.py`:** `get_role`, `set_admin`, `set_seat_lock`, `remove_from_seat`, `kick_from_room`.
+- **Yeni uçlar (`routers/rooms.py`):**
+  - `PUT` / `DELETE /rooms/{id}/admins/{user_id}`: yönetici yap / yöneticiliği al. Yalnızca oda sahibi.
+  - `PUT` / `DELETE /rooms/{id}/seats/{index}/lock`: koltuğu kilitle / aç. Dolu koltuk kilitlenince oturan kişi indirilir (yetki yetiyorsa).
+  - `DELETE /rooms/{id}/seats/{index}/user`: koltuktan indir; kişi dinleyici olarak odada kalır.
+  - `POST /rooms/{id}/kicks/{user_id}`: odadan at.
+- **Odadan atma akışı:**
+  - Koltuk boşalır ve odaya `room:user_kicked` yayınlanır.
+  - Atılan kişinin bütün WebSocket bağlantıları `4403` koduyla kapatılır.
+  - Kişi 10 dakika boyunca odaya bağlanamaz; REST ile koltuğa da oturamaz (`room_banned`).
+- **`realtime/state.py`:** sözleşmeye `clear_seat`, `set_seat_locked`, `ban_from_room`, `is_banned` eklendi. Yasaklar bellek içinde, süreli; Redis'te süreli anahtar olacak.
+- **`realtime/hub.py`:** bağlantılar artık sahibiyle birlikte tutuluyor (`dict[WebSocket, user_id]`). `disconnect_user` bir kişinin odadaki bağlantılarını kapatıyor.
+- **`realtime/events.py`:** `room:roles_updated`, `room:user_kicked` eklendi. WebSocket kapanış kodları (`4401`, `4403`, `4404`) buraya taşındı.
+- **`room_socket.py`:** bağlanırken yasak kontrolü yapılıyor. Sunucu bağlantıyı kapattığında oluşan `RuntimeError` yakalanıyor.
+- **İsim değişikliği:** `room_service._get_room_row` → `get_room_row` (artık iki servis kullanıyor).
+- 2 yeni test: rol/koltuk kuralları; atılan kişinin bağlantısının kapanması ve yasak.
+
+**Frontend**
+
+- **`screens/room.js`:**
+  - Koltuk altında "Oda Sahibi" (turuncu) ve "Yönetici" (mor) etiketi.
+  - Moderatör boş bir koltuğa dokununca "Koltuğa otur / Koltuğu kilitle", kilitli koltuğa dokununca "Kilidi aç" paneli açılıyor.
+  - Başkasının koltuğuna dokununca kullanıcı panelinde moderasyon bölümü var: Koltuktan indir, Yönetici yap / Yöneticilikten al (yalnızca oda sahibi), Odadan at. Yalnızca yetki yeten kişilerde görünüyor.
+  - `room:roles_updated` ve `room:user_kicked` dinleniyor. Atılan kullanıcı ana sayfaya dönüyor ve "Bu odadan çıkarıldın" bildirimini görüyor.
+- **`realtime.js`:** `4403` ile kapanan bağlantı yeniden bağlanmayı denemiyor, `room_banned` hatası veriyor.
+- **`api.js`:** `setRoomAdmin`, `setSeatLock`, `removeFromSeat`, `kickFromRoom`. Mock sürümü sadeleştirilmiş yetki kontrolüyle.
+
+### Doğrulama
+
+- Backend testleri 20/20 geçti.
+- Headless Chrome ile "Naz" (Gece Muhabbeti'nin sahibi) olarak denendi:
+  - Kullanıcı panelinde moderasyon düğmeleri göründü.
+  - "Yönetici yap" sonrası koltukta "Yönetici" etiketi çıktı.
+  - Boş koltuk kilitlendi.
+  - Denemeden sonra yöneticilik ve kilit API ile geri alındı.
+- Odadan atma tarayıcıda değil, testte uçtan uca denendi (WebSocket kapanışı + yasak).
+
+### Açık kalanlar
+
+- Odaya özel `vip` rolü yok.
+- Koltukta olmayan dinleyicileri listeleyen ekran yok; bu yüzden onlar arayüzden atılamıyor (uç hazır).
+- "Mikrofonunu kapat" (zorla susturma) yok; kişi kendi mikrofonunu yine açabileceği için şimdilik eklenmedi.
+- Yasak listesi bellek içinde: sunucu yeniden başlarsa yasaklar sıfırlanır.
 
 ## 2026-10-18 — Profili Düzenle ve Oda Takip Et
 

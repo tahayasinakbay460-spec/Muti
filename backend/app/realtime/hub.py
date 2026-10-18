@@ -29,20 +29,34 @@ SEND_TIMEOUT_SECONDS = 5
 
 class RoomHub:
     def __init__(self) -> None:
-        # oda id → o odaya bu sunucudan bağlı WebSocket'ler
-        self._connections: dict[int, set[WebSocket]] = {}
+        # oda id → { o odaya bu sunucudan bağlı WebSocket → bağlantının sahibi (kullanıcı id) }
+        # Sahibini de tutuyoruz ki odadan atılan birinin bağlantılarını bulup kapatabilelim.
+        self._connections: dict[int, dict[WebSocket, int]] = {}
 
-    def add(self, room_id: int, websocket: WebSocket) -> None:
-        self._connections.setdefault(room_id, set()).add(websocket)
+    def add(self, room_id: int, websocket: WebSocket, user_id: int) -> None:
+        self._connections.setdefault(room_id, {})[websocket] = user_id
 
     def remove(self, room_id: int, websocket: WebSocket) -> None:
         sockets = self._connections.get(room_id)
         if not sockets:
             return
-        sockets.discard(websocket)
+        sockets.pop(websocket, None)
         if not sockets:
             # Boş odaların kaydını tutmayalım, bellek şişmesin.
             del self._connections[room_id]
+
+    async def disconnect_user(self, room_id: int, user_id: int, code: int) -> None:
+        """
+        Bir kullanıcının bu odadaki bütün bağlantılarını kapatır (odadan atma).
+        Redis'e geçişte bu da bir pub/sub mesajı olacak; her sunucu kendi bağlantılarını kapatacak.
+        """
+        sockets = [ws for ws, owner in self._connections.get(room_id, {}).items() if owner == user_id]
+        for websocket in sockets:
+            self.remove(room_id, websocket)
+            try:
+                await websocket.close(code=code)
+            except Exception:
+                logger.debug("WebSocket already closed")
 
     async def publish(self, room_id: int, event: str, payload: dict) -> None:
         """Bir olayı odadaki herkese duyurur. Servisler ve router'lar bunu çağırır."""
@@ -53,7 +67,7 @@ class RoomHub:
 
     async def _deliver_local(self, room_id: int, message: str) -> None:
         """Mesajı BU sunucuya bağlı olanlara dağıtır."""
-        sockets = list(self._connections.get(room_id, ()))
+        sockets = list(self._connections.get(room_id, {}))
         if not sockets:
             return
         # Hepsine aynı anda gönder (sırayla beklemek yerine).

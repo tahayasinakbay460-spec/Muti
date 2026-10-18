@@ -64,6 +64,7 @@ function expandRoom(room) {
   return {
     ...room,
     is_following: state.followed_room_ids.includes(room.id),
+    admin_ids: room.admin_ids || [],
     host: withMeta(findUser(room.host_id)),
     seats: room.seats.map((s) => ({ ...s, user: s.user_id ? withMeta(findUser(s.user_id)) : null })),
   };
@@ -71,6 +72,14 @@ function expandRoom(room) {
 
 function addTransaction(type, label, amount) {
   state.transactions.unshift({ id: Date.now(), type, label, amount, time_label: 'Az önce' });
+}
+
+function mockModeratedRoom(roomId, { hostOnly = false } = {}) {
+  const room = db.rooms.find((r) => r.id === Number(roomId));
+  const isHost = room.host_id === db.CURRENT_USER_ID;
+  const isAdmin = (room.admin_ids || []).includes(db.CURRENT_USER_ID);
+  if (!isHost && (hostOnly || !isAdmin)) throw new ApiError('not_room_moderator', 'Bu işlem için oda yöneticisi olmalısın.');
+  return room;
 }
 
 const mockApi = {
@@ -244,6 +253,38 @@ const mockApi = {
     const seat = room.seats.find((s) => s.user_id === db.CURRENT_USER_ID);
     if (seat) seat.is_muted = !seat.is_muted;
     return expandRoom(room);
+  },
+
+  // Moderasyon (mock): yetki kuralları sadeleştirilmiş halde — oda sahibi ya da yönetici, oda sahibine dokunamaz
+  async setRoomAdmin(roomId, userId, makeAdmin) {
+    await delay(120);
+    const room = mockModeratedRoom(roomId, { hostOnly: true });
+    room.admin_ids = (room.admin_ids || []).filter((id) => id !== Number(userId));
+    if (makeAdmin) room.admin_ids.push(Number(userId));
+    return expandRoom(room);
+  },
+
+  async setSeatLock(roomId, seatIndex, locked) {
+    await delay(100);
+    const room = mockModeratedRoom(roomId);
+    const seat = room.seats[seatIndex];
+    if (locked && seat.user_id === room.host_id) throw new ApiError('target_outranks_you', 'Bu kişi üzerinde yetkin yok.');
+    if (locked) seat.user_id = null;
+    seat.is_locked = locked;
+    return expandRoom(room);
+  },
+
+  async removeFromSeat(roomId, seatIndex) {
+    await delay(100);
+    const room = mockModeratedRoom(roomId);
+    const seat = room.seats[seatIndex];
+    if (seat.user_id === room.host_id) throw new ApiError('target_outranks_you', 'Bu kişi üzerinde yetkin yok.');
+    seat.user_id = null;
+    return expandRoom(room);
+  },
+
+  async kickFromRoom(roomId, userId) {
+    await this.removeFromSeat(roomId, db.rooms.find((r) => r.id === Number(roomId)).seats.findIndex((s) => s.user_id === Number(userId)));
   },
 
   async listSuggestedUsers() {
@@ -439,6 +480,10 @@ const httpApi = {
   takeSeat: (roomId, seatIndex) => request(`/rooms/${roomId}/seats/${seatIndex}`, { method: 'POST' }),
   leaveSeat: (roomId) => request(`/rooms/${roomId}/seats/me`, { method: 'DELETE' }),
   toggleMute: (roomId) => request(`/rooms/${roomId}/seats/me/mute`, { method: 'POST' }),
+  setRoomAdmin: (roomId, userId, makeAdmin) => request(`/rooms/${roomId}/admins/${userId}`, { method: makeAdmin ? 'PUT' : 'DELETE' }),
+  setSeatLock: (roomId, seatIndex, locked) => request(`/rooms/${roomId}/seats/${seatIndex}/lock`, { method: locked ? 'PUT' : 'DELETE' }),
+  removeFromSeat: (roomId, seatIndex) => request(`/rooms/${roomId}/seats/${seatIndex}/user`, { method: 'DELETE' }),
+  kickFromRoom: (roomId, userId) => request(`/rooms/${roomId}/kicks/${userId}`, { method: 'POST' }),
   listSuggestedUsers: () => request('/users/suggested'),
   listTopGifters: () => request('/leaderboards/gifters'),
   listGifts: () => request('/gifts'),

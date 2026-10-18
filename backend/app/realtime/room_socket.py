@@ -36,11 +36,6 @@ from app.services import room_service, user_service
 
 router = APIRouter()
 
-# Özel kapanış kodları (4000-4999 arası uygulamalara ayrılmıştır). İstemci koda bakıp
-# ne yapacağına karar verir: 4401 → token yenile/giriş yap, 4404 → oda yok.
-CLOSE_UNAUTHORIZED = 4401
-CLOSE_ROOM_NOT_FOUND = 4404
-
 # Tek bir mesajın en büyük boyutu (karakter). Daha büyüğü işlenmeden reddedilir.
 MAX_MESSAGE_SIZE = 2000
 
@@ -86,7 +81,7 @@ async def room_socket(websocket: WebSocket, room_id: int, token: str = "") -> No
     try:
         user_id = decode_access_token(token)
     except AppError:
-        await websocket.close(code=CLOSE_UNAUTHORIZED)
+        await websocket.close(code=events.CLOSE_UNAUTHORIZED)
         return
 
     # Veritabanı oturumunu yalnızca bu kısa kontrol için açıp hemen kapatıyoruz.
@@ -95,18 +90,21 @@ async def room_socket(websocket: WebSocket, room_id: int, token: str = "") -> No
     async with SessionLocal() as db:
         user = await db.get(User, user_id)
         if user is None or not user.is_active:
-            await websocket.close(code=CLOSE_UNAUTHORIZED)
+            await websocket.close(code=events.CLOSE_UNAUTHORIZED)
             return
         room = await db.get(Room, room_id)
         if room is None or not room.is_active:
-            await websocket.close(code=CLOSE_ROOM_NOT_FOUND)
+            await websocket.close(code=events.CLOSE_ROOM_NOT_FOUND)
+            return
+        if await room_state.is_banned(room.id, user_id):
+            await websocket.close(code=events.CLOSE_BANNED)
             return
         await room_state.ensure_room(room.id, room.seat_count)
         # Bu kişinin yayınlarda kullanılacak görünen bilgisi (bir kez hazırlanır).
         user_payload = (await user_service.present_user(db, user, viewer_id=None)).model_dump(mode="json")
 
     # ── 2. Odaya katıl ────────────────────────────────────────────────────────
-    room_hub.add(room_id, websocket)
+    room_hub.add(room_id, websocket, user_id)
     is_first_connection = await room_state.add_listener(room_id, user_id)
     chat_limiter = RateLimiter(limit=5, period=5)    # 5 saniyede en fazla 5 mesaj
     dice_limiter = RateLimiter(limit=1, period=1.5)  # 1.5 saniyede en fazla 1 zar
@@ -163,6 +161,8 @@ async def room_socket(websocket: WebSocket, room_id: int, token: str = "") -> No
 
     except WebSocketDisconnect:
         pass   # Kullanıcı odadan çıktı ya da bağlantısı koptu; normal bir durum.
+    except RuntimeError:
+        pass   # Bağlantıyı sunucu kapattı (ör. kişi odadan atıldı); okumaya devam edilemez.
     finally:
         # ── 4. Temizlik (ne olursa olsun çalışır) ─────────────────────────────
         room_hub.remove(room_id, websocket)

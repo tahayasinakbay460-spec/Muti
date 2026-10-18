@@ -1,5 +1,5 @@
 """
-Oda tabloları: rooms, room_follows.
+Oda tabloları: rooms, room_follows, room_admins.
 
 DİKKAT: Burada yalnızca odanın KALICI bilgileri durur (adı, sahibi, kategorisi).
 "Şu an hangi koltukta kim oturuyor, kaç kişi dinliyor" gibi saniyede defalarca
@@ -47,4 +47,16 @@ class RoomFollow(Base):
     # İkisi birlikte birincil anahtar: aynı kişi aynı odayı iki kez takip edemez.
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
     room_id: Mapped[int] = mapped_column(ForeignKey("rooms.id", ondelete="CASCADE"), primary_key=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class RoomAdmin(Base):
+    """
+    Odanın yöneticileri. Oda sahibi (host) atar ve geri alır.
+    Yönetici koltuk kilitleyebilir, birini koltuktan indirebilir ya da odadan atabilir.
+    """
+    __tablename__ = "room_admins"
+
+    room_id: Mapped[int] = mapped_column(ForeignKey("rooms.id", ondelete="CASCADE"), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

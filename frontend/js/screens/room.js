@@ -18,6 +18,13 @@ export async function renderRoom(root, { params }) {
   const channel = connectRoom(room, me);
 
   const mySeat = () => room.seats.find((s) => s.user?.id === me.id);
+
+  // Roller: oda sahibi > yönetici > dinleyici. Asıl yetki kontrolü sunucuda; burada yalnızca
+  // hangi düğmelerin gösterileceğine karar veriyoruz.
+  const RANK = { host: 3, admin: 2, listener: 1 };
+  const roleOf = (userId) => (userId === room.host_id ? 'host' : room.admin_ids.includes(userId) ? 'admin' : 'listener');
+  const isModerator = () => roleOf(me.id) !== 'listener';
+  const canModerate = (userId) => userId !== me.id && RANK[roleOf(me.id)] > RANK[roleOf(userId)];
   const audience = room.seats.filter((s) => s.user).slice(0, 3);
 
   root.innerHTML = `
@@ -78,7 +85,8 @@ export async function renderRoom(root, { params }) {
       if (!seat.user) {
         return `<button class="seat is-empty" data-seat="${seat.index}"><span class="seat-circle">${icon('plus', 22)}</span><b>Otur</b></button>`;
       }
-      const isHost = seat.user.id === room.host_id;
+      const role = roleOf(seat.user.id);
+      const isHost = role === 'host';
       const isSpeaking = speakingIndexes.includes(seat.index) && !seat.is_muted;
       return `
         <button class="seat ${isSpeaking ? 'is-speaking' : ''} ${isHost ? 'is-host' : ''}" data-seat="${seat.index}">
@@ -88,7 +96,8 @@ export async function renderRoom(root, { params }) {
             <i class="seat-mic ${seat.is_muted ? 'is-muted' : ''}">${icon(seat.is_muted ? 'mic-off' : 'mic', 12)}</i>
           </span>
           <b>${esc(seat.user.display_name)}</b>
-          ${isHost ? '<small class="seat-role">Yönetici</small>' : ''}
+          ${isHost ? '<small class="seat-role">Oda Sahibi</small>' : ''}
+          ${role === 'admin' ? '<small class="seat-role seat-role-admin">Yönetici</small>' : ''}
         </button>`;
     }).join('');
 
@@ -250,21 +259,48 @@ export async function renderRoom(root, { params }) {
   }
 
   // ─── KOLTUK / KULLANICI PANELLERİ ──────────────────────────────────────────
-  function openUserSheet(user) {
+  function openUserSheet(user, seatIndex) {
+    const role = roleOf(user.id);
+    const amHost = roleOf(me.id) === 'host';
+    const moderation = canModerate(user.id) ? `
+        <div class="menu-list mod-list">
+          ${seatIndex != null ? `<button data-mod="remove-seat">${icon('chevron-down', 20)} Koltuktan indir</button>` : ''}
+          ${amHost ? `<button data-mod="toggle-admin">${icon('crown', 20)} ${role === 'admin' ? 'Yöneticilikten al' : 'Yönetici yap'}</button>` : ''}
+          <button data-mod="kick" class="is-danger">${icon('logout', 20)} Odadan at</button>
+        </div>` : '';
     const sheet = openSheet(`
       <div class="user-sheet">
         ${avatarImg(user, 'avatar-xl')}
         <h2>${esc(user.display_name)}</h2>
-        <div class="profile-badges">${vipBadge(user.vip_level)}${levelBadge(user.level)}</div>
+        <div class="profile-badges">${{ host: '<span class="badge badge-role">Oda Sahibi</span>', admin: '<span class="badge badge-role">Yönetici</span>' }[role] || ''}${vipBadge(user.vip_level)}${levelBadge(user.level)}</div>
         <p>${esc(user.bio)}</p>
         <div class="user-sheet-actions">
           <a class="btn btn-soft" href="#/profile/${user.id}">Profil</a>
           <button class="btn btn-soft" data-user-action="follow">${user.is_following ? 'Takiptesin' : 'Takip Et'}</button>
           <button class="btn btn-primary" data-user-action="gift">${icon('gift', 16)} Hediye</button>
         </div>
-      </div>`, { className: 'sheet-dark' });
+      </div>
+      ${moderation}`, { className: 'sheet-dark' });
 
+    const MOD_DONE = {
+      'remove-seat': 'Koltuktan indirildi',
+      'toggle-admin': role === 'admin' ? 'Yöneticilik alındı' : 'Yönetici yapıldı',
+      kick: 'Odadan çıkarıldı',
+    };
     sheet.el.addEventListener('click', async (event) => {
+      const mod = event.target.closest('[data-mod]')?.dataset.mod;
+      if (mod) {
+        sheet.close();
+        try {
+          if (mod === 'remove-seat') updateRoom(await api.removeFromSeat(room.id, seatIndex));
+          else if (mod === 'toggle-admin') updateRoom(await api.setRoomAdmin(room.id, user.id, role !== 'admin'));
+          else await api.kickFromRoom(room.id, user.id);
+          toast(MOD_DONE[mod], 'success');
+        } catch (error) {
+          toast(error.message, 'error');
+        }
+        return;
+      }
       const action = event.target.closest('[data-user-action]')?.dataset.userAction;
       if (action === 'gift') {
         sheet.close();
@@ -273,6 +309,28 @@ export async function renderRoom(root, { params }) {
         const { is_following } = await api.toggleFollow(user.id);
         user.is_following = is_following;
         event.target.closest('button').textContent = is_following ? 'Takiptesin' : 'Takip Et';
+      }
+    });
+  }
+
+  function openSeatAdminSheet(seat) {
+    const sheet = openSheet(`
+      <h2 class="sheet-title">${seat.index + 1}. Koltuk</h2>
+      <div class="menu-list">
+        ${seat.is_locked
+          ? `<button data-menu="unlock">${icon('lock', 20)} Kilidi aç</button>`
+          : `<button data-menu="sit">${icon('mic', 20)} Koltuğa otur</button>
+             <button data-menu="lock">${icon('lock', 20)} Koltuğu kilitle</button>`}
+      </div>`, { className: 'sheet-dark' });
+    sheet.el.addEventListener('click', async (event) => {
+      const item = event.target.closest('[data-menu]');
+      if (!item) return;
+      sheet.close();
+      try {
+        if (item.dataset.menu === 'sit') updateRoom(await api.takeSeat(room.id, seat.index));
+        else updateRoom(await api.setSeatLock(room.id, seat.index, item.dataset.menu === 'lock'));
+      } catch (error) {
+        toast(error.message, 'error');
       }
     });
   }
@@ -314,6 +372,7 @@ export async function renderRoom(root, { params }) {
     const seatBtn = event.target.closest('[data-seat]');
     if (seatBtn) {
       const seat = room.seats[Number(seatBtn.dataset.seat)];
+      if (!seat.user && isModerator()) return openSeatAdminSheet(seat);
       if (seat.is_locked) return toast('Bu koltuk yönetici tarafından kilitlendi.');
       if (!seat.user) {
         try {
@@ -324,7 +383,7 @@ export async function renderRoom(root, { params }) {
         }
         return;
       }
-      return seat.user.id === me.id ? openMySeatSheet() : openUserSheet(seat.user);
+      return seat.user.id === me.id ? openMySeatSheet() : openUserSheet(seat.user, seat.index);
     }
 
     const button = event.target.closest('[data-action]');
@@ -383,7 +442,17 @@ export async function renderRoom(root, { params }) {
         seats: seats.map((s) => (s.user ? { ...s, user: { ...s.user, is_following: Boolean(known.get(s.user.id)?.is_following) } } : s)),
       });
     })
-    .on('error', ({ detail }) => toast(detail, 'error'))
+    .on('room:roles_updated', ({ admin_ids }) => {
+      updateRoom({ ...room, admin_ids });
+    })
+    .on('room:user_kicked', ({ user }) => {
+      if (user.id === me.id) leaveBecauseKicked();
+      else addSystemLine(`<b>${esc(user.display_name)}</b> odadan çıkarıldı`);
+    })
+    .on('error', ({ code, detail }) => {
+      if (code === 'room_banned') leaveBecauseKicked();
+      else toast(detail, 'error');
+    })
     .on('room:listener_count', ({ listener_count }) => {
       root.querySelector('#listener-count').textContent = listener_count;
       root.querySelector('#audience-more').textContent = `+${Math.max(0, listener_count - audience.length)}`;
@@ -395,6 +464,15 @@ export async function renderRoom(root, { params }) {
         el.classList.toggle('is-speaking', Boolean(seat.user) && !seat.is_muted && seat_indexes.includes(seat.index));
       });
     });
+
+  // Hem `room:user_kicked` hem bağlantının 4403 ile kapanması buraya gelir; bir kez çalışsın
+  let kicked = false;
+  function leaveBecauseKicked() {
+    if (kicked) return;
+    kicked = true;
+    toast('Bu odadan çıkarıldın.', 'error');
+    location.hash = '#/home';
+  }
 
   renderSeats();
   addSystemLine(`📢 ${esc(room.announcement)}`);
