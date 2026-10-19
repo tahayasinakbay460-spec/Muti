@@ -99,6 +99,7 @@ async def present_users(db: AsyncSession, users: list[User], viewer_id: int | No
             is_me=is_me,
             is_following=user.id in following_ids,
             is_blocked=user.id in blocked_ids,
+            is_admin=user.is_admin if is_me else False,
             # Bakiyeyi yalnızca sahibine gösteriyoruz.
             coin_balance=user.coin_balance if is_me else None,
             diamond_balance=user.diamond_balance if is_me else None,

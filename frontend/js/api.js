@@ -800,6 +800,17 @@ const mockApi = {
   async leaveKaraoke() { return { singer: null, queue: [] }; },
   async nextSinger() { throw new ApiError('mock_only', 'Mock modunda karaoke yok.'); },
 
+  // Yönetim paneli ve ajans: mock'ta yok (yetki ve kayıtlar sunucuda); ekranlar boş durum gösterir
+  async getMyAgency() { await delay(60); return { role: null, dashboard: null, agency: null, my_month_diamonds: 0, my_target: 0, invite: null }; },
+  async answerAgencyInvite() { throw new ApiError('mock_only', 'Mock modunda ajans yok.'); },
+  async leaveAgency() { throw new ApiError('mock_only', 'Mock modunda ajans yok.'); },
+  async inviteToAgency() { throw new ApiError('mock_only', 'Mock modunda ajans yok.'); },
+  async setAgencyTarget() { throw new ApiError('mock_only', 'Mock modunda ajans yok.'); },
+  async removeAgencyMember() { throw new ApiError('mock_only', 'Mock modunda ajans yok.'); },
+  ...Object.fromEntries(['adminStats', 'adminReports', 'adminResolveReport', 'adminUsers', 'adminUser', 'adminBan', 'adminUnban',
+    'adminAdjustBalance', 'adminRooms', 'adminCloseRoom', 'adminAgencies', 'adminCreateAgency']
+    .map((name) => [name, async () => { throw new ApiError('admin_only', 'Yönetim paneli mock modunda yok.'); }])),
+
   // Hazine sandığı: mock'ta hep dolum aşamasında (gerçek dolum ve açılma backend'de)
   async getChest() {
     await delay(60);
@@ -1051,6 +1062,25 @@ const httpApi = {
   joinKaraoke: (roomId) => request(`/rooms/${roomId}/karaoke/queue`, { method: 'POST' }),
   leaveKaraoke: (roomId) => request(`/rooms/${roomId}/karaoke/queue`, { method: 'DELETE' }),
   nextSinger: (roomId) => request(`/rooms/${roomId}/karaoke/next`, { method: 'POST' }),
+  // ── Yönetim paneli (yalnızca yöneticiler) ve ajans ──
+  adminStats: () => request('/admin/stats'),
+  adminReports: (status = 'open') => request(`/admin/reports?status=${status}`),
+  adminResolveReport: (id, action, note = '') => request(`/admin/reports/${id}/resolve`, { method: 'POST', body: { action, note } }),
+  adminUsers: (query = '') => request(`/admin/users?query=${encodeURIComponent(query)}`),
+  adminUser: (id) => request(`/admin/users/${id}`),
+  adminBan: (id, reason) => request(`/admin/users/${id}/ban`, { method: 'POST', body: { reason } }),
+  adminUnban: (id) => request(`/admin/users/${id}/ban`, { method: 'DELETE' }),
+  adminAdjustBalance: (id, payload) => request(`/admin/users/${id}/balance`, { method: 'POST', body: payload }),
+  adminRooms: () => request('/admin/rooms'),
+  adminCloseRoom: (id) => request(`/admin/rooms/${id}`, { method: 'DELETE' }),
+  adminAgencies: () => request('/admin/agencies'),
+  adminCreateAgency: (payload) => request('/admin/agencies', { method: 'POST', body: payload }),
+  getMyAgency: () => request('/agencies/me'),
+  answerAgencyInvite: (accept) => request(`/agencies/me/invite/${accept ? 'accept' : 'decline'}`, { method: 'POST' }),
+  leaveAgency: () => request('/agencies/me/membership', { method: 'DELETE' }),
+  inviteToAgency: (userId) => request(`/agencies/me/members/${userId}`, { method: 'POST' }),
+  setAgencyTarget: (userId, monthlyTarget) => request(`/agencies/me/members/${userId}/target`, { method: 'PUT', body: { monthly_target: monthlyTarget } }),
+  removeAgencyMember: (userId) => request(`/agencies/me/members/${userId}`, { method: 'DELETE' }),
   getChest: (roomId) => request(`/rooms/${roomId}/chest`),
   claimChest: (roomId) => request(`/rooms/${roomId}/chest/claim`, { method: 'POST' }),
   purchaseCoins: (packageId) => request('/wallet/purchase', { method: 'POST', body: { package_id: packageId }, headers: idempotencyHeader() }),

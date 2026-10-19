@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import utcnow
 from app.core.security import hash_password
 from app.models import (
-    CoinPackage, Conversation, Couple, Event, Family, FamilyMember, FamilyMessage, Follow, Gift, Message, Room,
+    Agency, AgencyMember, CoinPackage, Report, Conversation, Couple, Event, Family, FamilyMember, FamilyMessage, Follow, Gift, Message, Room,
     StoreItem, Transaction, User,
 )
 from app.services import store_service, vip_service
@@ -135,6 +135,19 @@ FAMILY_MESSAGES = [
 # CP: (kullanıcı, kullanıcı, durum, teklif eden). Ada'nın ana kullanıcıya bekleyen teklifi var.
 COUPLES = [(2002, 2003, "active", 2002), (2005, MAIN_USER_ID, "pending", 2005)]
 
+# Yönetim paneli için demo yönetici hesabı (kullanıcı adı: admin, parola: demo1234).
+ADMIN_USER_ID = 1
+# Ajans: (id, ad, sahibi, komisyon %, [(yayıncı, durum, aylık elmas hedefi)]). Ana kullanıcıya davet bekliyor.
+AGENCIES = [
+    (1, "Yıldız Ajans", 2012, 15, [(2001, "active", 200_000), (2003, "active", 100_000), (MAIN_USER_ID, "invited", 0)]),
+]
+# İnceleme bekleyen şikâyetler: (şikâyet eden, tür, hedef, sebep, açıklama)
+REPORTS = [
+    (2004, "user", 2006, "spam", "Odada sürekli aynı reklam mesajını atıyor."),
+    (2007, "user", 2006, "harassment", "Özel mesajdan rahatsız edici mesajlar gönderdi."),
+    (2005, "room", 108102, "inappropriate", "Oda başlığı ve duyurusu uygunsuz."),
+]
+
 # Ana kullanıcının sohbetleri: (karşıdaki kişi, okunmamış sayısı, [(ben mi yazdım, metin, kaç dakika önce)])
 CONVERSATIONS = [
     (2001, 2, [(False, "Bu akşam odaya gelecek misin?", 14), (True, "Gelirim, 10 dakikaya oradayım.", 11), (False, "Süper, koltuk ayırıyorum 🎤", 10)]),
@@ -173,6 +186,10 @@ async def seed_database(db: AsyncSession) -> None:
             coin_balance=12450 if uid == MAIN_USER_ID else 5000,
             created_at=now - timedelta(days=joined_days),
         ))
+    db.add(User(
+        id=ADMIN_USER_ID, username="admin", email="admin@demo.local", password_hash=password_hash,
+        display_name="Muti Yönetim", is_admin=True, is_verified=True, created_at=now - timedelta(days=500),
+    ))
     await db.flush()   # kullanıcılar önce yazılsın; aşağıdaki satırlar onlara bağlı
 
     for rid, title, category, cover, is_live, _listeners, host_id, announcement, seats in ROOMS:
@@ -255,6 +272,21 @@ async def seed_database(db: AsyncSession) -> None:
         Event(title="Yıldızlar Gecesi", emoji="⭐", metric="gifts_received", rewards=[3000, 2000, 1000],
               description="En çok hediye alan yayıncılar ödüllendirildi.",
               starts_at=now - timedelta(days=10), ends_at=now - timedelta(days=1)),
+    ])
+
+    # Ajans ve şikâyetler (yönetim paneli demoda dolu görünsün)
+    for aid, name, owner_id, commission, members in AGENCIES:
+        db.add(Agency(id=aid, name=name, owner_id=owner_id, commission_percent=commission))
+        await db.flush()
+        db.add_all([
+            AgencyMember(user_id=uid, agency_id=aid, status=status, monthly_target=target,
+                         joined_at=now - timedelta(days=20) if status == "active" else None)
+            for uid, status, target in members
+        ])
+    db.add_all([
+        Report(reporter_id=reporter, target_type=kind, target_id=target, reason=reason, details=details,
+               created_at=now - timedelta(hours=index + 1))
+        for index, (reporter, kind, target, reason, details) in enumerate(REPORTS)
     ])
 
     for other_id, unread, messages in CONVERSATIONS:

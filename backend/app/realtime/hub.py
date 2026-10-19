@@ -69,6 +69,12 @@ class RoomHub:
             except Exception:
                 logger.debug("WebSocket already closed")
 
+    async def disconnect_user_everywhere(self, user_id: int, code: int) -> None:
+        """Kişinin bu sunucudaki bütün oda bağlantılarını kapatır (ör. uygulamadan banlandı)."""
+        for room_id, sockets in list(self._connections.items()):
+            if user_id in sockets.values():
+                await self.disconnect_user(room_id, user_id, code)
+
     async def send_to_user(self, room_id: int, user_id: int, event: str, payload: dict) -> None:
         """
         Olayı yalnızca odadaki TEK bir kişiye gönderir (koltuk daveti, sesli görüşme sinyali).
@@ -124,6 +130,15 @@ class UserHub:
         sockets.discard(websocket)
         if not sockets:
             del self._connections[user_id]
+
+    async def disconnect(self, user_id: int, code: int) -> None:
+        """Kişinin kişiye özel bağlantılarının hepsini kapatır (ör. uygulamadan banlandı)."""
+        for websocket in list(self._connections.get(user_id, ())):
+            try:
+                await websocket.close(code=code)
+            except Exception:
+                logger.debug("WebSocket already closed")
+            self.remove(user_id, websocket)
 
     async def publish(self, user_id: int, event: str, payload: dict) -> None:
         """Olayı kişinin açık olan bütün bağlantılarına gönderir. Bağlı değilse hiçbir şey olmaz."""

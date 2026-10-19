@@ -1300,3 +1300,40 @@ small { font-size: 12px; color: var(--muted); }
 .rps-choices { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; width: 100%; }
 .rps-choices button { display: grid; justify-items: center; gap: 2px; padding: 10px 4px; border-radius: 14px; background: var(--surface-3); font-size: 12px; font-weight: 700; }
 .rps-choices i { font-style: normal; font-size: 30px; }
+
+/* ─── YÖNETİM PANELİ VE AJANS ────────────────────────────────────────────────────── */
+.admin-tabs { grid-template-columns: repeat(5, 1fr); margin: 0 var(--pad) 6px; }
+.admin-tabs button { height: 34px; font-size: 12px; }
+.admin-stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.admin-stat { display: grid; gap: 2px; padding: 14px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); }
+.admin-stat i { font-style: normal; font-size: 22px; }
+.admin-stat b { font-size: 22px; font-weight: 800; }
+.admin-stat span { font-size: 12px; color: #d5d2e4; }
+.admin-stat small { font-size: 10px; color: var(--muted); }
+.admin-filter { margin-bottom: 10px; }
+.admin-card { display: grid; gap: 6px; margin-bottom: 10px; padding: 12px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); }
+.admin-card header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.admin-card a { color: inherit; text-decoration: underline; text-decoration-color: rgba(255, 255, 255, 0.25); }
+.admin-card p { font-size: 13px; color: #d5d2e4; line-height: 1.4; }
+.admin-card small { font-size: 11px; color: var(--muted); }
+.admin-room { display: flex; align-items: center; gap: 10px; }
+.admin-tag { display: inline-block; padding: 1px 7px; border-radius: 999px; background: var(--surface-3); font-size: 10px; font-weight: 700; color: #e9e5f7; vertical-align: 1px; }
+.admin-tag-danger { background: rgba(255, 77, 109, 0.25); color: #ff8aa0; }
+.admin-resolution { color: var(--green) !important; }
+.admin-search { margin: 0 0 10px; }
+.admin-user-head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.admin-balances { display: flex; justify-content: space-around; margin-bottom: 12px; padding: 10px; border-radius: 14px; background: var(--surface-2); font-size: 13px; }
+.admin-adjust { display: grid; gap: 8px; margin: 14px 0; padding: 12px; border-radius: 14px; background: var(--surface-2); }
+.admin-adjust div { display: flex; gap: 8px; }
+.admin-adjust input, .admin-adjust select { flex: 1; min-width: 0; height: 38px; padding: 0 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--text); }
+.admin-adjust select { flex: none; width: 90px; }
+
+.agency-hero { display: grid; justify-items: center; gap: 8px; margin: 0 var(--pad) 14px; padding: 18px; border-radius: var(--radius); text-align: center; background: linear-gradient(160deg, rgba(43, 107, 255, 0.18), var(--surface) 60%); border: 1px solid var(--line); }
+.agency-hero h2 { font-size: 20px; font-weight: 800; }
+.agency-hero p { font-size: 13px; color: #cfcbe0; }
+.agency-hero a { color: inherit; text-decoration: underline; }
+.agency-goal { display: grid; gap: 6px; width: 100%; }
+.agency-goal small { font-size: 11px; color: var(--muted); }
+.agency-member { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; padding: 10px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); }
+.agency-member small { font-size: 11px; color: var(--muted); }
+.agency-remove { margin-top: 10px; }

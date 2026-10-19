@@ -176,6 +176,11 @@ async def logout(db: AsyncSession, refresh_token: str) -> None:
     await db.commit()
 
 
+async def revoke_all_sessions(db: AsyncSession, user_id: int) -> None:
+    """Kişinin bütün cihazlardaki oturumlarını kapatır (refresh token'lar iptal). Commit eder."""
+    await _revoke_all(db, user_id)
+
+
 async def _revoke_all(db: AsyncSession, user_id: int) -> None:
     await db.execute(
         update(RefreshToken)

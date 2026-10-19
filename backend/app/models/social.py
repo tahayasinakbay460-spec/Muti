@@ -30,7 +30,7 @@ class Report(Base):
     """
     Kullanıcı şikâyetleri. Uygulama mağazaları (App Store, Google Play) sohbet
     uygulamalarında şikâyet ve engelleme özelliğini zorunlu tutar.
-    Satırları yöneticiler inceler (yönetim paneli henüz yok).
+    Satırları uygulama yöneticileri yönetim panelinden inceler (bkz. services/admin_service.py).
     """
     __tablename__ = "reports"
     __table_args__ = (
@@ -47,6 +47,12 @@ class Report(Base):
     # open → incelenmeyi bekliyor; resolved / dismissed → yönetici karar verdi.
     status: Mapped[str] = mapped_column(String(16), default="open")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    # ── Karar (yönetici inceledikten sonra dolar) ─────────────────────────────
+    resolved_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # dismiss (asılsız) | ban_user (kullanıcı banlandı) | close_room (oda kapatıldı)
+    action: Mapped[str | None] = mapped_column(String(16))
+    resolution_note: Mapped[str] = mapped_column(String(300), default="")
 
 
 class Notification(Base):

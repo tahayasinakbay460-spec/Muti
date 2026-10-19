@@ -58,6 +58,7 @@ class UserOut(BaseModel):
     is_me: bool               # bu profil, isteği atan kişinin kendisi mi?
     is_following: bool        # isteği atan kişi bu kullanıcıyı takip ediyor mu?
     is_blocked: bool = False  # isteği atan kişi bu kullanıcıyı engelledi mi?
+    is_admin: bool = False    # yalnızca kişi kendi profiline bakarken dolu (yönetim paneli bağlantısı için)
     # Bakiye özeldir: yalnızca kişi kendi profiline bakarken dolu gelir, başkası için null.
     coin_balance: int | None = None
     diamond_balance: int | None = None

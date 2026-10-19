@@ -19,11 +19,12 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.errors import UnauthorizedError
+from app.core.errors import ForbiddenError, UnauthorizedError
 from app.core.logs import user_id_var
 from app.core.security import decode_access_token
 from app.models import User
 from app.realtime.state import room_state
+from app.services import admin_service
 
 # `Authorization: Bearer <token>` başlığını okur. auto_error=False: başlık yoksa
 # hatayı FastAPI değil biz üretelim (kendi JSON biçimimizle).
@@ -38,6 +39,10 @@ async def get_current_user_id(
     if credentials is None:
         raise UnauthorizedError("Bu işlem için giriş yapmalısın.", code="not_authenticated")
     user_id = decode_access_token(credentials.credentials)
+    # Banlanan kişinin elindeki token'ın süresi dolmamış olsa bile hemen reddedilir.
+    # (Bellekte bir küme kontrolü; veritabanına gitmez. Bkz. services/admin_service.py)
+    if admin_service.is_banned(user_id):
+        raise UnauthorizedError("Hesabın engellendi.", code="account_disabled")
     # Bu isteğin bütün kayıtlarında kim olduğu görünsün (bkz. core/logs.py).
     user_id_var.set(user_id)
     # Her istekte "bu kullanıcı şu an aktif" damgasını yenile (çevrimiçi göstergesi için).
@@ -56,3 +61,13 @@ async def get_current_user(user_id: CurrentUserId, db: DbSession) -> User:
 
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
+
+
+async def get_current_admin(user: CurrentUser) -> User:
+    """Yönetim paneli uçları için: uygulama yöneticisi değilse 403."""
+    if not user.is_admin:
+        raise ForbiddenError("Bu sayfa yalnızca yöneticilere açık.", code="admin_only")
+    return user
+
+
+CurrentAdmin = Annotated[User, Depends(get_current_admin)]

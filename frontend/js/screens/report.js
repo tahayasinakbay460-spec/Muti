@@ -2,7 +2,8 @@
 import { api } from '../api.js';
 import { esc, icon, openSheet, toast } from '../ui.js';
 
-const REASONS = [
+// Yönetim paneli de aynı etiketleri kullanır
+export const REASONS = [
   { id: 'spam', label: 'Spam veya reklam' },
   { id: 'harassment', label: 'Taciz veya zorbalık' },
   { id: 'inappropriate', label: 'Uygunsuz içerik' },

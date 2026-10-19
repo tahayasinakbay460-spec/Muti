@@ -294,6 +294,14 @@ async def close_room(db: AsyncSession, actor_id: int, room_id: int) -> None:
     room = await room_service.get_room_row(db, room_id)
     if actor_id != room.host_id:
         raise ForbiddenError("Odayı yalnızca oda sahibi kapatabilir.", code="not_room_host")
+    await shut_down_room(db, room)
+
+
+async def shut_down_room(db: AsyncSession, room: Room) -> None:
+    """
+    Odayı kapatır ve odadaki herkesi çıkarır. Yetki kontrolünü çağıran yapar: oda sahibi
+    (close_room) ya da uygulama yöneticisi (admin_service).
+    """
     room.is_active = False
     room.is_live = False
     await db.commit()

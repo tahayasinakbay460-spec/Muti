@@ -25,6 +25,8 @@ Projede yapılan işlerin kaydı.
 
 **Öğrenme (2026-10-19):** `learning/websocket/` dersleri hazır (WebSocket temeli). Sırada: ses sinyali WebSocket'te nasıl taşınıyor, sonra ses sunucuları.
 
+**İşletme (2026-10-19):** yönetim paneli ve ajans sistemi hazır; hedef özelliklerin dört grubu da tamam. Sırada: genel eksik/fazla değerlendirmesi ve canlıya çıkış yol haritası (kullanıcı hiç ürün yayınlamadı; adımlar sade anlatılacak).
+
 **Oda içi eğlence (2026-10-19):** PK, Dört Bağla, Taş-Kağıt-Makas, birlikte izleme, karaoke sırası hazır. Sırada 4. grup (ajans, admin paneli), ardından genel eksik değerlendirmesi ve canlıya çıkış yol haritası.
 
 **Bağlılık sistemleri (2026-10-19):** günlük giriş, görevler, aile (sohbetli), CP, sıralamalar, etkinlikler hazır. Sırada 3. grup (oda PK'si, yeni oyunlar, karaoke/birlikte izleme), sonra 4. grup (ajans, admin paneli).
@@ -88,6 +90,23 @@ Kodda "DEMO KISAYOLU" diye işaretlidir. Mobil/canlı aşamasında değiştirile
 ---
 
 # Kayıtlar
+
+## 2026-10-19 — İşletme (4. grup): yönetim paneli ve ajans sistemi
+
+**Amaç:** CLAUDE.md "D. Hedef Özellikler" 4. grup. Bununla dört grup tamamlandı.
+
+**Ne yapıldı:**
+- **Yönetim paneli** (`#/admin`, yalnızca `is_admin`; demo hesabı `admin` / `demo1234`): özet sayılar; şikâyet listesi (açık / karara bağlanan) ve karar (reddet / kullanıcıyı banla / odayı kapat; aynı hedefin bütün açık şikâyetleri birlikte kapanır, karar notu saklanır); kullanıcı arama (banlılar dahil), detay, son 20 para hareketi; ban/ban kaldırma; gerekçeli bakiye düzeltme (`admin_adjustment` olarak deftere); oda listesi ve kapatma; ajans kurma.
+- **Ban anında etkili:** hesap kapanır, refresh token'lar iptal, açık WebSocket'ler 4401 ile kesilir, elindeki access token bir sonraki istekte reddedilir (her istekte bellekteki banlı kümesi kontrolü; açılışta veritabanından yüklenir; DEMO: canlıda Redis set). Yönetici başka yöneticiyi/kendini banlayamaz.
+- **Ajans:** yönetici kurar (sahibi + komisyon %0-50); sahibi yayıncıyı ID ile davet eder; yayıncı kabul/ret; sahibi aylık elmas hedefi koyar, çıkarır ya da daveti geri çeker; panelde üyelerin bu ayki kazancı, hedef ilerlemesi ve tahmini komisyon. Bir yayıncı aynı anda tek ajansta (birincil anahtar). Gerçek hesaplaşma/ödeme yok (DEMO).
+- Ortaklaştırma: `moderation_service.shut_down_room` (oda sahibi ve yönetici aynı kapatma yolunu kullanır), `auth_service.revoke_all_sessions`, hub'lara "kişinin bütün bağlantılarını kes" yardımcıları.
+- Örnek veri: yönetici hesabı, "Yıldız Ajans" (Mert; Merve ve Selin üye, muti'ye davet), 3 açık şikâyet.
+
+**Doğrulama:** 80 test (yeni 8), kapsam %94, takım 3 kez art arda geçti; ruff, pip-audit, JS sözdizimi temiz. Tarayıcıda gerçek backend'le (ekran görüntüsü aracı takıldığı için sayfa içeriği okunarak): yönetim panelinin 5 sekmesi gerçek verilerle, muti'nin ajans davetini kabulü (yayıncı sayısı 2→3), Mert'in ajans paneli (kazanç, %15 komisyon, hedef ilerlemesi); konsolda hata yok.
+
+**Bulunan sorun:** Tarayıcı `report.js`'in önbellekteki eski sürümünü kullandı ve yeni `admin.js` onu içe aktaramayınca uygulama boş açıldı. Build adımı olmadığı için yayında da olabilir; çözüm canlıya çıkışta sunucunun `Cache-Control: no-cache` vermesi ya da dosya adlarına sürüm eklemek (CLAUDE.md "Olmayanlar"a yazıldı).
+
+**Açık kalanlar:** Ajans komisyonunun gerçek ödemesi; yönetici işlemlerinin ayrı bir "yönetici geçmişi" ekranı (şimdilik denetim kayıtlarında); uygulama ayarları (banner, hediye kataloğu, fiyatlar) panelden düzenlenemiyor.
 
 ## 2026-10-19 — Oda içi eğlence (3. grup): PK, iki kişilik oyunlar, birlikte izleme, karaoke
 
