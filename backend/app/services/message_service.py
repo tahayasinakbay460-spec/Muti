@@ -12,14 +12,14 @@ from sqlalchemy import func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import utcnow
+from app.core.database import SessionLocal, utcnow
 from app.core.errors import AppError, NotFoundError
 from app.core.timefmt import as_utc, clock_label
-from app.models import Conversation, Message
+from app.models import Conversation, Message, RoomMessage
 from app.realtime import events
 from app.realtime.hub import user_hub
 from app.schemas.message import ConversationDetail, ConversationSummary, MessageOut
-from app.services import user_service
+from app.services import engagement_service, user_service
 
 
 # ── Küçük yardımcılar ─────────────────────────────────────────────────────────
@@ -185,3 +185,18 @@ async def total_unread(db: AsyncSession, me: int) -> int:
     low = select(func.coalesce(func.sum(Conversation.unread_low), 0)).where(Conversation.user_low_id == me)
     high = select(func.coalesce(func.sum(Conversation.unread_high), 0)).where(Conversation.user_high_id == me)
     return (await db.scalar(low)) + (await db.scalar(high))
+
+
+# ── Oda sohbeti kaydı ─────────────────────────────────────────────────────────
+
+async def save_room_message(room_id: int, user_id: int, public_id: str, text: str) -> None:
+    """
+    Oda sohbetine yazılan mesajı kalıcı olarak kaydeder ve günlük görev sayacını artırır;
+    ikisi tek veritabanı işleminde. WebSocket'in açık veritabanı oturumu olmadığı için kendi
+    oturumunu açar. DEMO KISAYOLU: her mesaj bir yazım; kalabalık odalarda toplu yazım (kuyruk) gerekir.
+    """
+    async with SessionLocal() as db:
+        db.add(RoomMessage(room_id=room_id, user_id=user_id, public_id=public_id, text=text))
+        await engagement_service.record(db, user_id, engagement_service.METRIC_CHAT_MESSAGE)
+        await db.commit()
+

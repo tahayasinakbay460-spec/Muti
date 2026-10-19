@@ -16,7 +16,6 @@ import { renderTasks } from './screens/tasks.js';
 import { renderLeaderboard } from './screens/leaderboard.js';
 import { renderFamilies, renderFamily } from './screens/families.js';
 import { renderEvents, renderEvent } from './screens/events.js';
-import { renderAdmin } from './screens/admin.js';
 import { renderAgency } from './screens/agency.js';
 import { renderNotifications } from './screens/notifications.js';
 import { renderSettings } from './screens/settings.js';
@@ -36,7 +35,6 @@ const routes = [
   { pattern: /^\/store$/, render: renderStore, tab: 'profile' },
   { pattern: /^\/vip$/, render: renderVip, tab: 'profile' },
   { pattern: /^\/tasks$/, render: renderTasks, tab: 'home' },
-  { pattern: /^\/admin$/, render: renderAdmin, tab: 'profile' },
   { pattern: /^\/agency$/, render: renderAgency, tab: 'profile' },
   { pattern: /^\/leaderboard$/, render: renderLeaderboard, tab: 'home' },
   { pattern: /^\/families$/, render: renderFamilies, tab: 'home' },

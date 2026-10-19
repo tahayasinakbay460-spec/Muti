@@ -37,7 +37,7 @@ from app.realtime.duels import duels
 from app.realtime.games import roulette
 from app.realtime.hub import room_hub
 from app.realtime.state import room_state
-from app.services import activity_service, engagement_service, room_service, user_service
+from app.services import activity_service, engagement_service, message_service, room_service, user_service
 from app.voice import voice_provider
 
 logger = logging.getLogger(__name__)
@@ -194,7 +194,7 @@ async def room_socket(websocket: WebSocket, room_id: int, token: str = "") -> No
                     "created_at": datetime.now(timezone.utc).isoformat(),
                 }
                 await room_state.append_chat(room_id, chat_message)
-                await engagement_service.record_now(user_id, engagement_service.METRIC_CHAT_MESSAGE)
+                await message_service.save_room_message(room_id, user_id, chat_message["id"], chat.text)
                 await room_hub.publish(room_id, events.CHAT_MESSAGE, chat_message)
 
             elif event == events.GAME_DICE_ROLLED:

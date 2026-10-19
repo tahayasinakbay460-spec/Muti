@@ -25,6 +25,8 @@ Projede yapılan işlerin kaydı.
 
 **Öğrenme (2026-10-19):** `learning/websocket/` dersleri hazır (WebSocket temeli). Sırada: ses sinyali WebSocket'te nasıl taşınıyor, sonra ses sunucuları.
 
+**Yönetim paneli (2026-10-19 akşam):** masaüstü panel `frontend/admin.html` (giriş: `admin` / `demo1234`); finans grafikleri, para hareketleri, kullanıcı yönetimi, bütün özel mesajlar ve oda sohbet geçmişi (DEMO, KVKK notu), katalog düzenleme, duyuru.
+
 **İşletme (2026-10-19):** yönetim paneli ve ajans sistemi hazır; hedef özelliklerin dört grubu da tamam. Sırada: genel eksik/fazla değerlendirmesi ve canlıya çıkış yol haritası (kullanıcı hiç ürün yayınlamadı; adımlar sade anlatılacak).
 
 **Oda içi eğlence (2026-10-19):** PK, Dört Bağla, Taş-Kağıt-Makas, birlikte izleme, karaoke sırası hazır. Sırada 4. grup (ajans, admin paneli), ardından genel eksik değerlendirmesi ve canlıya çıkış yol haritası.
@@ -90,6 +92,21 @@ Kodda "DEMO KISAYOLU" diye işaretlidir. Mobil/canlı aşamasında değiştirile
 ---
 
 # Kayıtlar
+
+## 2026-10-19 — Masaüstü yönetim paneli ve mesaj inceleme
+
+**Amaç:** Kullanıcı (müşteri isteği): yönetici kullanıcıların özel mesajlarını ve oda mesajlarını görebilsin; panel gerçek bir sesli sohbet uygulamasının yönetim paneli gibi olsun (coin alım-satımı vb.). Hukuki risk konuşuldu (KVKK, mağaza kuralları, önerilen: şikâyete bağlı erişim); kullanıcı kararı: demo için hepsi görünsün.
+
+**Ne yapıldı:**
+- **Oda sohbeti artık kalıcı:** `RoomMessage` tablosu; mesaj ve günlük görev sayacı tek işlemde yazılır; odadan silinen mesaj kayıtta kalır, `deleted_at` ile işaretlenir (şikâyet kanıtı).
+- **Masaüstü yönetim paneli** (`frontend/admin.html`, ayrı sayfa, solda menü): Genel Bakış (8 özet kartı, 14 günlük coin satışı/hediye ve yeni kullanıcı grafikleri — bağımlılıksız SVG, en çok harcayan/kazanan/oda), Finans (7/14/30/90 gün, harcama dağılımı, işlem türüne göre toplamlar), Para Hareketleri (tür ve kullanıcı süzgeci, sayfalama), Kullanıcılar (sıralama: en yeni / en zengin / en çok şikâyet; sağdan açılan detay: bakiye, ban, bakiye düzeltme, ücretsiz VIP verme, özel sohbetleri, son hareketler), Mesajlar (bütün özel sohbetler ve konuşma; KVKK uyarısı ekranda), Odalar (sohbet geçmişi, odaya git, kapat), Şikâyetler, Hediye & Paketler (fiyat, şanslı, satışta; paket coin/bonus/etiket — kullanıcılar hemen görür), Ajanslar, Duyuru (bütün kullanıcılara bildirim).
+- Telefon içindeki küçük yönetim ekranı kaldırıldı (iki panel bakımı olmasın); profil menüsü masaüstü paneli yeni sekmede açar.
+- Yeni uçlar: `/admin/finance`, `/admin/transactions`, `/admin/conversations(/{id}/messages)`, `/admin/rooms/{id}/messages`, `/admin/catalog/gifts|packages`, `/admin/users/{id}/vip`, `/admin/broadcast`, `/admin/users?sort=`. Her mesaj görüntüleme `admin_viewed_conversation` / `admin_viewed_room_chat` olarak denetim kaydına yazılır.
+- Örnek veri: son 30 günün sabit tohumlu satış/hediye/VIP geçmişi (grafikler dolu görünsün; bakiyeler bundan hesaplanmaz), oda sohbet örnekleri (biri reklam: şikâyet kanıtı).
+
+**Doğrulama:** 86 test (yeni 6), kapsam %95, takım 3 kez art arda geçti; ruff, pip-audit, JS sözdizimi temiz. Tarayıcıda gerçek backend'le: giriş ekranı, genel bakış grafikleri, kullanıcı tablosu ve detay paneli, mesajlar, oda sohbet geçmişi, finans; diğer sayfalar içerik okunarak; konsolda hata yok. Detay panelinde etiketlerin şeride dönmesi düzeltildi.
+
+**Açık kalanlar:** Mesaj okuma canlıda şikâyete bağlanmalı ve gizlilik metni yazılmalı (avukat). Yönetici rolleri tek seviye (süper yönetici / moderatör ayrımı yok). Panel ayarları (banner, mağaza eşyaları, VIP fiyatları) henüz düzenlenemiyor. Örnek verideki bugünkü büyük hediye toplamları grafikte bugünü çok yüksek gösteriyor.
 
 ## 2026-10-19 — İşletme (4. grup): yönetim paneli ve ajans sistemi
 

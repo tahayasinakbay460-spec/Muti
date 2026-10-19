@@ -15,6 +15,7 @@ Sıfırdan başlamak için sunucuyu durdurup backend/app.db dosyasını silmek y
 Not: Burada satırlara elle id veriyoruz. PostgreSQL'e geçildiğinde bu, otomatik id
 sayaçlarını geride bırakır; seed sonrasında sayaçların (sequence) ileri alınması gerekir.
 """
+import random
 from datetime import timedelta
 
 from sqlalchemy import func, select
@@ -24,7 +25,7 @@ from app.core.database import utcnow
 from app.core.security import hash_password
 from app.models import (
     Agency, AgencyMember, CoinPackage, Report, Conversation, Couple, Event, Family, FamilyMember, FamilyMessage, Follow, Gift, Message, Room,
-    StoreItem, Transaction, User,
+    RoomMessage, StoreItem, Transaction, User,
 )
 from app.services import store_service, vip_service
 from app.realtime.state import InMemoryRoomStateStore, RoomStateStore
@@ -147,6 +148,20 @@ REPORTS = [
     (2007, "user", 2006, "harassment", "Özel mesajdan rahatsız edici mesajlar gönderdi."),
     (2005, "room", 108102, "inappropriate", "Oda başlığı ve duyurusu uygunsuz."),
 ]
+
+# Oda sohbet geçmişi (yönetim panelinde görünsün): (oda, kullanıcı, mesaj, kaç dakika önce)
+ROOM_CHAT = [
+    (104211, 2015, "Herkese iyi geceler, hoş geldiniz 🌙", 95), (104211, 2001, "Bu akşamki şarkı listesi harika", 90),
+    (104211, 2004, "Koltuğa oturabilir miyim?", 70), (104211, 2015, "Tabii, 3. koltuk boş 🎤", 68),
+    (102938, 2001, "Yeni gelenler kendini tanıtsın lütfen", 50), (102938, 2005, "Merhaba ben Ada, Antalya'dan 👋", 48),
+    (102938, 2006, "Ucuz coin için profilime bakın!!!", 40), (102938, 2001, "Reklam yasak, lütfen dikkat", 39),
+    (107340, 2010, "Zar turnuvası 22:00'de başlıyor", 30), (107340, 2014, "Ben varım, takım kuralım", 25),
+]
+# Yönetim panelinin grafikleri dolu görünsün diye son 30 günün örnek satış ve hediye geçmişi.
+# Sabit tohumlu rastgelelik: her kurulumda aynı sayılar çıkar. Bakiyeler bu geçmişten
+# hesaplanmaz (örnek veri), yalnızca grafik ve listeler için.
+HISTORY_DAYS = 30
+HISTORY_USERS = [2001, 2002, 2003, 2004, 2005, 2007, 2008, 2010, 2012, 2015]
 
 # Ana kullanıcının sohbetleri: (karşıdaki kişi, okunmamış sayısı, [(ben mi yazdım, metin, kaç dakika önce)])
 CONVERSATIONS = [
@@ -272,6 +287,38 @@ async def seed_database(db: AsyncSession) -> None:
         Event(title="Yıldızlar Gecesi", emoji="⭐", metric="gifts_received", rewards=[3000, 2000, 1000],
               description="En çok hediye alan yayıncılar ödüllendirildi.",
               starts_at=now - timedelta(days=10), ends_at=now - timedelta(days=1)),
+    ])
+
+    # Son 30 günün örnek satış ve hediye geçmişi (bugün hariç; bugünün hareketleri yukarıda)
+    rng = random.Random(42)
+    packages = {pid: coins + bonus for pid, coins, bonus, *_ in COIN_PACKAGES}
+    gift_prices = [price for _gid, _name, _emoji, price in GIFTS]
+    for days_ago in range(1, HISTORY_DAYS):
+        day = now - timedelta(days=days_ago)
+        # Hafta sonu daha hareketli
+        activity = 1.6 if day.weekday() >= 5 else 1.0
+        for _ in range(int(rng.randint(2, 6) * activity)):
+            pid = rng.choice(list(packages))
+            db.add(Transaction(user_id=rng.choice(HISTORY_USERS), type="purchase", currency="coin", amount=packages[pid],
+                               balance_after=5000, label="Coin satın alma (örnek veri)", package_id=pid,
+                               created_at=day - timedelta(minutes=rng.randint(0, 600))))
+        for _ in range(int(rng.randint(6, 16) * activity)):
+            sender, receiver = rng.sample(HISTORY_USERS, 2)
+            price = rng.choice(gift_prices[:8]) * rng.choice([1, 1, 1, 5, 10])
+            at = day - timedelta(minutes=rng.randint(0, 600))
+            db.add(Transaction(user_id=sender, type="gift_sent", currency="coin", amount=-price, balance_after=5000,
+                               label="Hediye (örnek veri)", counterparty_id=receiver, created_at=at))
+            db.add(Transaction(user_id=receiver, type="gift_received", currency="diamond", amount=price // 2,
+                               balance_after=price // 2, label="Hediye alındı (örnek veri)", counterparty_id=sender,
+                               created_at=at))
+        if rng.random() < 0.35:
+            db.add(Transaction(user_id=rng.choice(HISTORY_USERS), type="vip_purchase", currency="coin",
+                               amount=-rng.choice([3000, 8000]), balance_after=5000, label="VIP (örnek veri)",
+                               created_at=day - timedelta(minutes=rng.randint(0, 600))))
+    db.add_all([
+        RoomMessage(room_id=rid, user_id=uid, public_id=f"seed{index}", text=text,
+                    created_at=now - timedelta(minutes=minutes))
+        for index, (rid, uid, text, minutes) in enumerate(ROOM_CHAT)
     ])
 
     # Ajans ve şikâyetler (yönetim paneli demoda dolu görünsün)

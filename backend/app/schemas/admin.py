@@ -142,3 +142,105 @@ class MyAgency(BaseModel):
 
 class AgencyTargetRequest(BaseModel):
     monthly_target: int = Field(ge=0, le=100_000_000)
+
+
+# ── Finans ve kayıtlar (masaüstü yönetim paneli) ──────────────────────────────
+
+class DailyPoint(BaseModel):
+    day: str                  # "2026-10-19" (yerel takvim)
+    coins_sold: int           # satın alınan coin (paketler)
+    gift_coins: int           # hediyeye harcanan coin
+    vip_coins: int            # VIP üyeliğe harcanan coin
+    store_coins: int          # mağazaya harcanan coin
+    new_users: int
+
+
+class TopUser(BaseModel):
+    user: UserOut
+    amount: int
+
+
+class FinanceSummary(BaseModel):
+    days: list[DailyPoint]
+    # Seçilen dönemin toplamları (işlem türü → tutar, işaretsiz)
+    totals: dict[str, int]
+    top_spenders: list[TopUser]   # dönemde en çok hediye gönderen
+    top_earners: list[TopUser]    # dönemde en çok elmas kazanan
+    top_rooms: list[dict]         # dönemde en çok hediye alan odalar
+
+
+class AdminTransactionOut(BaseModel):
+    id: int
+    user: UserOut | None
+    type: str
+    currency: str
+    amount: int
+    balance_after: int
+    label: str
+    created_at: datetime
+
+
+class AdminConversationOut(BaseModel):
+    id: int
+    users: list[UserOut]
+    last_message_text: str | None
+    last_message_at: datetime | None
+    message_count: int
+
+
+class AdminMessageOut(BaseModel):
+    id: int
+    sender: UserOut | None
+    text: str
+    created_at: datetime
+    deleted_at: datetime | None = None    # oda sohbetinde odadan silinen mesaj
+
+
+class CatalogGiftOut(BaseModel):
+    id: int
+    name: str
+    emoji: str
+    price: int
+    is_lucky: bool
+    is_active: bool
+
+
+class CatalogGiftUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=40)
+    price: int | None = Field(default=None, ge=1, le=10_000_000)
+    is_lucky: bool | None = None
+    is_active: bool | None = None
+
+
+class CatalogPackageOut(BaseModel):
+    id: int
+    title: str | None
+    coins: int
+    bonus: int
+    price_label: str
+    is_popular: bool
+    is_best_value: bool
+    is_active: bool
+
+
+class CatalogPackageUpdate(BaseModel):
+    coins: int | None = Field(default=None, ge=1, le=100_000_000)
+    bonus: int | None = Field(default=None, ge=0, le=100_000_000)
+    price_label: str | None = Field(default=None, min_length=1, max_length=20)
+    is_popular: bool | None = None
+    is_active: bool | None = None
+
+
+class GrantVipRequest(BaseModel):
+    level: Literal[1, 2, 3]
+    days: int = Field(ge=1, le=365)
+
+
+class BroadcastRequest(BaseModel):
+    text: str = Field(min_length=3, max_length=200)
+
+    _strip_text = field_validator("text", mode="before")(_strip)
+
+
+class BroadcastResult(BaseModel):
+    sent: int

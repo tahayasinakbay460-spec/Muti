@@ -219,7 +219,7 @@ export async function renderProfile(root, { params }) {
              <a href="#/store" data-close>${icon('crown', 20)} Mağaza</a>
              <a href="#/vip" data-close>👑 VIP</a>
              <a href="#/agency" data-close>🏢 Ajans</a>
-             ${user.is_admin ? `<a href="#/admin" data-close>🛡️ Yönetim Paneli</a>` : ''}
+             ${user.is_admin ? `<a href="admin.html" target="_blank" rel="noopener" data-close>🛡️ Yönetim Paneli (masaüstü)</a>` : ''}
              <a href="#/settings" data-close>${icon('edit', 20)} Ayarlar</a>
              <button data-menu="logout" class="is-danger">${icon('logout', 20)} Çıkış yap</button>`
           : `${!user.cp_partner_id && !me.cp_partner_id ? `<button data-menu="propose">💍 CP teklif et</button>` : ''}

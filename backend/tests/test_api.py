@@ -204,7 +204,11 @@ def test_public_lists_load(client, muti):
     for path in ("/banners", "/gifts", "/wallet/packages", "/users/suggested", "/users/2001/profile"):
         assert client.get(f"{API}{path}", headers=muti).status_code == 200, path
     gifters = client.get(f"{API}/leaderboards/gifters", headers=muti).json()
-    assert [g["user"]["id"] for g in gifters] == [2001, 2012, 2015, 2003, 2010]
+    # İlk ikisi örnek verinin en büyük gönderenleri; liste büyükten küçüğe sıralı ve sıra numaraları doğru.
+    # (Kesin sıra kontrol edilmez: örnek verideki 30 günlük geçmiş ortadaki sıraları değiştirebilir.)
+    assert [g["user"]["id"] for g in gifters][:2] == [2001, 2012] and len(gifters) == 5
+    totals = [g["total_coins"] for g in gifters]
+    assert totals == sorted(totals, reverse=True) and [g["rank"] for g in gifters] == [1, 2, 3, 4, 5]
 
 
 # ── WebSocket ─────────────────────────────────────────────────────────────────

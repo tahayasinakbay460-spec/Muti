@@ -12,13 +12,14 @@ TEMEL KURAL: Bir işlem ancak kendinden ALT rütbedeki birine yapılabilir.
 Yönetici, oda sahibine ya da başka bir yöneticiye dokunamaz.
 Bütün yetki kontrolleri burada, sunucuda yapılır; istemcinin "ben yöneticiyim" demesine bakılmaz.
 """
-from sqlalchemy import delete
+from sqlalchemy import delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.database import utcnow
 from app.core.errors import AppError, ConflictError, ForbiddenError, NotFoundError
 from app.core.logs import audit
 from app.demo.content import COVER_CHOICES
-from app.models import Room, RoomMember
+from app.models import Room, RoomMember, RoomMessage
 from app.realtime import events
 from app.realtime.duels import duels
 from app.realtime.hub import room_hub
@@ -238,6 +239,12 @@ async def delete_chat_message(db: AsyncSession, actor_id: int, room_id: int, mes
         await _require_outranks(db, room, actor_id, actor_role, author_id)
 
     await room_state.remove_chat(room.id, message_id)
+    # Kalıcı kayıtta silinmez, işaretlenir (yönetim panelinde "silindi" diye görünür).
+    await db.execute(
+        update(RoomMessage).where(RoomMessage.room_id == room.id, RoomMessage.public_id == message_id)
+        .values(deleted_at=utcnow())
+    )
+    await db.commit()
     audit("room_message_deleted", room_id=room.id, message_id=message_id)
     await room_hub.publish(room.id, events.CHAT_MESSAGE_DELETED, {"message_id": message_id})
 
