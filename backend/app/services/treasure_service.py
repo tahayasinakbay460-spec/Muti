@@ -29,6 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.database import utcnow
 from app.core.errors import AppError, ConflictError, ForbiddenError
+from app.core.logs import audit
 from app.realtime import events
 from app.realtime.hub import room_hub
 from app.realtime.state import room_state
@@ -138,6 +139,7 @@ async def claim(db: AsyncSession, room_id: int, user_id: int) -> ChestClaimResul
             idempotency_key=f"chest:{chest.chest_id}",
         )
         await db.commit()
+        audit("chest_claimed", room_id=room_id, chest_id=chest.chest_id, coins=amount)
     except Exception as error:
         await db.rollback()
         # Yazılamadı: ayrılan coini sandığa geri koy.

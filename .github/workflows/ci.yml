@@ -37,7 +37,8 @@ jobs:
         # sürümü yeni kural getirip kod değişmeden CI'ı kırmasın.
         run: pip install ruff==0.13.0 && ruff check app tests
       - name: Tests
-        run: python -m pytest -q
+        # Test kapsamı %90'ın altına düşerse kırmızı: yeni kod testsiz eklenemesin.
+        run: python -m pytest -q --cov=app --cov-report=term --cov-fail-under=90
 
   # Kullanılan paketlerde bilinen güvenlik açığı var mı? (PyPI güvenlik veritabanı)
   dependency-audit:

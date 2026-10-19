@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.database import utcnow
 from app.core.errors import ConflictError, ForbiddenError
+from app.core.logs import audit
 from app.core.timefmt import as_utc
 from app.models import StoreItem, User
 from app.schemas.store import DailyRewardResult, StoreItemBrief, VipPurchaseResult, VipStatus, VipTierOut
@@ -111,6 +112,7 @@ async def purchase(db: AsyncSession, user: User, level: int, idempotency_key: st
         for item in await db.scalars(select(StoreItem).where(StoreItem.id.in_(tier.item_ids))):
             await store_service.grant_item(db, user.id, item, until=expires_at)
         await db.commit()
+        audit("vip_purchase", vip_level=level, price=tier.price_30d, expires_at=expires_at.isoformat())
     except IntegrityError:
         await db.rollback()
         if await wallet_service.find_by_idempotency_key(db, user.id, idempotency_key):
@@ -148,6 +150,7 @@ async def claim_daily_reward(db: AsyncSession, user: User) -> DailyRewardResult:
             db, user_id=user.id, currency="coin", delta=coins, type="vip_daily", label=f"VIP {level} günlük ödül",
         )
         await db.commit()
+        audit("vip_daily_reward", vip_level=level, coins=coins)
     except Exception:
         await db.rollback()
         raise

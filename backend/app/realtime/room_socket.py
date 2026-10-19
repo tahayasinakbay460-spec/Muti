@@ -18,6 +18,7 @@ yazdığını token'dan biz biliriz, zarı biz atarız, hediyeyi yalnızca gerç
 parası düşülmüşse biz yayınlarız.
 """
 import json
+import logging
 import secrets
 import time
 from collections import deque
@@ -28,6 +29,7 @@ from pydantic import ValidationError
 
 from app.core.database import SessionLocal
 from app.core.errors import AppError
+from app.core.logs import request_id_var, user_id_var
 from app.core.security import decode_access_token
 from app.models import Room, User
 from app.realtime import events
@@ -36,6 +38,8 @@ from app.realtime.hub import room_hub
 from app.realtime.state import room_state
 from app.services import room_service, user_service
 from app.voice import voice_provider
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -126,6 +130,10 @@ async def room_socket(websocket: WebSocket, room_id: int, token: str = "") -> No
         user_payload = (await user_service.present_user(db, user, viewer_id=None)).model_dump(mode="json")
 
     # ── 2. Odaya katıl ────────────────────────────────────────────────────────
+    # Bu bağlantının bütün kayıtları aynı numarayı ve kullanıcıyı taşısın (bkz. core/logs.py).
+    request_id_var.set(f"ws-{secrets.token_hex(6)}")
+    user_id_var.set(user_id)
+    logger.info("Room joined", extra={"fields": {"room_id": room_id}})
     room_hub.add(room_id, websocket, user_id)
     is_first_connection = await room_state.add_listener(room_id, user_id)
     chat_limiter = RateLimiter(limit=5, period=5)    # 5 saniyede en fazla 5 mesaj
@@ -238,3 +246,4 @@ async def room_socket(websocket: WebSocket, room_id: int, token: str = "") -> No
         if fully_left:
             await room_hub.publish(room_id, events.ROOM_USER_LEFT, {"user_id": user_id})
         await _publish_listener_count(room_id)
+        logger.info("Room left", extra={"fields": {"room_id": room_id}})

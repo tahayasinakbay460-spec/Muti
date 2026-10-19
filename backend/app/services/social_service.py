@@ -14,6 +14,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import AppError, NotFoundError
+from app.core.logs import audit
 from app.models import Report, Room, User, UserBlock
 from app.schemas.social import ReportRequest
 from app.schemas.user import UserOut
@@ -73,3 +74,4 @@ async def create_report(db: AsyncSession, me: int, data: ReportRequest) -> None:
             reason=data.reason, details=data.details,
         ))
         await db.commit()
+        audit("report_created", target_type=data.target_type, target_id=data.target_id, reason=data.reason)

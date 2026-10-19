@@ -1,0 +1,12 @@
+# Test kapsamı (coverage) ayarı: `python -m pytest --cov=app`
+[run]
+source = app
+# SQLAlchemy'nin async katmanı greenlet kullanır, TestClient uygulamayı ayrı bir thread'de
+# çalıştırır. İkisi de belirtilmezse ölçüm, çalışan satırların çoğunu "çalışmadı" sanar.
+concurrency = greenlet, thread
+omit =
+    app/demo/*
+
+[report]
+show_missing = true
+skip_covered = true

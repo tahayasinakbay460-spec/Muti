@@ -85,6 +85,17 @@ def register_error_handlers(app: FastAPI) -> None:
         detail = f"Geçersiz veya eksik alan: {field}" if field else "Gönderilen bilgiler geçersiz."
         return JSONResponse({"code": "validation_error", "detail": detail, "errors": errors}, status_code=422)
 
+    @app.exception_handler(Exception)
+    async def handle_unexpected_error(request: Request, _error: Exception):
+        # Koddaki bir hata (bug). Ayrıntılı döküm kayda yazıldı (core/logs.py); kullanıcıya
+        # yalnızca destek için istek numarası verilir, iç ayrıntı (dosya yolu, SQL) sızdırılmaz.
+        request_id = getattr(request.state, "request_id", "-")
+        return JSONResponse(
+            {"code": "internal_error", "detail": f"Beklenmedik bir hata oluştu. Destek numarası: {request_id}",
+             "request_id": request_id},
+            status_code=500, headers={"X-Request-ID": request_id},
+        )
+
     @app.exception_handler(StarletteHTTPException)
     async def handle_http_error(_request: Request, error: StarletteHTTPException):
         # FastAPI'nin kendi ürettiği hatalar (olmayan adres → 404 gibi) da aynı biçimde dönsün.

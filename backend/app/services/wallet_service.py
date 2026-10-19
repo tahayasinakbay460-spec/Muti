@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.database import utcnow
 from app.core.errors import ConflictError, InsufficientBalanceError, NotFoundError, UnavailableError
+from app.core.logs import audit
 from app.core.timefmt import as_utc, time_ago_label
 from app.models import CoinPackage, StoreItem, Transaction, User
 from app.schemas.economy import (
@@ -173,6 +174,7 @@ async def purchase(db: AsyncSession, user_id: int, package_id: int, idempotency_
         if item is not None:
             await store_service.grant_item(db, user_id, item, days=package.item_days)
         await db.commit()
+        audit("coins_purchased", package_id=package.id, coins=total, price_label=package.price_label)
     except IntegrityError:
         # Aynı anahtarla iki istek tam aynı anda geldi ve diğeri bizden önce yazdı.
         # Bizimkini geri alıp onun sonucunu dönüyoruz.
@@ -218,6 +220,7 @@ async def exchange_diamonds(db: AsyncSession, user_id: int, diamonds: int, idemp
             label=f"Elmas çevirme (+{coins} coin)",
         )
         await db.commit()
+        audit("diamonds_exchanged", diamonds=diamonds, coins=coins)
     except IntegrityError:
         await db.rollback()
         if await find_by_idempotency_key(db, user_id, idempotency_key) is None:

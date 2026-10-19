@@ -16,6 +16,7 @@ from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import AppError, ConflictError, ForbiddenError, NotFoundError
+from app.core.logs import audit
 from app.demo.content import COVER_CHOICES
 from app.models import Room, RoomMember
 from app.realtime import events
@@ -125,6 +126,7 @@ async def set_role(db: AsyncSession, actor_id: int, room_id: int, target_id: int
         await db.commit()
 
     snapshot = await _snapshot(db, room, actor_id)
+    audit("room_role_set", room_id=room.id, target_id=target_id, role=role)
     await room_hub.publish(room.id, events.ROOM_ROLES_UPDATED, {
         "admin_ids": snapshot.admin_ids, "vip_ids": snapshot.vip_ids,
     })
@@ -155,6 +157,7 @@ async def set_seat_lock(db: AsyncSession, actor_id: int, room_id: int, seat_inde
     await room_state.set_seat_locked(room.id, seat_index, locked)
 
     await room_service.publish_seats(db, room)
+    audit("room_seat_lock", room_id=room.id, seat_index=seat_index, locked=locked)
     return await _snapshot(db, room, actor_id)
 
 
@@ -170,6 +173,7 @@ async def remove_from_seat(db: AsyncSession, actor_id: int, room_id: int, seat_i
     await room_state.clear_seat(room.id, seat_index)
 
     await room_service.publish_seats(db, room)
+    audit("room_seat_cleared", room_id=room.id, seat_index=seat_index)
     return await _snapshot(db, room, actor_id)
 
 
@@ -206,6 +210,7 @@ async def set_mic_blocked(db: AsyncSession, actor_id: int, room_id: int, target_
     room = await _moderate(db, room_id, actor_id, target_id)
     await room_state.set_mic_blocked(room.id, target_id, blocked)
     await room_service.publish_seats(db, room)
+    audit("room_mic_block", room_id=room.id, target_id=target_id, blocked=blocked)
     return await _snapshot(db, room, actor_id)
 
 
@@ -214,6 +219,7 @@ async def set_chat_mute(db: AsyncSession, actor_id: int, room_id: int, target_id
     room = await _moderate(db, room_id, actor_id, target_id)
     seconds = minutes * 60 if minutes else None
     await room_state.mute_chat(room.id, target_id, seconds)
+    audit("room_chat_mute", room_id=room.id, target_id=target_id, minutes=minutes)
     await room_hub.publish(room.id, events.ROOM_CHAT_MUTED, {
         "user": await _user_payload(db, target_id), "seconds": seconds or 0,
     })
@@ -234,6 +240,7 @@ async def delete_chat_message(db: AsyncSession, actor_id: int, room_id: int, mes
         await _require_outranks(db, room, actor_id, actor_role, author_id)
 
     await room_state.remove_chat(room.id, message_id)
+    audit("room_message_deleted", room_id=room.id, message_id=message_id)
     await room_hub.publish(room.id, events.CHAT_MESSAGE_DELETED, {"message_id": message_id})
 
 
@@ -251,6 +258,7 @@ async def kick_from_room(db: AsyncSession, actor_id: int, room_id: int, target_i
         await room_service.publish_seats(db, room)
 
     # Önce odaya duyur (atılan kişinin ekranı da bu mesajı alıp odadan çıkar), sonra bağlantısını kapat.
+    audit("room_user_kicked", room_id=room.id, target_id=target_id)
     await room_hub.publish(room.id, events.ROOM_USER_KICKED, {"user": await _user_payload(db, target_id)})
     await room_hub.disconnect_user(room.id, target_id, events.CLOSE_BANNED)
     await voice_provider.remove_participant(room.id, target_id)
@@ -272,6 +280,7 @@ async def update_room(db: AsyncSession, actor_id: int, room_id: int, data: RoomU
         setattr(room, field, value)
     await db.commit()
 
+    audit("room_updated", room_id=room.id, fields=sorted(data.model_fields_set))
     await room_hub.publish(room.id, events.ROOM_UPDATED, {
         "title": room.title, "category": room.category, "cover_url": room.cover_url,
         "announcement": room.announcement, "free_seating": room.free_seating,
@@ -291,6 +300,7 @@ async def close_room(db: AsyncSession, actor_id: int, room_id: int) -> None:
     room.is_live = False
     await db.commit()
 
+    audit("room_closed", room_id=room.id)
     await room_hub.publish(room.id, events.ROOM_CLOSED, {})
     await room_hub.disconnect_room(room.id, events.CLOSE_ROOM_NOT_FOUND)
     await room_state.drop_room(room.id)

@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import utcnow
 from app.core.errors import ConflictError, ForbiddenError, NotFoundError
+from app.core.logs import audit
 from app.core.timefmt import as_utc
 from app.models import StoreItem, User, UserItem
 from app.schemas.store import OwnedItemOut, StoreItemOut, StorePurchaseResult
@@ -184,6 +185,7 @@ async def purchase_item(
         )
         owned = await grant_item(db, user_id, item, days=days)
         await db.commit()
+        audit("store_purchase", item_id=item.id, days=days, price=price)
     except IntegrityError:
         # Aynı anahtarla eşzamanlı ikinci istek ya da aynı eşyanın aynı anda iki kez alınması.
         await db.rollback()

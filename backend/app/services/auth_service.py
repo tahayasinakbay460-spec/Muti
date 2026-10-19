@@ -2,6 +2,7 @@
 Kimlik işlemleri: kayıt, giriş, misafir girişi, token yenileme, çıkış,
 parola değiştirme, hesap silme.
 """
+import logging
 import secrets
 from datetime import timedelta
 
@@ -13,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.database import utcnow
 from app.core.errors import AppError, ConflictError, UnauthorizedError
+from app.core.logs import audit
 from app.core.security import (
     create_access_token, generate_refresh_token, hash_password, hash_refresh_token, verify_password,
 )
@@ -80,6 +82,7 @@ async def register(db: AsyncSession, data: RegisterRequest) -> TokenResponse:
         display_name=data.username,   # ekranda yazıldığı haliyle (büyük/küçük harf korunur)
     )
     await _create_user(db, user)
+    audit("user_registered", new_user_id=user.id, username=username)
     return await _issue_tokens(db, user)
 
 
@@ -94,10 +97,16 @@ async def login(db: AsyncSession, data: LoginRequest) -> TokenResponse:
 
     # Aynı sebeple hata mesajı da tek: hangisinin yanlış olduğunu söylemiyoruz.
     if user is None or not user.password_hash or not password_ok:
+        # Kayıtta sebep yazılır (kullanıcıya söylenmez): aynı ada art arda gelen başarısız
+        # denemeler parola tahmin saldırısının işaretidir. Denenen parola ASLA yazılmaz.
+        audit("login_failed", log_level=logging.WARNING, username=data.username.lower(),
+              reason="unknown_user" if user is None else "bad_password")
         raise UnauthorizedError("Kullanıcı adı veya şifre hatalı.", code="invalid_credentials")
     if not user.is_active:
+        audit("login_failed", log_level=logging.WARNING, username=user.username, reason="account_disabled")
         raise UnauthorizedError("Bu hesap engellenmiş.", code="account_disabled")
 
+    audit("login_succeeded", login_user_id=user.id)
     return await _issue_tokens(db, user)
 
 
@@ -110,6 +119,7 @@ async def login_as_guest(db: AsyncSession) -> TokenResponse:
         is_guest=True,
     )
     await _create_user(db, user)
+    audit("guest_created", new_user_id=user.id)
     return await _issue_tokens(db, user)
 
 
@@ -132,6 +142,8 @@ async def refresh(db: AsyncSession, refresh_token: str) -> TokenResponse:
         raise invalid
 
     if stored.revoked_at is not None:
+        # Kullanılmış bir token tekrar geldi: çalınmış olabilir. Bütün oturumlar kapatılır.
+        audit("refresh_token_reuse", log_level=logging.WARNING, affected_user_id=stored.user_id)
         await _revoke_all(db, stored.user_id)
         raise invalid
 
@@ -186,6 +198,7 @@ async def change_password(db: AsyncSession, user: User, data: ChangePasswordRequ
         raise UnauthorizedError("Mevcut şifre hatalı.", code="invalid_credentials")
     user.password_hash = await hash_password(data.new_password)
     await _revoke_all(db, user.id)   # commit eder
+    audit("password_changed")
     return await _issue_tokens(db, user)
 
 
@@ -223,3 +236,4 @@ async def delete_account(db: AsyncSession, user: User, password: str | None) -> 
     user.city = None
     user.is_active = False
     await _revoke_all(db, user.id)   # commit eder
+    audit("account_deleted", deleted_user_id=user.id)

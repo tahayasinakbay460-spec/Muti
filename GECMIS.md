@@ -85,6 +85,20 @@ Kodda "DEMO KISAYOLU" diye işaretlidir. Mobil/canlı aşamasında değiştirile
 
 # Kayıtlar
 
+## 2026-10-19 — Kayıt (log) sistemi, test kapsamı ölçümü ve eksik testler
+
+**Amaç:** Kullanıcı sordu: "Yeterince testimiz var mı, log tutuyor muyuz?" Cevap: log neredeyse yoktu; testlerin gerçek kapsamı bilinmiyordu.
+
+**Ne yapıldı:**
+- `app/core/logs.py`: her HTTP isteğine numara (`X-Request-ID`, yanıt başlığında da), erişim kaydı (`muti.access`: yöntem, yol, sonuç, süre, kullanıcı), güvenlik/para kaydı (`muti.audit`: giriş başarılı/başarısız, refresh token tekrar kullanımı, kayıt, misafir, şifre değişikliği, hesap silme, coin/mağaza/VIP alımı, elmas çevirme, sandık, şikâyet, bütün moderasyon işlemleri). Beklenmedik hata tam dökümüyle kaydedilir; kullanıcıya yalnızca `internal_error` + destek numarası döner. WebSocket oda giriş/çıkışı kaydedilir. Geliştirmede okunabilir satır, canlıda `LOG_JSON=true` ile JSON; `LOG_FILE` ile dönen dosya. İstemciden gelen istek numarası yalnızca güvenli biçimdeyse kabul edilir (sahte kayıt satırı sokulamasın).
+- Test kapsamı ölçümü: `pytest-cov` + `.coveragerc`. İlk ölçüm %77 gösterdi ama yanlıştı: SQLAlchemy async (greenlet) ayarı olmadan çalışan satırlar görülmüyordu. Doğru ölçüm %93. CI'a %90 alt sınırı eklendi.
+- Kapsamın gösterdiği önemli boşluklara test (`test_gaps.py`): çıkış yapınca refresh token'ın geçersizleşmesi, bilinmeyen token, VIP'te çift istek, sandığın süre dolunca kapanması, şanslı hediyenin gerçek çekilişi. Kayıt testleri (`test_logging.py`): istek numarası, erişim kaydı, parolanın kayda girmediği, para/moderasyon kayıtları, iç ayrıntı sızdırmayan 500.
+- Yazarken yakalanan hata: `audit(..., level=...)` hem log seviyesi hem alan adı olabiliyordu; VIP kaydı sessizce kaybolacaktı. Parametre `log_level` yapıldı.
+
+**Doğrulama:** 52 test geçiyor, kapsam %94; takım 5 kez art arda geçti; ruff ve pip-audit temiz; gerçek sunucuda kayıt satırları görüldü (başarısız giriş ve erişim kaydı aynı istek numarasıyla).
+
+**Açık kalanlar:** Kayıtlar bir log servisine gönderilmiyor (canlıda hosting paneli / Loki). Hata izleme servisi (Sentry gibi) yok. Frontend'de hata ekranı istek numarasını henüz göstermiyor.
+
 ## 2026-10-19 — Gelir sistemleri (mağaza, VIP, şanslı hediye, hazine sandığı, hediye paketi) ve CI
 
 **Amaç:** CLAUDE.md "D. Hedef Özellikler" 1. grubu (para kazandıran sistemler). Ardından GitHub'a gönderim ve Eva_Agent projesindeki (dal `phase-0-skeleton`) CI'a benzer bir kalite kapısı.

@@ -61,6 +61,14 @@ class Settings(BaseSettings):
     # olmadan çalışır. Canlıda false olmak ZORUNDA.
     demo_mode: bool = True
 
+    # ── Kayıt (log) ───────────────────────────────────────────────────────────
+    # DEBUG | INFO | WARNING | ERROR. INFO: her istek ve güvenlik/para olayları yazılır.
+    log_level: str = "INFO"
+    # true: her satır JSON (canlıda log toplama servisleri için), false: okunabilir tek satır.
+    log_json: bool = False
+    # Doluysa kayıtlar ayrıca bu dosyaya da yazılır (10 MB'da bir yeni dosya). Boş: yalnızca ekrana.
+    log_file: str = ""
+
     # ── Ekonomi ───────────────────────────────────────────────────────────────
     # Yeni kayıt olan kullanıcıya verilen hoş geldin coini.
     signup_bonus_coins: int = 500

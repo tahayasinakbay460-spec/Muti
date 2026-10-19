@@ -15,6 +15,7 @@ KLASÖR HARİTASI — bir istek içeri girince şu yolu izler:
     core/      → herkesin kullandığı altyapı (ayarlar, veritabanı, güvenlik, hatalar)
     demo/      → örnek veri ve sabit içerik (canlıya çıkmadan kaldırılacak)
 """
+import logging
 from contextlib import asynccontextmanager
 
 import uvicorn
@@ -24,11 +25,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.database import Base, SessionLocal, engine
 from app.core.errors import register_error_handlers
+from app.core.logs import RequestLogMiddleware, setup_logging
 from app import models  # noqa: F401  (tablolar SQLAlchemy'ye tanıtılsın diye import ediliyor)
 from app.demo import seed
 from app.realtime import room_socket, user_socket
 from app.realtime.state import room_state
 from app.routers import auth, content, conversations, economy, rooms, social, store, users
+
+
+setup_logging()
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -51,7 +57,9 @@ async def lifespan(_app: FastAPI):
             await seed.seed_database(db)
         await seed.seed_live_state(room_state)
 
+    logger.info("Server started (environment=%s, demo_mode=%s)", settings.environment, settings.demo_mode)
     yield
+    logger.info("Server stopping")
     await engine.dispose()   # veritabanı bağlantılarını düzgünce kapat
 
 
@@ -67,7 +75,12 @@ app.add_middleware(
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
+    # Tarayıcıdaki kod hata ekranında istek numarasını gösterebilsin.
+    expose_headers=["X-Request-ID"],
 )
+# Her isteği kaydeder (core/logs.py). CORS'tan sonra eklendiği için dışta kalır: CORS'un
+# reddettiği istekler de kayda geçer.
+app.add_middleware(RequestLogMiddleware)
 
 # Bütün HTTP uçları /api/v1 altında. İleride uyumsuz bir değişiklik gerekirse /api/v2
 # açılır; eski mobil uygulama sürümleri /api/v1 ile çalışmaya devam eder.
@@ -88,4 +101,5 @@ async def health() -> dict:
 
 
 if __name__ == "__main__":
-    uvicorn.run("app.main:app", host=settings.host, port=settings.port)
+    # access_log=False: istek kayıtlarını uvicorn değil RequestLogMiddleware yazar (çift satır olmasın).
+    uvicorn.run("app.main:app", host=settings.host, port=settings.port, access_log=False)

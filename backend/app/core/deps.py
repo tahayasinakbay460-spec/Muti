@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.errors import UnauthorizedError
+from app.core.logs import user_id_var
 from app.core.security import decode_access_token
 from app.models import User
 from app.realtime.state import room_state
@@ -37,6 +38,8 @@ async def get_current_user_id(
     if credentials is None:
         raise UnauthorizedError("Bu işlem için giriş yapmalısın.", code="not_authenticated")
     user_id = decode_access_token(credentials.credentials)
+    # Bu isteğin bütün kayıtlarında kim olduğu görünsün (bkz. core/logs.py).
+    user_id_var.set(user_id)
     # Her istekte "bu kullanıcı şu an aktif" damgasını yenile (çevrimiçi göstergesi için).
     await room_state.touch_presence(user_id)
     return user_id

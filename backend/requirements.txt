@@ -11,3 +11,5 @@ httpx==0.28.1
 
 # Testler
 pytest==9.1.1
+# Test kapsamı ölçümü (CI'da %90 alt sınırı; ayar: .coveragerc)
+pytest-cov==7.0.0
