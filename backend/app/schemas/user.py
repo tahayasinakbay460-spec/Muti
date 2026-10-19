@@ -21,6 +21,8 @@ class UserOut(BaseModel):
     bio: str
     vip_level: int
     level: int
+    experience: int           # deneyim puanı (bkz. services/level_service.py)
+    next_level_experience: int  # bir sonraki seviye için gereken toplam deneyim
     is_verified: bool
     is_guest: bool
     is_online: bool
@@ -34,6 +36,7 @@ class UserOut(BaseModel):
     # ── Bakan kişiye göre değişen alanlar ─────────────────────────────────────
     is_me: bool               # bu profil, isteği atan kişinin kendisi mi?
     is_following: bool        # isteği atan kişi bu kullanıcıyı takip ediyor mu?
+    is_blocked: bool = False  # isteği atan kişi bu kullanıcıyı engelledi mi?
     # Bakiye özeldir: yalnızca kişi kendi profiline bakarken dolu gelir, başkası için null.
     coin_balance: int | None = None
     diamond_balance: int | None = None

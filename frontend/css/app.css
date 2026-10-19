@@ -934,3 +934,67 @@ small { font-size: 12px; color: var(--muted); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
 }
+
+/* ─── Oda moderasyonu: dinleyici listesi, roller, ayarlar ──────────────────── */
+.btn-danger { background: linear-gradient(135deg, #ff4d6d, #d6264a); box-shadow: 0 8px 22px rgba(255, 77, 109, 0.3); }
+.seat-role-vip { background: linear-gradient(135deg, #3a2a08, #8a610f); color: var(--gold); }
+.seat-mic.is-blocked { color: #ff6b84; background: #3a1622; }
+.mini-role { padding: 1px 6px; border-radius: 6px; font-size: 9px; font-weight: 800; color: #fff; background: linear-gradient(135deg, #ffb800, #ff7a1a); vertical-align: 1px; }
+.mini-role-admin { background: linear-gradient(135deg, #6d5bff, #b14bff); }
+.mini-role-vip { background: #6b4a0c; color: var(--gold); }
+.chat-line[data-message-id] { cursor: pointer; }
+.room-audience { color: inherit; }
+.member-list { display: grid; max-height: 60vh; overflow-y: auto; margin: 0 calc(var(--pad) * -1); }
+.member-row { display: flex; align-items: center; gap: 12px; padding: 10px var(--pad); text-align: left; }
+.member-row + .member-row { border-top: 1px solid var(--line); }
+.member-info { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.member-info b { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.member-info small { font-size: 12px; color: var(--muted); }
+.member-empty { padding: 24px 0; text-align: center; color: var(--muted); }
+.message-preview { padding: 4px 0 10px; color: #c4c0d6; overflow-wrap: anywhere; }
+.sheet-text { margin-bottom: 18px; color: #c4c0d6; line-height: 1.45; }
+.invite-actions { display: grid; grid-template-columns: 1fr 1.4fr; gap: 10px; width: 100%; margin-top: 12px; }
+.switch-row { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; cursor: pointer; }
+.switch-row > span { flex: 1; display: grid; gap: 2px; }
+.switch-row small { font-size: 12px; color: var(--muted); }
+.switch-row input { width: 22px; height: 22px; accent-color: var(--pink); }
+
+/* ─── Bildirimler, ayarlar, kişi arama, gelir, seviye ──────────────────────── */
+.notification-list { display: grid; }
+.notification { display: flex; align-items: center; gap: 12px; padding: 12px var(--pad); color: inherit; }
+.notification + .notification { border-top: 1px solid var(--line); }
+.notification.is-unread { background: rgba(139, 92, 255, 0.1); }
+.notification-icon { width: 44px; height: 44px; flex: none; display: grid; place-items: center; border-radius: 50%; background: var(--surface-2); font-size: 20px; }
+.notification-body { flex: 1; min-width: 0; display: grid; gap: 3px; }
+.notification-body p { font-size: 14px; line-height: 1.35; }
+.notification-body small { font-size: 12px; color: var(--muted); }
+
+.settings-card { display: flex; align-items: center; gap: 12px; margin: 4px var(--pad) 8px; padding: 14px; border-radius: 18px; background: var(--surface-2); }
+.settings-card span { display: grid; gap: 2px; }
+.settings-card small { color: var(--muted); font-size: 12px; }
+.settings-title { margin: 18px var(--pad) 4px; font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.settings-list { margin: 0 var(--pad); }
+.settings-list + .settings-list { margin-top: 18px; }
+.settings-note { padding: 8px 0; font-size: 13px; color: var(--muted); line-height: 1.4; }
+.settings-version { margin: 24px 0; text-align: center; font-size: 12px; color: var(--muted); }
+
+.explore-modes { margin: 0 var(--pad) 12px; }
+.user-row { color: inherit; }
+.user-row .badge { vertical-align: 1px; }
+.online-dot { width: 10px; height: 10px; border-radius: 50%; background: #2ee6a6; box-shadow: 0 0 0 3px rgba(46, 230, 166, 0.2); }
+
+.wallet-tabs { margin: 0 var(--pad) 14px; }
+.balance-card-diamond { background: linear-gradient(135deg, #1b3a5c, #3d8bff 60%, #8b5cff); }
+.diamond-lg { font-size: 30px; line-height: 1; }
+.income-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 12px var(--pad) 0; }
+.income-stats div { display: grid; gap: 2px; padding: 12px; border-radius: 14px; background: var(--surface-2); text-align: center; }
+.income-stats b { font-size: 17px; }
+.income-stats small { font-size: 11px; color: var(--muted); }
+.exchange-form { display: flex; gap: 8px; align-items: center; }
+.exchange-form input { flex: 1; min-width: 0; height: 44px; padding: 0 14px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface-2); color: inherit; font: inherit; }
+.supporter-rank { width: 22px; text-align: center; font-weight: 800; color: var(--gold); }
+
+.level-progress { margin: 10px var(--pad) 0; display: grid; gap: 6px; }
+.level-progress span { display: flex; justify-content: space-between; align-items: baseline; font-size: 12px; }
+.level-progress small { color: var(--muted); }
+.level-progress i { display: block; height: 6px; border-radius: 999px; background: linear-gradient(90deg, var(--pink) var(--progress), var(--surface-2) var(--progress)); }

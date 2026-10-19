@@ -1,5 +1,6 @@
 """
-Kimlik işlemleri: kayıt, giriş, misafir girişi, token yenileme, çıkış.
+Kimlik işlemleri: kayıt, giriş, misafir girişi, token yenileme, çıkış,
+parola değiştirme, hesap silme.
 """
 import secrets
 from datetime import timedelta
@@ -11,13 +12,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import utcnow
-from app.core.errors import ConflictError, UnauthorizedError
+from app.core.errors import AppError, ConflictError, UnauthorizedError
 from app.core.security import (
     create_access_token, generate_refresh_token, hash_password, hash_refresh_token, verify_password,
 )
 from app.core.timefmt import as_utc
-from app.models import RefreshToken, User
-from app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse
+from app.models import Follow, RefreshToken, Room, User
+from app.schemas.auth import ChangePasswordRequest, LoginRequest, RegisterRequest, TokenResponse
 from app.services import user_service, wallet_service
 
 # Olmayan bir kullanıcı adıyla giriş denendiğinde de bir parola kontrolü yapabilmek
@@ -170,3 +171,55 @@ async def _revoke_all(db: AsyncSession, user_id: int) -> None:
         .values(revoked_at=utcnow())
     )
     await db.commit()
+
+
+# ── Hesap ayarları ────────────────────────────────────────────────────────────
+
+async def change_password(db: AsyncSession, user: User, data: ChangePasswordRequest) -> TokenResponse:
+    """
+    Parolayı değiştirir. Diğer cihazlardaki bütün oturumlar kapatılır (parola çalındıysa
+    saldırgan da dışarıda kalsın); bu cihaz için yeni bir token çifti döner.
+    """
+    if not user.password_hash:
+        raise AppError("Misafir hesabın parolası yok. Önce kayıt ol.", code="guest_account")
+    if not await verify_password(data.current_password, user.password_hash):
+        raise UnauthorizedError("Mevcut şifre hatalı.", code="invalid_credentials")
+    user.password_hash = await hash_password(data.new_password)
+    await _revoke_all(db, user.id)   # commit eder
+    return await _issue_tokens(db, user)
+
+
+async def delete_account(db: AsyncSession, user: User, password: str | None) -> None:
+    """
+    Hesabı siler. Uygulama mağazaları (App Store, Google Play) uygulama içinden hesap
+    silmeyi zorunlu tutar.
+
+    Kişisel bilgiler (e-posta, parola, ad, fotoğraf, biyografi) silinir ve hesap kapanır.
+    Para hareketleri defteri (transactions) yasal kayıt olduğu için silinmez; bu satırlar
+    artık kimliği belirsiz "Silinmiş kullanıcı"ya bağlıdır.
+    """
+    if user.password_hash and not (password and await verify_password(password, user.password_hash)):
+        raise UnauthorizedError("Şifre hatalı.", code="invalid_credentials")
+
+    # Takipleri iki yönde de kaldır (karşı tarafların sayaçları düzelsin).
+    follows = (await db.execute(
+        select(Follow.follower_id, Follow.followee_id)
+        .where(or_(Follow.follower_id == user.id, Follow.followee_id == user.id))
+    )).all()
+    for follower_id, followee_id in follows:
+        await user_service.set_follow(db, follower_id, followee_id, follow=False)
+
+    # Kişinin açtığı odalar kapanır.
+    await db.execute(update(Room).where(Room.host_id == user.id).values(is_active=False, is_live=False))
+
+    user.username = f"deleted_{user.id}"
+    user.email = None
+    user.password_hash = None
+    user.display_name = "Silinmiş kullanıcı"
+    user.avatar_url = None
+    user.cover_url = None
+    user.bio = ""
+    user.age = None
+    user.city = None
+    user.is_active = False
+    await _revoke_all(db, user.id)   # commit eder

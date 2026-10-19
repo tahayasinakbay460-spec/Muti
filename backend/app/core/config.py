@@ -66,6 +66,29 @@ class Settings(BaseSettings):
     signup_bonus_coins: int = 500
     # Hediyenin coin değerinin yüzde kaçı alıcıya elmas (diamond) olarak geçer.
     gift_receiver_share_percent: int = Field(default=50, ge=0, le=100)
+    # Yayıncı geliri: 1 elmas çevrilince kaç coin olur.
+    diamond_to_coin_rate: int = Field(default=1, ge=1)
+    # Elmasların gerçek paraya çevrilip çekilmesi. Ödeme altyapısı ve kimlik doğrulama
+    # (KYC) olmadan açılmaz; şimdilik kapalı.
+    withdrawals_enabled: bool = False
+
+    # ── Sesli görüşme (WebRTC) ────────────────────────────────────────────────
+    # "mesh":    tarayıcılar birbirine doğrudan bağlanır, ek sunucu gerekmez (küçük odalar).
+    # "livekit": açık kaynak medya sunucusu (SFU); kalabalık odalar için. Bkz. app/voice/.
+    voice_provider: Literal["mesh", "livekit"] = "mesh"
+    # STUN: tarayıcının dışarıdan nasıl göründüğünü öğrenmesi için. Varsayılan Google'ın
+    # ücretsiz sunucusu; kendi coturn sunucumuz kurulunca onun adresi yazılır.
+    voice_stun_urls: list[str] = ["stun:stun.l.google.com:19302"]
+    # TURN: doğrudan bağlantı kurulamayan ağlar için ses aktarıcı (ör. coturn).
+    # Örnek: ["turn:turn.ornek.com:3478?transport=udp", "turns:turn.ornek.com:5349"]
+    voice_turn_urls: list[str] = []
+    # coturn'deki "static-auth-secret" ile aynı olmalı. Boşsa TURN kullanılmaz.
+    voice_turn_secret: str = ""
+    voice_turn_ttl_seconds: int = 3600
+    # Yalnızca VOICE_PROVIDER=livekit iken: wss://ses.ornek.com ve API anahtar çifti.
+    livekit_url: str = ""
+    livekit_api_key: str = ""
+    livekit_api_secret: str = ""
 
     # ── Görüntüleme ───────────────────────────────────────────────────────────
     # DEMO KISAYOLU: "21:05" gibi saat etiketlerini sunucu üretiyor (Türkiye = UTC+3).

@@ -1,13 +1,16 @@
 """
-/api/v1/rooms — oda listesi, oda oluşturma, oda takibi, koltuk ve mikrofon işlemleri, moderasyon.
+/api/v1/rooms — oda listesi, oda oluşturma ve ayarları, oda takibi, koltuk ve mikrofon işlemleri, moderasyon.
 """
 from typing import Annotated
 
-from fastapi import APIRouter, Query, Response, status
+from fastapi import APIRouter, Path, Query, Response, status
 
 from app.core.deps import CurrentUserId, DbSession
-from app.schemas.room import RoomCreateRequest, RoomFollowResult, RoomOut
+from app.schemas.room import (
+    ChatMuteRequest, RoomCreateRequest, RoomFollowResult, RoomMemberOut, RoomOut, RoomRoleRequest, RoomUpdateRequest,
+)
 from app.services import moderation_service, room_service
+from app.voice import VoiceJoinInfo
 
 router = APIRouter(prefix="/rooms", tags=["rooms"])
 
@@ -43,6 +46,34 @@ async def get_room(room_id: int, user_id: CurrentUserId, db: DbSession):
     return await room_service.get_room(db, user_id, room_id)
 
 
+@router.patch("/{room_id}", response_model=RoomOut)
+async def update_room(room_id: int, data: RoomUpdateRequest, user_id: CurrentUserId, db: DbSession):
+    """Oda ayarlarını değiştirir (ad, kategori, duyuru, kapak, koltuk kuralı). Oda sahibi ve yöneticiler."""
+    return await moderation_service.update_room(db, user_id, room_id, data)
+
+
+@router.delete("/{room_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def close_room(room_id: int, user_id: CurrentUserId, db: DbSession):
+    """Odayı kapatır; içerideki herkes çıkarılır. Yalnızca oda sahibi."""
+    await moderation_service.close_room(db, user_id, room_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/{room_id}/members", response_model=list[RoomMemberOut])
+async def list_members(room_id: int, user_id: CurrentUserId, db: DbSession):
+    """Odada şu an bulunan kişiler (dinleyici listesi), rolleriyle."""
+    return await moderation_service.list_members(db, user_id, room_id)
+
+
+@router.get("/{room_id}/voice", response_model=VoiceJoinInfo)
+async def get_voice_join(room_id: int, user_id: CurrentUserId, db: DbSession):
+    """
+    Odanın sesine bağlanma bilgisi. Cevabın biçimi sunucudaki ses sağlayıcısına göre
+    değişir (`provider`: "mesh" ya da "livekit"); istemci buna göre bağlanır.
+    """
+    return await room_service.get_voice_join(db, user_id, room_id)
+
+
 @router.post("/{room_id}/follow", response_model=RoomFollowResult)
 async def toggle_room_follow(room_id: int, user_id: CurrentUserId, db: DbSession):
     """Odayı takip ediyorsan bırakır, etmiyorsan takip eder."""
@@ -70,16 +101,13 @@ async def toggle_mute(room_id: int, user_id: CurrentUserId, db: DbSession):
 # ── Moderasyon ────────────────────────────────────────────────────────────────
 # Yetki kontrolleri moderation_service içinde yapılır (oda sahibi / yönetici).
 
-@router.put("/{room_id}/admins/{target_id}", response_model=RoomOut)
-async def add_admin(room_id: int, target_id: int, user_id: CurrentUserId, db: DbSession):
-    """Kişiyi oda yöneticisi yapar. Yalnızca oda sahibi."""
-    return await moderation_service.set_admin(db, user_id, room_id, target_id, make_admin=True)
-
-
-@router.delete("/{room_id}/admins/{target_id}", response_model=RoomOut)
-async def remove_admin(room_id: int, target_id: int, user_id: CurrentUserId, db: DbSession):
-    """Kişinin yöneticiliğini alır. Yalnızca oda sahibi."""
-    return await moderation_service.set_admin(db, user_id, room_id, target_id, make_admin=False)
+@router.put("/{room_id}/roles/{target_id}", response_model=RoomOut)
+async def set_role(room_id: int, target_id: int, data: RoomRoleRequest, user_id: CurrentUserId, db: DbSession):
+    """
+    Kişinin odadaki rolünü değiştirir: "admin", "vip" ya da "listener" (rolü geri al).
+    Yönetici yalnızca oda sahibi tarafından atanır; VIP'i yöneticiler de verebilir.
+    """
+    return await moderation_service.set_role(db, user_id, room_id, target_id, data.role)
 
 
 @router.put("/{room_id}/seats/{seat_index}/lock", response_model=RoomOut)
@@ -103,4 +131,44 @@ async def remove_from_seat(room_id: int, seat_index: int, user_id: CurrentUserId
 async def kick_from_room(room_id: int, target_id: int, user_id: CurrentUserId, db: DbSession):
     """Kişiyi odadan atar; bir süre (10 dk) geri giremez."""
     await moderation_service.kick_from_room(db, user_id, room_id, target_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/{room_id}/seat-invites/{target_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def invite_to_seat(room_id: int, target_id: int, user_id: CurrentUserId, db: DbSession):
+    """Odadaki bir dinleyiciyi koltuğa davet eder (60 sn geçerli)."""
+    await moderation_service.invite_to_seat(db, user_id, room_id, target_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.put("/{room_id}/mic-blocks/{target_id}", response_model=RoomOut)
+async def block_mic(room_id: int, target_id: int, user_id: CurrentUserId, db: DbSession):
+    """Kişinin mikrofonunu kapatır; engel kalkana kadar kendisi açamaz."""
+    return await moderation_service.set_mic_blocked(db, user_id, room_id, target_id, blocked=True)
+
+
+@router.delete("/{room_id}/mic-blocks/{target_id}", response_model=RoomOut)
+async def unblock_mic(room_id: int, target_id: int, user_id: CurrentUserId, db: DbSession):
+    return await moderation_service.set_mic_blocked(db, user_id, room_id, target_id, blocked=False)
+
+
+@router.put("/{room_id}/chat-mutes/{target_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def mute_chat(room_id: int, target_id: int, data: ChatMuteRequest, user_id: CurrentUserId, db: DbSession):
+    """Kişiyi belirli bir süre sohbete yazamaz yapar."""
+    await moderation_service.set_chat_mute(db, user_id, room_id, target_id, data.minutes)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.delete("/{room_id}/chat-mutes/{target_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def unmute_chat(room_id: int, target_id: int, user_id: CurrentUserId, db: DbSession):
+    await moderation_service.set_chat_mute(db, user_id, room_id, target_id, None)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.delete("/{room_id}/messages/{message_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_chat_message(
+    room_id: int, message_id: Annotated[str, Path(max_length=32)], user_id: CurrentUserId, db: DbSession,
+):
+    """Sohbetteki bir mesajı siler: kendi mesajını herkes, başkasınınkini yönetici."""
+    await moderation_service.delete_chat_message(db, user_id, room_id, message_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

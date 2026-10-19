@@ -11,7 +11,7 @@ Projede yapılan işlerin kaydı.
 
 **Aşama:** Web demo. Frontend ekranları hazır ve gerçek backend'e bağlı (`USE_MOCK = false`).
 
-**Çalışan:** giriş/kayıt/misafir, oda listesi, oda içi sohbet, koltuklar, zar ve rulet oyunları, kademeli hediye animasyonları, hediye gönderme, coin satın alma, özel mesajlar (anlık bildirimli), kullanıcı takibi, oda takibi, profil ve profil düzenleme, cüzdan, oda yöneticileri ve moderasyon (koltuk kilitleme, koltuktan indirme, odadan atma).
+**Çalışan:** giriş/kayıt/misafir, oda listesi, oda içi sohbet, koltuklar, zar ve rulet oyunları, kademeli hediye animasyonları, hediye gönderme, coin satın alma, özel mesajlar (anlık bildirimli), kullanıcı takibi, oda takibi, profil ve profil düzenleme, cüzdan, **gerçek ses (WebRTC, mesh)** ve konuşan koltukta halka, kişi arama, bildirim merkezi, ayarlar (şifre değiştirme, engellenenler, hesap silme), engelleme ve şikâyet, seviye sistemi, yayıncı geliri (elmas → coin), oda rolleri (oda sahibi, yönetici, VIP) ve tam moderasyon: dinleyici listesi, koltuk kilitleme, koltuktan indirme, koltuğa davet, başkasının mikrofonunu kapatma, sohbette süreli susturma, mesaj silme, odadan atma, oda ayarları, odayı kapatma.
 
 **Kod okuma turu (2026-10-14):** Auth, oda listesi akışı (`list_rooms` → `present_rooms` → `realtime/state.py`) ve `room_socket` okundu. Sırada ekonomi (`gift_service`, `wallet_service`) derinlemesine; diğer router/servisler yüzeysel; sonra `hub.py`.
 
@@ -21,7 +21,11 @@ Projede yapılan işlerin kaydı.
 
 **Kod nerede:** GitHub, private repo `tahayasinakbay460-spec/Muti` (dal `main`). Commit mesajlarına Claude/Co-Authored-By satırı eklenmez.
 
-**Sıradaki adım (2026-10-19):** Müşteri bu hafta uygulamayı canlı görmek istiyor. Görüşmenin günü henüz belli değil; başlarken sorulacak. Sırayla:
+**2026-10-19 kullanıcı kararı:** Sıra şöyle değişti: (1) moderasyonu tamamla ✅, (2) gerçek ses (WebRTC) ✅, (3) eksik temel özellikler: arama, ayarlar ekranı, bildirim merkezi, engelleme ve şikâyet, yayıncı geliri, seviye sistemi ✅. Commit edildi (GitHub'a gönderilmedi).
+
+**Sıradaki adım:** demo yayını ve giriş hız sınırı (aşağıdaki plan). Yayında ses için kendi TURN sunucumuz (coturn) gerekecek; https zorunlu (tarayıcı mikrofonu yalnızca güvenli adreste açar). WebRTC sağlayıcı değiştirilebilir kurulacak: bugün kullanılan servis ileride açık kaynak bir servisle ya da başka bir sağlayıcıyla değiştirilebilmeli. Demo yayını bunlardan sonra.
+
+**Demo yayını planı (2026-10-18'de yazıldı):** Müşteri bu hafta uygulamayı canlı görmek istiyor. Görüşmenin günü henüz belli değil; başlarken sorulacak. Sırayla:
 
 1. **Demo yayını.** Ücretli, uyumayan hosting onaylandı (bütçe ~500 TL). Yapılacaklar:
    - Backend tek sunucuda çalışmalı (canlı durum bellek içi).
@@ -42,12 +46,13 @@ Bu bir demo yayını, mağaza yayını değil. Gerçek ses, gerçek ödeme ve ke
 
 | Eksik | Not |
 |---|---|
-| Gerçek ses (WebRTC) | Koltuktaki "konuşuyor" halkası bu yüzden yanmıyor |
+| TURN sunucusu | Ses mesh ile çalışıyor; sıkı ağlarda (bazı mobil operatörler, şirket ağları) doğrudan bağlantı kurulamazsa TURN gerekir. coturn kurulup `VOICE_TURN_URLS` / `VOICE_TURN_SECRET` doldurulacak |
+| Kalabalık oda sesi | Mesh ~30 kişiye kadar. Daha kalabalık odalar için `VOICE_PROVIDER=livekit` hazır ama canlı LiveKit sunucusuyla denenmedi |
+| Elmasların gerçek paraya çekimi | Ödeme altyapısı ve kimlik doğrulama (KYC) gerekir; `WITHDRAWALS_ENABLED=false` |
+| Kullanım koşulları / gizlilik politikası sayfaları | Ayarlarda "yakında" diyor; mağaza yayını için zorunlu |
 | Uygulama kapalıyken bildirim (push) | Anlık bildirim yalnızca uygulama açıkken (/ws/me bağlıyken) çalışır; mobilde APNs/FCM gerekir |
 | Bilardo, 101 Okey, Candy | Ana sayfada kartları var, "Yakında" diyor. Oynanabilen oyunlar: Zar, Rulet |
-| Oda içi `vip` rolü | `host` ve `admin` var; odaya özel VIP üyelik yazılmadı |
-| Dinleyici listesi | Moderatör yalnızca koltuktaki birini atabilir; koltukta olmayan dinleyicileri gösteren liste yok |
-| Admin uçları | Eski admin sayfası silindi, yenisi yazılmadı |
+| Admin uçları | Uygulama geneli yönetim (kullanıcı banlama, şikâyet inceleme) yazılmadı; oda içi moderasyon var |
 | HTTP hız sınırı | Özellikle giriş denemeleri için gerekli |
 | Görsel yükleme | `assets/` içindeki görseller hâlâ yer tutucu |
 
@@ -64,7 +69,7 @@ Kodda "DEMO KISAYOLU" diye işaretlidir. Mobil/canlı aşamasında değiştirile
 |---|---|---|
 | SQLite | `core/config.py` | PostgreSQL (`postgresql+asyncpg://`) |
 | Tablolar `create_all` ile oluşuyor | `main.py` | Alembic migration |
-| Oda durumu, odadan atma yasakları, rulet turları, oda ve kişi yayınları bellek içi (tek sunucu süreci) | `realtime/state.py`, `realtime/hub.py` (`RoomHub`, `UserHub`), `realtime/games.py` | Redis (aynı sözleşmeyle `RedisRoomStateStore`, pub/sub; yasaklar süreli anahtar) |
+| Oda durumu, odadan atma yasakları, sohbette susturma, mikrofon engeli, koltuk davetleri, son 50 sohbet mesajı, rulet turları, oda ve kişi yayınları bellek içi (tek sunucu süreci) | `realtime/state.py`, `realtime/hub.py` (`RoomHub`, `UserHub`), `realtime/games.py` | Redis (aynı sözleşmeyle `RedisRoomStateStore`, pub/sub; yasaklar süreli anahtar) |
 | Satın alma ödeme doğrulamadan coin ekliyor | `wallet_service.purchase` | App Store / Google Play makbuz doğrulama |
 | Banner ve profil ekleri sabit içerik | `demo/content.py` | Tablo + servis |
 | Avatar ve kapak yalnızca hazır listeden seçiliyor | `demo/content.py` (`AVATAR_CHOICES`, `COVER_CHOICES`) | Görsel yükleme (object storage + boyut/tür kontrolü) |
@@ -75,6 +80,155 @@ Kodda "DEMO KISAYOLU" diye işaretlidir. Mobil/canlı aşamasında değiştirile
 ---
 
 # Kayıtlar
+
+## 2026-10-19 — Gerçek ses (WebRTC) ve eksik temel özellikler
+
+**Amaç:**
+
+- Odada gerçek sesli sohbet. Kullanıcının isteği: ses altyapısı sağlayıcı değiştirilebilir kurulsun. Bugün kullanılan servis yarın açık kaynak bir servisle ya da başka bir sağlayıcıyla değiştirilebilmeli.
+- TopTop'ta olup bizde olmayan temel özellikleri eklemek: arama, ayarlar, bildirim merkezi, engelleme ve şikâyet, yayıncı geliri, seviye sistemi.
+
+### Ne yapıldı: Ses
+
+**Mimari: sağlayıcı katmanı.** Oda, koltuk ve yetki kuralları hep bizde. Sesin nasıl taşındığı ise değiştirilebilir bir parça.
+
+- **Backend `app/voice/`:**
+  - `base.py`: sözleşme (`VoiceProvider`).
+    - `join_info`: istemciye "nasıl bağlanacağını" verir.
+    - Kancalar: `sync_publishers` (koltuklar değişince), `remove_participant` (odadan atma), `close_room`.
+  - `mesh.py`: tarayıcılar sesi birbirine doğrudan gönderir; bizim sunucu yalnızca bağlantı mesajlarını taşır. Ek sunucu ve ücret yok. Odada ~30 kişiye kadar uygundur.
+  - `livekit.py`: açık kaynak (Apache 2.0) medya sunucusu LiveKit için hazır sağlayıcı. Kendi sunucumuza kurulabilir ya da LiveKit Cloud kullanılabilir.
+    - Konuşma izni sunucu tarafında açılıp kapanır. Koltuktan inen ya da mikrofonu engellenen kişinin sesini LiveKit keser.
+    - **Canlı LiveKit sunucusuyla denenmedi.** Token biçimi testle doğrulandı.
+  - `ice.py`: STUN/TURN listesi. TURN parolası coturn'ün "use-auth-secret" yöntemiyle bir saatlik üretiliyor, hiçbir yerde saklanmıyor.
+  - Seçim `.env` ile: `VOICE_PROVIDER=mesh|livekit`. Yeni bir sağlayıcı = yeni bir sınıf + `voice/__init__.py`'ye bir satır.
+  - Uç: `GET /rooms/{id}/voice` → `{ provider, can_publish, ice_servers | url + token }`.
+  - Mesh sinyali: oda WebSocket'inde `voice:signal`. Sunucu biçimi doğrular ve yalnızca odadaki iki kişi arasında, en az biri koltuktaysa iletir; iki dinleyici kendi aralarında ses kanalı açamaz. Gönderen kimliğini sunucu yazar.
+- **Frontend `js/voice/`:**
+  - `index.js`: sunucunun söylediği sağlayıcının istemcisini yükler. Arayüz: `start / update(seats) / removePeer / close`.
+  - `mesh.js`:
+    - Kim kime bağlanır: dinleyici → konuşmacılara; konuşmacılar arasında küçük id'li olan bağlantıyı açar.
+    - Her bağlantıda iki yönlü tek ses kanalı var. Koltuğa oturunca mikrofon kanala takılıyor, kalkınca çıkarılıyor; bağlantı yeniden kurulmuyor.
+    - Aynı anda iki teklif gelirse "perfect negotiation" yöntemi kullanılıyor.
+    - Herkes, koltukta olmayan ya da mikrofonu kapalı/engelli görünen birinin sesini kendi tarafında kısıyor. Değiştirilmiş bir istemci kuralı çiğnese bile sesi duyulmuyor.
+  - `livekit.js`: LiveKit istemcisi (CDN'den yüklenir).
+  - `speaking.js`: "kim konuşuyor" halkası. Sunucudan gelmiyor; tarayıcı duyduğu sesin şiddetinden hesaplıyor.
+  - Tarayıcı sesi kullanıcı dokunmadan çalmazsa ilk dokunuşta başlatılıyor.
+- `publish_seats` artık önce ses sağlayıcısına "kimler konuşabilir" bildiriyor, sonra koltukları yayınlıyor.
+
+### Ne yapıldı: Temel özellikler
+
+| Özellik | Backend | Frontend |
+|---|---|---|
+| **Kişi arama** | `GET /users/search?query=`: ad, @kullanıcı adı ya da ID. Engellenenler görünmez | Keşfet'te "Odalar / Kişiler" sekmesi; arama boşken önerilen kişiler |
+| **Bildirim merkezi** | `notifications` tablosu. `GET /notifications`, `/notifications/unread-count`, `POST /notifications/read`. Kişi bağlıysa `/ws/me` üzerinden anında `notification:new`. Türler: takip, hediye alındı, seviye atlandı, odada rol verildi | `#/notifications` ekranı; ana sayfadaki zilde okunmamış noktası; yeni bildirimde kısa uyarı |
+| **Engelleme** | `user_blocks` tablosu. `PUT/DELETE /users/{id}/block`, `GET /users/me/blocks`. İki yönlü etki: mesaj, hediye ve takip yok; takipler iki yönde kalkar; bildirim gitmez. Hata kodu `user_blocked` (kimin engellediği söylenmez) | Başkasının profil menüsünde Engelle / Engeli kaldır; Ayarlar'da engellenenler listesi |
+| **Şikâyet** | `reports` tablosu, `POST /reports` (kullanıcı ya da oda + sebep). Aynı hedefe açık şikâyeti olan tekrar yazamaz | Profil ve oda menüsünde "Şikâyet et" (sebep seçimi + açıklama) |
+| **Seviye** | `users.experience` kolonu, `level_service`. Hediyede harcanan her coin 1 XP. Lv.n için 100 × (n−1)² XP. Seviye hediyeyle aynı transaction'da artar ve yalnızca yükselir | Kendi profilinde seviye çubuğu (XP / sonraki seviye) |
+| **Yayıncı geliri** | `GET /wallet/income`: bugün, 7 gün, toplam elmas, en çok destek olan 5 kişi. `POST /wallet/exchange`: elmas → coin, tek transaction, idempotency anahtarlı. Oran `DIAMOND_TO_COIN_RATE` (1) | Cüzdanda "Coin / Gelir" sekmeleri: elmas bakiyesi, istatistikler, çevirme formu, destekçiler, elmas geçmişi |
+| **Ayarlar** | `POST /auth/change-password`: diğer cihazlar kapanır, bu cihaza yeni token. `DELETE /users/me`: parola onaylı; kişisel bilgiler silinir, takipler kalkar, açtığı odalar kapanır. Para defteri yasal kayıt olarak kalır | `#/settings`: şifre değiştir, engellenenler, çıkış, hesabı sil (onaylı). Profil menüsünden açılır |
+
+### Doğrulama
+
+- `python -m pytest`: **34 test geçti**. 8'i yeni:
+  - ses giriş bilgisi ve sinyal iletim kuralları;
+  - TURN parolası ve LiveKit token biçimi;
+  - kişi arama;
+  - engellemenin mesaj, hediye, takip ve aramaya etkisi;
+  - şikâyet;
+  - hediye → XP, seviye, bildirim, gelir ve elmas çevirme (idempotency dahil);
+  - takip ve rol bildirimleri;
+  - şifre değiştirme ve hesap silme.
+- **Ses tarayıcıda denendi.** İki ayrı sekmede iki ayrı kullanıcı vardı; mikrofon yerine test sesi (440 Hz ton) kullanıldı. Sonuçlar:
+  - Dinleyici, koltuktaki oda sahibine bağlandı (`connected`). Sesi aldı, oda sahibinin koltuğunda "konuşuyor" halkası yandı.
+  - Oda sahibi mikrofonunu kapatınca halka söndü.
+  - Misafir koltuğa oturunca aynı bağlantı yeniden kurulmadan iki yönlü oldu; oda sahibi misafiri duydu.
+  - Oda sahibi misafirin mikrofonunu engelleyince oda sahibinin tarafında misafirin sesi kısıldı ve koltukta kırmızı kilit göründü.
+- **Yeni ekranlar tarayıcıda görülmedi.** Bu ekranlar: bildirimler, ayarlar, kişi arama, cüzdan "Gelir" sekmesi, profil seviye çubuğu.
+  - Sebep: tarayıcı eklentisinin bağlantısı koptu.
+  - Yapılan kontroller:
+    - Bütün JS dosyalarının sözdizimi kontrol edildi.
+    - Her `import` edilen adın gerçekten dışa aktarıldığı ve ekranların çağırdığı her `api` metodunun `httpApi`'de bulunduğu bir betikle kontrol edildi.
+    - Çalışan sunucuya bu ekranların çağırdığı uçlar istek atılarak denendi; hepsi 200 döndü.
+- `backend/app.db` yeniden oluşturuldu (yeni kolon ve tablolar).
+
+### Açık kalanlar
+
+- Yeni ekranlar (bildirimler, ayarlar, kişi arama, gelir sekmesi, seviye çubuğu) tarayıcıda elle denenmeli.
+- Gerçek mikrofonla ve telefondan ses denenmedi. Telefonda mikrofon yalnızca `https` adreste açılır; yerel ağdaki `http://192.168...` adresinde açılmaz. Bu yüzden ses için yayın (https) gerekiyor.
+- TURN sunucusu yok: bazı mobil ağlarda ses bağlanmayabilir.
+- LiveKit sağlayıcısı canlı sunucuyla denenmedi.
+- Bildirimler yalnızca uygulama açıkken anlık; push (APNs/FCM) mobil aşamada `notification_service.notify` içinden tetiklenecek.
+- Şikâyetleri inceleyecek yönetim paneli yok.
+- Kullanım koşulları ve gizlilik politikası sayfaları yok.
+- Hesap silmede kişinin gönderdiği özel mesajlar duruyor (karşı tarafın sohbet geçmişi). Mağaza yayını öncesi gözden geçirilmeli.
+
+## 2026-10-19 — Oda moderasyonu tamamlandı
+
+**Amaç:** Oda yöneticisinin TopTop'taki gibi odayı gerçekten yönetebilmesi. Önceden yalnızca koltuktaki biri atılabiliyordu; koltukta olmayan dinleyiciye ulaşılamıyordu, kimse susturulamıyordu.
+
+### Ne yapıldı
+
+**Roller**
+
+- `room_admins` tablosu yerine **`room_members`** (`room_id`, `user_id`, `role`) geldi. `role`: `admin` ya da `vip`. Rolü olmayan herkes dinleyicidir.
+- Rütbe sırası: oda sahibi > yönetici > VIP > dinleyici. Kural aynı: bir işlem yalnızca alt rütbedeki birine yapılır.
+- Yönetici atamayı yalnızca oda sahibi yapar. VIP'i oda sahibi ve yöneticiler verir. VIP'in yönetim yetkisi yok; koltuklar davetle açıldığında bile kendisi oturabilir.
+- Uç: `PUT /rooms/{id}/roles/{user_id}` `{ role: "admin" | "vip" | "listener" }`. Eski `PUT/DELETE /rooms/{id}/admins/{user_id}` kaldırıldı.
+- `RoomOut` alanlarına `vip_ids` ve `free_seating` eklendi; `room:roles_updated` artık `{ admin_ids, vip_ids }` gönderiyor.
+
+**Yeni moderasyon işlemleri (hepsi `moderation_service`, yetki sunucuda)**
+
+| İşlem | Uç | Not |
+|---|---|---|
+| Dinleyici listesi | `GET /rooms/{id}/members` | Odaya bağlı herkes; rol, koltuk, susturma ve mikrofon durumu ile. Herkes görebilir |
+| Mikrofonu kapatma | `PUT/DELETE /rooms/{id}/mic-blocks/{user_id}` | Kişi kendisi açamaz (`mic_blocked`). Koltuktan kalkıp yeniden otursa da sürer. `SeatOut.is_mic_blocked` |
+| Sohbette susturma | `PUT /rooms/{id}/chat-mutes/{user_id}` `{ minutes: 5/30/60/1440 }`, `DELETE` ile kaldırma | Susturulan yazınca `chat_muted` hatası alır. Yayın: `room:chat_muted` |
+| Mesaj silme | `DELETE /rooms/{id}/messages/{message_id}` | Kendi mesajını herkes, başkasınınkini üst rütbedeki yönetici siler. Yayın: `chat:message_deleted` |
+| Koltuğa davet | `POST /rooms/{id}/seat-invites/{user_id}` | Yalnızca davet edilene `room:seat_invite` gider. 60 sn geçerli, tek kullanımlık. Dolu koltuğu denemek daveti harcamaz |
+| Oda ayarları | `PATCH /rooms/{id}` | Ad, kategori, duyuru, kapak (hazır listeden), `free_seating`. Yayın: `room:updated` |
+| Odayı kapatma | `DELETE /rooms/{id}` | Yalnızca oda sahibi. Satır silinmez (`is_active = false`); herkes 4404 koduyla çıkarılır. Yayın: `room:closed` |
+
+- **Koltuk kuralı (`rooms.free_seating`):** kapalıysa koltuğa kendisi yalnızca oda sahibi, yönetici ve VIP oturur; diğerleri davetle (`seat_requires_invite`).
+
+**Sohbet**
+
+- Her mesajın artık sunucunun ürettiği bir `id`'si ve `created_at`'i var (silinebilsin diye).
+- Odanın son 50 mesajı canlı depoda tutuluyor. Odaya giren kişiye yalnızca kendisine `chat:history` gönderiliyor; sohbetin ortasına boş ekranla düşmüyor.
+- Odadan tamamen çıkan kişi için `room:user_left { user_id }` yayınlanıyor (sesli görüşmede bağlantıyı kapatmak için de gerekli).
+
+**Canlı durum deposu (`realtime/state.py`)**
+
+- Sözleşmeye eklenenler: `seat_index_of`, `set_mic_blocked` / `mic_blocked_ids`, `mute_chat` / `chat_mute_remaining`, `grant_seat_invite` / `consume_seat_invite`, `append_chat` / `recent_chat` / `remove_chat`, `listener_ids`, `is_in_room`, `drop_room`.
+- Süreli kayıtlar (atma yasağı, sohbet susturması, koltuk daveti) tek bir yapıda tutuluyor. Redis'te her biri süreli anahtar olacak. Son mesajlar Redis'te `RPUSH` + `LTRIM` olacak.
+- `RoomHub`'a `send_to_user` (odadaki tek kişiye) ve `disconnect_room` (herkesi çıkar) eklendi.
+
+**Frontend (`screens/room.js`)**
+
+- Üstteki avatar grubuna dokununca **Odadakiler** listesi açılıyor. Birine dokununca kişi paneli açılıyor.
+- Kişi panelinde yalnızca yetkimiz olan işlemler görünüyor: koltuğa davet et, koltuktan indir, mikrofonunu kapat / engeli kaldır, sohbette sustur (süre seçimi) / susturmayı kaldır, VIP yap / al, yönetici yap / al (yalnızca oda sahibi), odadan at.
+- Sohbetteki bir mesaja dokununca: kendi mesajını ya da yetki varsa başkasınınkini silme.
+- Koltuğa davet gelince "Koltuğa otur" paneli çıkıyor; ilk boş koltuğa oturtuyor.
+- Menüde (⋮) "Oda ayarları" (yöneticiler) ve "Odayı kapat" (onaylı, yalnızca oda sahibi).
+- Koltukta ve sohbette rol etiketleri (Oda Sahibi / Yönetici / VIP). Mikrofonu engellenen koltukta kırmızı kilit simgesi.
+- `api.js`: yeni metodlar hem `httpApi` hem `mockApi`'de (mock sadeleştirilmiş).
+
+### Doğrulama
+
+- `python -m pytest`: **26 test geçti** (3'ü yeni: mikrofon engeli + susturma + mesaj silme + son mesajlar; dinleyici listesi + davetle koltuk; oda ayarları + kapatma). Eski moderasyon testi yeni rol ucuna göre güncellendi.
+- Tarayıcıda (oda sahibi `muti` + ayrı bir misafir bağlantısı) denendi:
+  - Dinleyici listesi açıldı.
+  - Kişi panelindeki işlemler göründü.
+  - Sohbette 5 dk susturma: misafirin mesajı `chat_muted` ile reddedildi.
+  - Mesaj silme çalıştı.
+  - Oda ayarlarından ad ve duyuru değişti, ekrana anında yansıdı.
+
+### Açık kalanlar
+
+- **Veritabanı şeması değişti** (`rooms.free_seating` kolonu, `room_members` tablosu). Migration aracı (Alembic) olmadığı için eski `backend/app.db` silindi; açılışta örnek veriyle yeniden oluştu. Eski veritabanında açılmaya çalışılırsa hata verir; çözümü dosyayı silmek.
+- Mikrofon engelini şimdilik istemci uyguluyor. Sesi sunucu tarafında kesmek SFU'lu ses sağlayıcısıyla mümkün olacak (WebRTC aşaması).
+- Koltuğa davet paneli tarayıcıda elle denenmedi; davet akışını backend testi kapsıyor.
+- Uygulama geneli yönetim (kullanıcı banlama, şikâyet inceleme) yok.
 
 ## 2026-10-18 — GitHub'a gönderim ve yarının planı
 

@@ -1,5 +1,5 @@
 """
-Oda tabloları: rooms, room_follows, room_admins.
+Oda tabloları: rooms, room_follows, room_members.
 
 DİKKAT: Burada yalnızca odanın KALICI bilgileri durur (adı, sahibi, kategorisi).
 "Şu an hangi koltukta kim oturuyor, kaç kişi dinliyor" gibi saniyede defalarca
@@ -30,6 +30,9 @@ class Room(Base):
     host_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     # Odada kaç koltuk (mikrofon yeri) var.
     seat_count: Mapped[int] = mapped_column(Integer, default=8)
+    # true: herkes boş koltuğa kendisi oturabilir. false: yalnızca oda sahibi, yönetici ve
+    # oda VIP'leri kendisi oturur; diğerleri ancak bir yöneticinin davetiyle oturabilir.
+    free_seating: Mapped[bool] = mapped_column(Boolean, default=True)
     # "CANLI" rozeti.
     is_live: Mapped[bool] = mapped_column(Boolean, default=True)
     # false: oda kapatılmış, listelerde görünmez (satırı silmiyoruz, geçmiş kalsın).
@@ -50,13 +53,24 @@ class RoomFollow(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
-class RoomAdmin(Base):
+# Odaya özel roller. Oda sahibi (host) burada değildir, o `rooms.host_id` ile bilinir.
+# Rolü olmayan herkes "listener" (dinleyici) sayılır ve tabloda satırı yoktur.
+ROOM_MEMBER_ROLES = ("admin", "vip")
+
+
+class RoomMember(Base):
     """
-    Odanın yöneticileri. Oda sahibi (host) atar ve geri alır.
-    Yönetici koltuk kilitleyebilir, birini koltuktan indirebilir ya da odadan atabilir.
+    Odada özel rolü olan kişiler. Bir satır = "user, bu odada şu role sahip".
+
+      - admin → yönetici: koltuk kilitler, susturur, koltuktan indirir, odadan atar.
+                Yalnızca oda sahibi atar ve geri alır.
+      - vip   → odanın ayrıcalıklı üyesi: rozeti görünür, koltuklar davetle açıldığında
+                bile kendisi oturabilir. Yönetim yetkisi yoktur.
+                Oda sahibi ya da yöneticiler verir.
     """
-    __tablename__ = "room_admins"
+    __tablename__ = "room_members"
 
     room_id: Mapped[int] = mapped_column(ForeignKey("rooms.id", ondelete="CASCADE"), primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True, index=True)
+    role: Mapped[str] = mapped_column(String(16))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

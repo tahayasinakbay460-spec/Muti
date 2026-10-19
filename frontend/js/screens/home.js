@@ -3,6 +3,7 @@ import { api } from '../api.js';
 import { APP_NAME, CATEGORY_LABELS } from '../config.js';
 import { esc, icon, avatarImg, formatCoins, formatCount, toast } from '../ui.js';
 import { roomRow, coinPill } from './components.js';
+import { paintNotificationBadge } from '../inbox.js';
 
 // Üst sekmeler. Henüz ekranı olmayanlar "Yakında" bildirimi gösterir.
 const TOP_TABS = [
@@ -86,7 +87,7 @@ export async function renderHome(root) {
       <div class="logo"><span class="logo-mark">M</span><span class="logo-text">${APP_NAME}</span></div>
       <div class="topbar-actions">
         <a class="icon-btn icon-btn-plain" href="#/explore" aria-label="Ara">${icon('search', 22)}</a>
-        <button class="icon-btn icon-btn-plain has-dot" data-action="notifications" aria-label="Bildirimler">${icon('bell', 22)}</button>
+        <button class="icon-btn icon-btn-plain" data-action="notifications" aria-label="Bildirimler">${icon('bell', 22)}</button>
         ${coinPill(me.coin_balance)}
       </div>
     </header>
@@ -174,6 +175,8 @@ export async function renderHome(root) {
     else toast('Yakında');
   };
 
+  paintNotificationBadge();
+
   root.addEventListener('click', (event) => {
     const topTab = event.target.closest('[data-top-tab]');
     if (topTab && topTab.dataset.topTab !== 'discover') follow(TOP_TABS.find((t) => t.id === topTab.dataset.topTab));
@@ -192,7 +195,7 @@ export async function renderHome(root) {
       }
     }
 
-    if (event.target.closest('[data-action="notifications"]')) toast('Yeni bildirimin yok');
+    if (event.target.closest('[data-action="notifications"]')) location.hash = '#/notifications';
   });
 
   // Banner otomatik kaydırma; kullanıcı elle kaydırırsa noktalar da güncellenir.

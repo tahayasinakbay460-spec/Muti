@@ -10,12 +10,45 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import ConflictError, ForbiddenError, NotFoundError
-from app.models import Room, RoomAdmin, RoomFollow
+from app.models import Room, RoomFollow, RoomMember
 from app.realtime import events
 from app.realtime.hub import room_hub
 from app.realtime.state import room_state
 from app.schemas.room import RoomCreateRequest, RoomOut, SeatOut
 from app.services import user_service
+from app.voice import VoiceJoinInfo, voice_provider
+
+# ── Oda rolleri ───────────────────────────────────────────────────────────────
+# Yüksekten alçağa: host (oda sahibi) > admin (yönetici) > vip > listener (herkes).
+# Koltukta oturan "konuşmacı" da yetki bakımından listener'dır.
+HOST, ADMIN, VIP, LISTENER = "host", "admin", "vip", "listener"
+ROLE_RANK = {HOST: 4, ADMIN: 3, VIP: 2, LISTENER: 1}
+
+# Koltuğa davet edilen kişi bu süre içinde oturmazsa davet geçersiz olur.
+SEAT_INVITE_SECONDS = 60
+
+
+async def get_role(db: AsyncSession, room: Room, user_id: int) -> str:
+    if user_id == room.host_id:
+        return HOST
+    role = await db.scalar(
+        select(RoomMember.role).where(RoomMember.room_id == room.id, RoomMember.user_id == user_id)
+    )
+    return role or LISTENER
+
+
+async def get_roles(db: AsyncSession, room: Room, user_ids: list[int]) -> dict[int, str]:
+    """Birden çok kişinin rolü, tek sorguyla (dinleyici listesi için)."""
+    roles = {uid: LISTENER for uid in user_ids}
+    rows = await db.execute(
+        select(RoomMember.user_id, RoomMember.role)
+        .where(RoomMember.room_id == room.id, RoomMember.user_id.in_(user_ids))
+    )
+    roles.update({uid: role for uid, role in rows})
+    if room.host_id in roles:
+        roles[room.host_id] = HOST
+    return roles
+
 
 # DEMO KISAYOLU: Yeni odaların kapağı frontend'in kendi klasöründeki sabit bir görsel.
 # Görsel yükleme (upload) eklenince oda sahibi kendi kapağını seçecek.
@@ -45,6 +78,7 @@ async def present_rooms(db: AsyncSession, rooms: list[Room], viewer_id: int | No
     seats_by_room = await room_state.get_seats(room_ids)# odaların koltuk durumları 
     listener_counts = await room_state.listener_counts(room_ids)#kac dinleyici var
     ranks = await room_state.room_ranks(room_ids)#oda sıralaması (canlı depoda tutuluyor, Redis'ten gelecek)
+    mic_blocked = await room_state.mic_blocked_ids(room_ids)
 
     # Ekranda görünecek herkesin id'sini topla: oda sahipleri + koltukta oturanlar.
     user_ids = {room.host_id for room in rooms}
@@ -52,12 +86,13 @@ async def present_rooms(db: AsyncSession, rooms: list[Room], viewer_id: int | No
         user_ids.update(seat.user_id for seat in seats if seat.user_id is not None)
     users = await user_service.load_users_out(db, user_ids, viewer_id)
 
-    # Odaların yöneticileri (tek sorgu).
-    admin_ids: dict[int, list[int]] = {room_id: [] for room_id in room_ids}
-    for room_id, admin_id in await db.execute(
-        select(RoomAdmin.room_id, RoomAdmin.user_id).where(RoomAdmin.room_id.in_(room_ids)).order_by(RoomAdmin.created_at)
+    # Odaların yöneticileri ve VIP'leri (tek sorgu).
+    member_ids: dict[tuple[int, str], list[int]] = {}
+    for room_id, member_id, role in await db.execute(
+        select(RoomMember.room_id, RoomMember.user_id, RoomMember.role)
+        .where(RoomMember.room_id.in_(room_ids)).order_by(RoomMember.created_at)
     ):
-        admin_ids[room_id].append(admin_id)
+        member_ids.setdefault((room_id, role), []).append(member_id)
 
     # Bakan kişinin bu odalardan hangilerini takip ettiği (tek sorgu).
     followed_ids: set[int] = set()
@@ -82,10 +117,13 @@ async def present_rooms(db: AsyncSession, rooms: list[Room], viewer_id: int | No
                 SeatOut(
                     index=seat.index, user_id=seat.user_id, is_muted=seat.is_muted,
                     is_locked=seat.is_locked, user=users.get(seat.user_id),
+                    is_mic_blocked=seat.user_id in mic_blocked[room.id],
                 )
                 for seat in seats_by_room[room.id]
             ],
-            admin_ids=admin_ids[room.id],
+            admin_ids=member_ids.get((room.id, ADMIN), []),
+            vip_ids=member_ids.get((room.id, VIP), []),
+            free_seating=room.free_seating,
             is_following=room.id in followed_ids,
         )
         for room in rooms
@@ -179,7 +217,22 @@ async def take_seat(db: AsyncSession, user_id: int, room_id: int, seat_index: in
     # Odadan atılan kişi yasak süresince WebSocket'e bağlanamaz; REST ile koltuğa da oturamasın.
     if await room_state.is_banned(room.id, user_id):
         raise ForbiddenError("Bu odadan çıkarıldın, bir süre giremezsin.", code="room_banned")
-    await room_state.take_seat(room.id, seat_index, user_id)
+    # Koltuklar davetle açılıyorsa: oda sahibi, yönetici ve VIP kendisi oturur; zaten
+    # koltukta olan başka koltuğa geçebilir; diğerleri geçerli bir davet ister.
+    used_invite = False
+    if not room.free_seating and ROLE_RANK[await get_role(db, room, user_id)] < ROLE_RANK[VIP]:
+        already_seated = await room_state.seat_index_of(room.id, user_id) is not None
+        if not already_seated:
+            used_invite = await room_state.consume_seat_invite(room.id, user_id)
+            if not used_invite:
+                raise ForbiddenError("Bu odada koltuğa davetle oturulur.", code="seat_requires_invite")
+    try:
+        await room_state.take_seat(room.id, seat_index, user_id)
+    except Exception:
+        # Koltuk dolu/kilitliydi: davet boşa gitmesin, başka koltuk deneyebilsin.
+        if used_invite:
+            await room_state.grant_seat_invite(room.id, user_id, SEAT_INVITE_SECONDS)
+        raise
     await publish_seats(db, room)
     return (await present_rooms(db, [room], user_id))[0]
 
@@ -193,6 +246,8 @@ async def leave_seat(db: AsyncSession, user_id: int, room_id: int) -> RoomOut:
 
 async def toggle_mute(db: AsyncSession, user_id: int, room_id: int) -> RoomOut:
     room = await get_room_row(db, room_id)
+    if user_id in (await room_state.mic_blocked_ids([room.id]))[room.id]:
+        raise ForbiddenError("Mikrofonun bir yönetici tarafından kapatıldı.", code="mic_blocked")
     if not await room_state.toggle_mute(room.id, user_id):
         raise ConflictError("Önce bir koltuğa oturmalısın.", code="not_seated")
     await publish_seats(db, room)
@@ -206,6 +261,28 @@ async def publish_seats(db: AsyncSession, room: Room) -> None:
     istemci "bu ben miyim" kontrolünü kullanıcı id'si ile kendisi yapar.
     """
     snapshot = (await present_rooms(db, [room], viewer_id=None))[0]
+    # Önce ses sağlayıcısına kimlerin konuşabileceğini bildir (SFU'da sunucu tarafında
+    # uygulanır), sonra odaya duyur: koltuğa oturan kişi mikrofonunu açmaya çalıştığında
+    # izni hazır olsun.
+    await voice_provider.sync_publishers(room.id, {
+        seat.user_id for seat in snapshot.seats if seat.user_id is not None and not seat.is_mic_blocked
+    })
     await room_hub.publish(room.id, events.ROOM_SEATS_UPDATED, {
         "seats": [seat.model_dump(mode="json") for seat in snapshot.seats],
     })
+
+
+# ── Sesli görüşme ─────────────────────────────────────────────────────────────
+
+async def get_voice_join(db: AsyncSession, user_id: int, room_id: int) -> VoiceJoinInfo:
+    """
+    Odanın sesine bağlanmak için gerekenler (bkz. app/voice/). Herkes dinleyebilir;
+    konuşma izni (can_publish) yalnızca koltukta oturan ve mikrofonu engellenmemiş kişide.
+    """
+    room = await get_room_row(db, room_id)
+    if await room_state.is_banned(room.id, user_id):
+        raise ForbiddenError("Bu odadan çıkarıldın, bir süre giremezsin.", code="room_banned")
+    user = await user_service.get_user(db, user_id)
+    seated = await room_state.seat_index_of(room.id, user_id) is not None
+    blocked = user_id in (await room_state.mic_blocked_ids([room.id]))[room.id]
+    return await voice_provider.join_info(room.id, user_id, user.display_name, can_publish=seated and not blocked)

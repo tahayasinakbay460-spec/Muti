@@ -12,7 +12,7 @@ from app.realtime import events
 from app.realtime.hub import room_hub
 from app.schemas.economy import GiftOut, GiftSendRequest, GiftSendResult
 from app.schemas.user import TopGifter
-from app.services import user_service, wallet_service
+from app.services import level_service, notification_service, user_service, wallet_service
 
 
 async def list_gifts(db: AsyncSession) -> list[GiftOut]:
@@ -59,6 +59,7 @@ async def send_gift(
     if gift is None or not gift.is_active:
         raise NotFoundError("Hediye bulunamadı.")
     receiver = await user_service.get_user(db, data.receiver_id)
+    await user_service.require_not_blocked(db, sender_id, receiver.id)
     if data.room_id is not None and await db.get(Room, data.room_id) is None:
         raise NotFoundError("Oda bulunamadı.")
 
@@ -94,6 +95,8 @@ async def send_gift(
         else:
             await credit_receiver()
             coin_balance = await debit_sender()
+        # Harcanan her coin 1 deneyim puanı: seviye hediyeyle aynı transaction'da artar.
+        level_up = await level_service.add_experience(db, sender_id, total_coins)
         # İki adım da başarılı → ikisini birlikte kalıcı yap.
         await db.commit()
     except IntegrityError:
@@ -109,6 +112,15 @@ async def send_gift(
         raise
 
     result = await _build_result(db, sender_id, gift, receiver, data.quantity, coin_balance)
+
+    sender = await user_service.get_user(db, sender_id)
+    await notification_service.notify(
+        db, receiver.id, "gift_received",
+        f"{sender.display_name} sana {gift.emoji} {gift.name} x{data.quantity} gönderdi (+{receiver_diamonds} elmas).",
+        actor_id=sender_id, data={"room_id": data.room_id} if data.room_id else {},
+    )
+    if level_up:
+        await notification_service.notify(db, sender_id, "level_up", f"Tebrikler! Lv.{level_up[1]} oldun 🎉")
 
     # Para işi bitti; şimdi odadakilere animasyonu göster. Yayını commit'ten SONRA
     # yapıyoruz ki gerçekleşmemiş bir hediyenin animasyonu hiç görünmesin.

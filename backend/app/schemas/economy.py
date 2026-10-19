@@ -54,6 +54,34 @@ class PurchaseResult(BaseModel):
     added: int                # eklenen coin (paket + bonus)
 
 
+class ExchangeRequest(BaseModel):
+    """Elmasları coine çevirme. Tutar tamsayı; üst sınır saçma büyük istekleri engeller."""
+    diamonds: int = Field(ge=1, le=10_000_000)
+
+
+class ExchangeResult(BaseModel):
+    coin_balance: int
+    diamond_balance: int
+    coins_added: int
+
+
+class Supporter(BaseModel):
+    user: UserOut
+    diamonds: int             # bu kişinin hediyeleriyle kazandığım toplam elmas
+
+
+class IncomeSummary(BaseModel):
+    """Yayıncı geliri: hediyelerden kazanılan elmaslar."""
+    diamond_balance: int
+    today_diamonds: int
+    week_diamonds: int
+    total_diamonds: int
+    # 1 elmas kaç coin eder (çevirme oranı) ve gerçek para karşılığı çekim açık mı?
+    diamond_to_coin_rate: int
+    withdrawals_enabled: bool
+    top_supporters: list[Supporter]
+
+
 class TransactionOut(BaseModel):
     id: int
     type: str

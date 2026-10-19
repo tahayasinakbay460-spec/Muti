@@ -6,15 +6,21 @@ fonksiyonu ile değişir. Başka hiçbir yerde `user.coin_balance = ...` yazılm
 Para ile ilgili bütün güvenlik önlemleri tek yerde durur; bir hata olursa bakılacak
 yer bellidir.
 """
-from sqlalchemy import select, update
+from datetime import timedelta
+
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.database import utcnow
 from app.core.errors import InsufficientBalanceError, NotFoundError, UnavailableError
 from app.core.timefmt import as_utc, time_ago_label
 from app.models import CoinPackage, Transaction, User
-from app.schemas.economy import CoinPackageOut, PurchaseResult, TransactionOut
+from app.schemas.economy import (
+    CoinPackageOut, ExchangeResult, IncomeSummary, PurchaseResult, Supporter, TransactionOut,
+)
+from app.services import user_service
 
 
 async def change_balance(
@@ -23,7 +29,7 @@ async def change_balance(
     user_id: int,
     currency: str,            # "coin" | "diamond"
     delta: int,               # artı: ekle, eksi: düş
-    type: str,                # purchase | gift_sent | gift_received | reward
+    type: str,                # purchase | gift_sent | gift_received | reward | exchange
     label: str,
     idempotency_key: str | None = None,
     counterparty_id: int | None = None,
@@ -144,6 +150,90 @@ async def purchase(db: AsyncSession, user_id: int, package_id: int, idempotency_
         return await replay(previous)
 
     return PurchaseResult(coin_balance=balance, added=total)
+
+
+# ── Yayıncı geliri (elmas) ────────────────────────────────────────────────────
+
+async def _balances(db: AsyncSession, user_id: int) -> tuple[int, int]:
+    row = (await db.execute(select(User.coin_balance, User.diamond_balance).where(User.id == user_id))).one()
+    return row.coin_balance, row.diamond_balance
+
+
+async def exchange_diamonds(db: AsyncSession, user_id: int, diamonds: int, idempotency_key: str | None) -> ExchangeResult:
+    """
+    Hediyelerden kazanılan elmasları coine çevirir: elmas düşer, coin eklenir; ikisi
+    tek transaction'da (ya ikisi birden olur ya hiçbiri). Oran: settings.diamond_to_coin_rate.
+    """
+    coins = diamonds * settings.diamond_to_coin_rate
+
+    async def replay() -> ExchangeResult:
+        coin_balance, diamond_balance = await _balances(db, user_id)
+        return ExchangeResult(coin_balance=coin_balance, diamond_balance=diamond_balance, coins_added=coins)
+
+    if await find_by_idempotency_key(db, user_id, idempotency_key):
+        return await replay()
+    try:
+        # İdempotency anahtarı yalnızca ilk satıra yazılır: aynı kullanıcıda bir anahtar tek satırda olabilir.
+        diamond_balance = await change_balance(
+            db, user_id=user_id, currency="diamond", delta=-diamonds, type="exchange",
+            label=f"Elmas → coin ({diamonds} elmas)", idempotency_key=idempotency_key,
+        )
+        coin_balance = await change_balance(
+            db, user_id=user_id, currency="coin", delta=coins, type="exchange",
+            label=f"Elmas çevirme (+{coins} coin)",
+        )
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        if await find_by_idempotency_key(db, user_id, idempotency_key) is None:
+            raise
+        return await replay()
+    except Exception:
+        await db.rollback()
+        raise
+    return ExchangeResult(coin_balance=coin_balance, diamond_balance=diamond_balance, coins_added=coins)
+
+
+async def income_summary(db: AsyncSession, user_id: int) -> IncomeSummary:
+    """
+    Hediyelerden kazanılan elmasların özeti ve en çok destek olanlar.
+    DEMO KISAYOLU: her istekte hareket defterinden toplanıyor; canlıda günlük özet tablosu
+    ya da Redis sayaçları kullanılır.
+    """
+    received = (Transaction.user_id == user_id) & (Transaction.type == "gift_received")
+
+    async def total_since(start) -> int:
+        statement = select(func.coalesce(func.sum(Transaction.amount), 0)).where(received)
+        if start is not None:
+            statement = statement.where(Transaction.created_at >= start)
+        return await db.scalar(statement)
+
+    now = utcnow()
+    # "Bugün" kullanıcının saatine göre (DEMO: sabit Türkiye saati, bkz. config).
+    offset = timedelta(hours=settings.display_utc_offset_hours)
+    local_midnight = (now + offset).replace(hour=0, minute=0, second=0, microsecond=0) - offset
+
+    supporters_total = func.sum(Transaction.amount).label("total")
+    rows = (await db.execute(
+        select(Transaction.counterparty_id, supporters_total)
+        .where(received, Transaction.counterparty_id.is_not(None))
+        .group_by(Transaction.counterparty_id).order_by(supporters_total.desc()).limit(5)
+    )).all()
+    users = await user_service.load_users_out(db, {row.counterparty_id for row in rows}, user_id)
+
+    _, diamond_balance = await _balances(db, user_id)
+    return IncomeSummary(
+        diamond_balance=diamond_balance,
+        today_diamonds=await total_since(local_midnight),
+        week_diamonds=await total_since(now - timedelta(days=7)),
+        total_diamonds=await total_since(None),
+        diamond_to_coin_rate=settings.diamond_to_coin_rate,
+        withdrawals_enabled=settings.withdrawals_enabled,
+        top_supporters=[
+            Supporter(user=users[row.counterparty_id], diamonds=row.total)
+            for row in rows if row.counterparty_id in users
+        ],
+    )
 
 
 # ── İşlem geçmişi ─────────────────────────────────────────────────────────────

@@ -1,12 +1,16 @@
 """
-/api/v1/users — profil, profil düzenleme, takip, öneriler.
+/api/v1/users — profil, profil düzenleme, hesap silme, takip, arama, öneriler, engelleme.
 """
-from fastapi import APIRouter
+from typing import Annotated
+
+from fastapi import APIRouter, Query, Response, status
 
 from app.core.deps import CurrentUser, CurrentUserId, DbSession
 from app.demo import content
+from app.schemas.auth import DeleteAccountRequest
+from app.schemas.social import BlockResult
 from app.schemas.user import FollowResult, MediaOptions, ProfileExtras, ProfileUpdateRequest, UserOut
-from app.services import user_service
+from app.services import auth_service, social_service, user_service
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -24,6 +28,25 @@ async def get_me(user: CurrentUser, db: DbSession):
 async def update_me(data: ProfileUpdateRequest, user: CurrentUser, db: DbSession):
     """Kendi profilini düzenler. Yalnızca gönderilen alanlar değişir."""
     return await user_service.update_profile(db, user, data)
+
+
+@router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_me(data: DeleteAccountRequest, user: CurrentUser, db: DbSession):
+    """Hesabı siler (kişisel bilgiler temizlenir, oturumlar kapanır). Parola sorulur."""
+    await auth_service.delete_account(db, user, data.password)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/me/blocks", response_model=list[UserOut])
+async def list_blocked(user_id: CurrentUserId, db: DbSession):
+    """Engellediğim kişiler (ayarlar ekranı)."""
+    return await social_service.list_blocked(db, user_id)
+
+
+@router.get("/search", response_model=list[UserOut])
+async def search_users(user_id: CurrentUserId, db: DbSession, query: Annotated[str, Query(max_length=40)] = ""):
+    """Ada, kullanıcı adına ya da ID numarasına göre kişi arar."""
+    return await user_service.search_users(db, user_id, query)
 
 
 @router.get("/me/media-options", response_model=MediaOptions)
@@ -54,3 +77,14 @@ async def get_profile_extras(user_id: int, _viewer_id: CurrentUserId, db: DbSess
 async def toggle_follow(user_id: int, viewer_id: CurrentUserId, db: DbSession):
     """Takip ediyorsan bırakır, etmiyorsan takip eder."""
     return FollowResult(is_following=await user_service.toggle_follow(db, viewer_id, user_id))
+
+
+@router.put("/{user_id}/block", response_model=BlockResult)
+async def block_user(user_id: int, viewer_id: CurrentUserId, db: DbSession):
+    """Kişiyi engeller: birbirinize mesaj ve hediye gönderemez, birbirinizi takip edemezsiniz."""
+    return BlockResult(is_blocked=await social_service.set_block(db, viewer_id, user_id, blocked=True))
+
+
+@router.delete("/{user_id}/block", response_model=BlockResult)
+async def unblock_user(user_id: int, viewer_id: CurrentUserId, db: DbSession):
+    return BlockResult(is_blocked=await social_service.set_block(db, viewer_id, user_id, blocked=False))

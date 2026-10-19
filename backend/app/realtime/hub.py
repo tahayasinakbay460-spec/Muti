@@ -60,6 +60,29 @@ class RoomHub:
             except Exception:
                 logger.debug("WebSocket already closed")
 
+    async def disconnect_room(self, room_id: int, code: int) -> None:
+        """Odadaki herkesin bağlantısını kapatır (oda kapatıldı)."""
+        for websocket in list(self._connections.get(room_id, {})):
+            self.remove(room_id, websocket)
+            try:
+                await websocket.close(code=code)
+            except Exception:
+                logger.debug("WebSocket already closed")
+
+    async def send_to_user(self, room_id: int, user_id: int, event: str, payload: dict) -> None:
+        """
+        Olayı yalnızca odadaki TEK bir kişiye gönderir (koltuk daveti, sesli görüşme sinyali).
+        Redis'e geçişte bu da pub/sub üzerinden "şu odadaki şu kişiye" diye dağıtılacak.
+        """
+        sockets = [ws for ws, owner in self._connections.get(room_id, {}).items() if owner == user_id]
+        if not sockets:
+            return
+        message = json.dumps({"event": event, "payload": payload}, ensure_ascii=False, default=str)
+        results = await asyncio.gather(*(_send(ws, message) for ws in sockets))
+        for websocket, delivered in zip(sockets, results):
+            if not delivered:
+                self.remove(room_id, websocket)
+
     async def publish(self, room_id: int, event: str, payload: dict) -> None:
         """Bir olayı odadaki herkese duyurur. Servisler ve router'lar bunu çağırır."""
         # JSON'a bir kez çeviriyoruz, herkese aynı yazıyı gönderiyoruz.

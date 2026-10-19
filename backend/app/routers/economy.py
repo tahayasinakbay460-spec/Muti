@@ -10,7 +10,8 @@ from fastapi import APIRouter, Header, Query
 
 from app.core.deps import CurrentUserId, DbSession
 from app.schemas.economy import (
-    CoinPackageOut, GiftOut, GiftSendRequest, GiftSendResult, PurchaseRequest, PurchaseResult, TransactionOut,
+    CoinPackageOut, ExchangeRequest, ExchangeResult, GiftOut, GiftSendRequest, GiftSendResult, IncomeSummary,
+    PurchaseRequest, PurchaseResult, TransactionOut,
 )
 from app.schemas.user import TopGifter
 from app.services import gift_service, wallet_service
@@ -43,6 +44,18 @@ async def list_coin_packages(_user_id: CurrentUserId, db: DbSession):
 async def purchase_coins(data: PurchaseRequest, user_id: CurrentUserId, db: DbSession, idempotency_key: IdempotencyKey = None):
     """Coin paketi satın alır (DEMO: gerçek ödeme yok)."""
     return await wallet_service.purchase(db, user_id, data.package_id, idempotency_key)
+
+
+@router.get("/wallet/income", response_model=IncomeSummary)
+async def get_income(user_id: CurrentUserId, db: DbSession):
+    """Yayıncı geliri: hediyelerden kazanılan elmaslar ve en çok destek olanlar."""
+    return await wallet_service.income_summary(db, user_id)
+
+
+@router.post("/wallet/exchange", response_model=ExchangeResult)
+async def exchange_diamonds(data: ExchangeRequest, user_id: CurrentUserId, db: DbSession, idempotency_key: IdempotencyKey = None):
+    """Elmasları coine çevirir. Elmas yetmezse 402 `insufficient_balance` döner."""
+    return await wallet_service.exchange_diamonds(db, user_id, data.diamonds, idempotency_key)
 
 
 @router.get("/wallet/transactions", response_model=list[TransactionOut])

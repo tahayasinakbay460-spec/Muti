@@ -154,3 +154,10 @@ export const chatLines = [
   'Yeni gelenler kendini tanıtsın 😄', 'Selam millet!', 'Kim nereden katılıyor?', 'Bu odayı takibe aldım',
   'Mikrofona çıkabilir miyim?', 'Dün geceki sohbet efsaneydi', 'Bir şarkı isteğim var', 'Ankara\'dan selamlar 👋',
 ];
+
+// Bildirim merkezi (alan adları API ile aynı: GET /notifications)
+export const notifications = [
+  { id: 3, type: 'gift_received', text: 'Merve sana 🌹 Gül x5 gönderdi (+25 elmas).', actor_id: 2001, data: {}, is_read: false, time_label: '5 dk önce' },
+  { id: 2, type: 'follow', text: 'Selin seni takip etmeye başladı.', actor_id: 2003, data: { user_id: 2003 }, is_read: false, time_label: '1 saat önce' },
+  { id: 1, type: 'level_up', text: 'Tebrikler! Lv.12 oldun 🎉', actor_id: null, data: {}, is_read: true, time_label: 'Dün' },
+];

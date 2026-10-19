@@ -28,7 +28,7 @@ from app import models  # noqa: F401  (tablolar SQLAlchemy'ye tanıtılsın diye
 from app.demo import seed
 from app.realtime import room_socket, user_socket
 from app.realtime.state import room_state
-from app.routers import auth, content, conversations, economy, rooms, users
+from app.routers import auth, content, conversations, economy, rooms, social, users
 
 
 @asynccontextmanager
@@ -72,7 +72,7 @@ app.add_middleware(
 # Bütün HTTP uçları /api/v1 altında. İleride uyumsuz bir değişiklik gerekirse /api/v2
 # açılır; eski mobil uygulama sürümleri /api/v1 ile çalışmaya devam eder.
 api_v1 = APIRouter(prefix="/api/v1")
-for module in (auth, users, rooms, economy, conversations, content):
+for module in (auth, users, rooms, economy, conversations, social, content):
     api_v1.include_router(module.router)
 app.include_router(api_v1)
 

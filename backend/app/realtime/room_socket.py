@@ -21,6 +21,7 @@ import json
 import secrets
 import time
 from collections import deque
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import ValidationError
@@ -34,11 +35,13 @@ from app.realtime.games import roulette
 from app.realtime.hub import room_hub
 from app.realtime.state import room_state
 from app.services import room_service, user_service
+from app.voice import voice_provider
 
 router = APIRouter()
 
 # Tek bir mesajın en büyük boyutu (karakter). Daha büyüğü işlenmeden reddedilir.
-MAX_MESSAGE_SIZE = 2000
+# Sesli görüşme teklifleri (SDP) birkaç bin karakter tuttuğu için sınır buna göre.
+MAX_MESSAGE_SIZE = 16000
 
 
 class RateLimiter:
@@ -71,6 +74,24 @@ async def _send_error(websocket: WebSocket, code: str, detail: str) -> None:
 async def _publish_listener_count(room_id: int) -> None:
     counts = await room_state.listener_counts([room_id])
     await room_hub.publish(room_id, events.ROOM_LISTENER_COUNT, {"listener_count": counts[room_id]})
+
+
+async def _relay_voice_signal(room_id: int, sender_id: int, signal: events.VoiceSignalIn) -> None:
+    """
+    Ses bağlantı mesajını karşı tarafa iletir. Yalnızca odadaki iki kişi arasında ve
+    ikisinden en az biri koltuktaysa. Koltukta olmayan iki dinleyici arasında ses kanalı
+    açılamaz; yoksa dinleyiciler koltuk kuralını atlayıp kendi aralarında konuşabilirdi.
+    """
+    if signal.to == sender_id or not await room_state.is_in_room(room_id, signal.to):
+        return
+    seated = {seat.user_id for seat in (await room_state.get_seats([room_id]))[room_id]}
+    if sender_id not in seated and signal.to not in seated:
+        return
+    await room_hub.send_to_user(room_id, signal.to, events.VOICE_SIGNAL, {
+        "from": sender_id,
+        "description": signal.description.model_dump() if signal.description else None,
+        "candidate": signal.candidate.model_dump() if signal.candidate else None,
+    })
 
 
 @router.websocket("/ws/rooms/{room_id}")
@@ -110,8 +131,15 @@ async def room_socket(websocket: WebSocket, room_id: int, token: str = "") -> No
     chat_limiter = RateLimiter(limit=5, period=5)    # 5 saniyede en fazla 5 mesaj
     dice_limiter = RateLimiter(limit=1, period=1.5)  # 1.5 saniyede en fazla 1 zar
     game_limiter = RateLimiter(limit=5, period=5)    # rulet: 5 saniyede en fazla 5 işlem
+    # Ses bağlantısı kurulurken her karşı taraf için onlarca küçük mesaj gider; sınır geniş.
+    voice_limiter = RateLimiter(limit=300, period=10)
 
     try:
+        # Yeni gelen kişi sohbetin ortasına düşmesin: son mesajları yalnızca ona gönder.
+        await websocket.send_text(json.dumps(
+            {"event": events.CHAT_HISTORY, "payload": {"messages": await room_state.recent_chat(room_id)}},
+            ensure_ascii=False, default=str,
+        ))
         if is_first_connection:
             await room_hub.publish(room_id, events.ROOM_USER_JOINED, {"user": user_payload})
         await _publish_listener_count(room_id)
@@ -141,8 +169,19 @@ async def room_socket(websocket: WebSocket, room_id: int, token: str = "") -> No
                 except ValidationError:
                     await _send_error(websocket, "invalid_message", "Mesaj boş veya çok uzun.")
                     continue
+                muted = (await room_state.chat_mute_remaining(room_id, [user_id])).get(user_id)
+                if muted:
+                    minutes = max(1, round(muted / 60))
+                    await _send_error(websocket, "chat_muted", f"Sohbette susturuldun ({minutes} dk).")
+                    continue
                 # `user` alanını istemciden değil, token'dan bildiğimiz kişiden dolduruyoruz.
-                await room_hub.publish(room_id, events.CHAT_MESSAGE, {"user": user_payload, "text": chat.text})
+                # `id`: mesajı sonradan silebilmek için; tahmin edilemez olsun diye rastgele.
+                chat_message = {
+                    "id": secrets.token_hex(8), "user": user_payload, "text": chat.text,
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                }
+                await room_state.append_chat(room_id, chat_message)
+                await room_hub.publish(room_id, events.CHAT_MESSAGE, chat_message)
 
             elif event == events.GAME_DICE_ROLLED:
                 if not dice_limiter.allow():
@@ -162,6 +201,16 @@ async def room_socket(websocket: WebSocket, room_id: int, token: str = "") -> No
                         await roulette.bet(room_id, user_id, user_payload, str(payload.get("color", "")))
                 except AppError as error:
                     await _send_error(websocket, error.code, error.detail)
+
+            elif event == events.VOICE_SIGNAL and voice_provider.relays_signals:
+                if not voice_limiter.allow():
+                    continue
+                try:
+                    signal = events.VoiceSignalIn.model_validate(payload)
+                except ValidationError:
+                    await _send_error(websocket, "invalid_signal", "Ses bağlantı mesajı hatalı.")
+                    continue
+                await _relay_voice_signal(room_id, user_id, signal)
 
             elif event == events.GIFT_SENT:
                 # Bilerek yok sayılıyor. Hediye yayını yalnızca POST /gifts/send başarılı
@@ -186,4 +235,6 @@ async def room_socket(websocket: WebSocket, room_id: int, token: str = "") -> No
                 room = await db.get(Room, room_id)
                 if room is not None:
                     await room_service.publish_seats(db, room)
+        if fully_left:
+            await room_hub.publish(room_id, events.ROOM_USER_LEFT, {"user_id": user_id})
         await _publish_listener_count(room_id)

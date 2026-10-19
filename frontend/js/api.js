@@ -65,6 +65,8 @@ function expandRoom(room) {
     ...room,
     is_following: state.followed_room_ids.includes(room.id),
     admin_ids: room.admin_ids || [],
+    vip_ids: room.vip_ids || [],
+    free_seating: room.free_seating ?? true,
     host: withMeta(findUser(room.host_id)),
     seats: room.seats.map((s) => ({ ...s, user: s.user_id ? withMeta(findUser(s.user_id)) : null })),
   };
@@ -117,6 +119,76 @@ const mockApi = {
   async getMe() {
     await delay(60);
     return withMeta(findUser(db.CURRENT_USER_ID));
+  },
+
+  async changePassword() {
+    await delay(300);
+  },
+
+  async deleteAccount() {
+    await delay(300);
+    localStorage.removeItem(STORAGE_KEYS.mockState);
+    state.is_authenticated = false;
+  },
+
+  async searchUsers(query) {
+    await delay(120);
+    const q = query.trim().toLocaleLowerCase('tr');
+    if (!q) return [];
+    return db.users
+      .filter((u) => u.id !== db.CURRENT_USER_ID && (`${u.display_name} ${u.username} ${u.id}`).toLocaleLowerCase('tr').includes(q))
+      .map(withMeta);
+  },
+
+  async setBlocked(userId, blocked) {
+    await delay(100);
+    const id = Number(userId);
+    state.blocked_ids = (state.blocked_ids || []).filter((x) => x !== id);
+    if (blocked) state.blocked_ids.push(id);
+    saveState();
+    return { is_blocked: blocked };
+  },
+
+  async listBlocked() {
+    await delay(80);
+    return (state.blocked_ids || []).map((id) => withMeta(findUser(id)));
+  },
+
+  async report() {
+    await delay(200);
+  },
+
+  async listNotifications() {
+    await delay(100);
+    return db.notifications.map((n) => ({ ...n, actor: n.actor_id ? withMeta(findUser(n.actor_id)) : null }));
+  },
+
+  async getNotificationUnreadCount() {
+    return db.notifications.filter((n) => !n.is_read).length;
+  },
+
+  async markNotificationsRead() {
+    db.notifications.forEach((n) => { n.is_read = true; });
+  },
+
+  async getIncome() {
+    await delay(120);
+    return {
+      diamond_balance: state.diamond_balance ?? 860, today_diamonds: 120, week_diamonds: 540, total_diamonds: 2310,
+      diamond_to_coin_rate: 1, withdrawals_enabled: false,
+      top_supporters: [2001, 2012].map((id, i) => ({ user: withMeta(findUser(id)), diamonds: [940, 410][i] })),
+    };
+  },
+
+  async exchangeDiamonds(diamonds) {
+    await delay(200);
+    const balance = state.diamond_balance ?? 860;
+    if (diamonds > balance) throw new ApiError('insufficient_balance', 'Elmas bakiyen yetersiz.');
+    state.diamond_balance = balance - diamonds;
+    state.coin_balance += diamonds;
+    addTransaction('exchange', `Elmas çevirme (+${diamonds} coin)`, diamonds);
+    saveState();
+    return { coin_balance: state.coin_balance, diamond_balance: state.diamond_balance, coins_added: diamonds };
   },
 
   async getUser(id) {
@@ -256,12 +328,63 @@ const mockApi = {
   },
 
   // Moderasyon (mock): yetki kuralları sadeleştirilmiş halde — oda sahibi ya da yönetici, oda sahibine dokunamaz
-  async setRoomAdmin(roomId, userId, makeAdmin) {
+  async setRoomRole(roomId, userId, role) {
     await delay(120);
-    const room = mockModeratedRoom(roomId, { hostOnly: true });
-    room.admin_ids = (room.admin_ids || []).filter((id) => id !== Number(userId));
-    if (makeAdmin) room.admin_ids.push(Number(userId));
+    const room = mockModeratedRoom(roomId, { hostOnly: role === 'admin' });
+    const id = Number(userId);
+    room.admin_ids = (room.admin_ids || []).filter((x) => x !== id);
+    room.vip_ids = (room.vip_ids || []).filter((x) => x !== id);
+    if (role === 'admin') room.admin_ids.push(id);
+    if (role === 'vip') room.vip_ids.push(id);
     return expandRoom(room);
+  },
+
+  async updateRoom(roomId, changes) {
+    await delay(150);
+    const room = mockModeratedRoom(roomId);
+    Object.assign(room, Object.fromEntries(Object.entries(changes).filter(([, v]) => v != null)));
+    return expandRoom(room);
+  },
+
+  async closeRoom(roomId) {
+    await delay(150);
+    mockModeratedRoom(roomId, { hostOnly: true });
+    db.rooms.splice(db.rooms.findIndex((r) => r.id === Number(roomId)), 1);
+  },
+
+  // Mock'ta "odadakiler" = koltuktakiler (başka bağlantı bilgisi yok)
+  async listRoomMembers(roomId) {
+    await delay(120);
+    const room = expandRoom(db.rooms.find((r) => r.id === Number(roomId)));
+    return room.seats.filter((s) => s.user).map((s) => ({
+      user: s.user,
+      role: s.user.id === room.host_id ? 'host' : room.admin_ids.includes(s.user.id) ? 'admin' : (room.vip_ids || []).includes(s.user.id) ? 'vip' : 'listener',
+      seat_index: s.index,
+      is_mic_blocked: Boolean(s.is_mic_blocked),
+      chat_muted_seconds: 0,
+    }));
+  },
+
+  async inviteToSeat(roomId) {
+    await delay(100);
+    mockModeratedRoom(roomId);
+  },
+
+  async setMicBlocked(roomId, userId, blocked) {
+    await delay(100);
+    const room = mockModeratedRoom(roomId);
+    const seat = room.seats.find((s) => s.user_id === Number(userId));
+    if (seat) Object.assign(seat, { is_mic_blocked: blocked, is_muted: blocked || seat.is_muted });
+    return expandRoom(room);
+  },
+
+  async setChatMute(roomId) {
+    await delay(100);
+    mockModeratedRoom(roomId);
+  },
+
+  async deleteChatMessage() {
+    await delay(80);
   },
 
   async setSeatLock(roomId, seatIndex, locked) {
@@ -330,9 +453,9 @@ const mockApi = {
     return { coin_balance: state.coin_balance, added: total };
   },
 
-  async listTransactions() {
+  async listTransactions(currency = 'coin') {
     await delay(80);
-    return state.transactions;
+    return currency === 'coin' ? state.transactions : [];
   },
 
   async listConversations() {
@@ -474,7 +597,26 @@ const httpApi = {
     // Sunucudaki oturumu da kapat; ulaşılamazsa bile bu cihazdan çıkış yapılmış olur
     if (refreshToken) await send('/auth/logout', { method: 'POST', body: { refresh_token: refreshToken } }).catch(() => {});
   },
+  async changePassword(payload) {
+    const data = await request('/auth/change-password', { method: 'POST', body: payload });
+    storeTokens(data);   // diğer cihazlar kapandı; bu cihaz yeni token ile devam eder
+    return data;
+  },
+  async deleteAccount(password) {
+    await request('/users/me', { method: 'DELETE', body: { password: password || null } });
+    clearTokens();
+  },
   getMe: () => request('/users/me'),
+  searchUsers: (query) => request(`/users/search?query=${encodeURIComponent(query)}`),
+  setBlocked: (userId, blocked) => request(`/users/${userId}/block`, { method: blocked ? 'PUT' : 'DELETE' }),
+  listBlocked: () => request('/users/me/blocks'),
+  // target_type: 'user' | 'room'; reason: spam | harassment | inappropriate | underage | fraud | other
+  report: (payload) => request('/reports', { method: 'POST', body: payload }),
+  listNotifications: () => request('/notifications'),
+  getNotificationUnreadCount: async () => (await request('/notifications/unread-count')).unread_count,
+  markNotificationsRead: () => request('/notifications/read', { method: 'POST' }),
+  getIncome: () => request('/wallet/income'),
+  exchangeDiamonds: (diamonds) => request('/wallet/exchange', { method: 'POST', body: { diamonds }, headers: idempotencyHeader() }),
   getUser: (id) => request(`/users/${id}`),
   getProfileExtras: (id) => request(`/users/${id}/profile`),
   toggleFollow: (id) => request(`/users/${id}/follow`, { method: 'POST' }),
@@ -489,9 +631,20 @@ const httpApi = {
   takeSeat: (roomId, seatIndex) => request(`/rooms/${roomId}/seats/${seatIndex}`, { method: 'POST' }),
   leaveSeat: (roomId) => request(`/rooms/${roomId}/seats/me`, { method: 'DELETE' }),
   toggleMute: (roomId) => request(`/rooms/${roomId}/seats/me/mute`, { method: 'POST' }),
-  setRoomAdmin: (roomId, userId, makeAdmin) => request(`/rooms/${roomId}/admins/${userId}`, { method: makeAdmin ? 'PUT' : 'DELETE' }),
+  updateRoom: (roomId, changes) => request(`/rooms/${roomId}`, { method: 'PATCH', body: changes }),
+  closeRoom: (roomId) => request(`/rooms/${roomId}`, { method: 'DELETE' }),
+  listRoomMembers: (roomId) => request(`/rooms/${roomId}/members`),
+  // Sesli görüşmeye bağlanma bilgisi; biçimi sunucudaki ses sağlayıcısına göre değişir (bkz. js/voice/)
+  getVoiceJoin: (roomId) => request(`/rooms/${roomId}/voice`),
+  // role: 'admin' | 'vip' | 'listener' (özel rolü geri al)
+  setRoomRole: (roomId, userId, role) => request(`/rooms/${roomId}/roles/${userId}`, { method: 'PUT', body: { role } }),
   setSeatLock: (roomId, seatIndex, locked) => request(`/rooms/${roomId}/seats/${seatIndex}/lock`, { method: locked ? 'PUT' : 'DELETE' }),
   removeFromSeat: (roomId, seatIndex) => request(`/rooms/${roomId}/seats/${seatIndex}/user`, { method: 'DELETE' }),
+  inviteToSeat: (roomId, userId) => request(`/rooms/${roomId}/seat-invites/${userId}`, { method: 'POST' }),
+  setMicBlocked: (roomId, userId, blocked) => request(`/rooms/${roomId}/mic-blocks/${userId}`, { method: blocked ? 'PUT' : 'DELETE' }),
+  // minutes: 5 | 30 | 60 | 1440; null → susturmayı kaldır
+  setChatMute: (roomId, userId, minutes) => request(`/rooms/${roomId}/chat-mutes/${userId}`, minutes ? { method: 'PUT', body: { minutes } } : { method: 'DELETE' }),
+  deleteChatMessage: (roomId, messageId) => request(`/rooms/${roomId}/messages/${encodeURIComponent(messageId)}`, { method: 'DELETE' }),
   kickFromRoom: (roomId, userId) => request(`/rooms/${roomId}/kicks/${userId}`, { method: 'POST' }),
   listSuggestedUsers: () => request('/users/suggested'),
   listTopGifters: () => request('/leaderboards/gifters'),
@@ -499,7 +652,7 @@ const httpApi = {
   sendGift: (payload) => request('/gifts/send', { method: 'POST', body: payload, headers: idempotencyHeader() }),
   listCoinPackages: () => request('/wallet/packages'),
   purchaseCoins: (packageId) => request('/wallet/purchase', { method: 'POST', body: { package_id: packageId }, headers: idempotencyHeader() }),
-  listTransactions: () => request('/wallet/transactions'),
+  listTransactions: (currency = 'coin') => request(`/wallet/transactions?currency=${currency}`),
   listConversations: () => request('/conversations'),
   getConversation: (id) => request(`/conversations/${id}`),
   openConversationWith: async (userId) => (await request('/conversations', { method: 'POST', body: { user_id: userId } })).id,

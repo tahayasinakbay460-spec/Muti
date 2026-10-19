@@ -120,6 +120,7 @@ async def open_conversation(db: AsyncSession, me: int, other_id: int) -> int:
     if other_id == me:
         raise AppError("Kendine mesaj gönderemezsin.", code="cannot_message_self")
     await user_service.get_user(db, other_id)
+    await user_service.require_not_blocked(db, me, other_id)
 
     low, high = min(me, other_id), max(me, other_id)
     find = select(Conversation.id).where(Conversation.user_low_id == low, Conversation.user_high_id == high)
@@ -141,6 +142,7 @@ async def open_conversation(db: AsyncSession, me: int, other_id: int) -> int:
 
 async def send_message(db: AsyncSession, me: int, conversation_id: int, text: str) -> MessageOut:
     conversation = await _get_conversation(db, me, conversation_id)
+    await user_service.require_not_blocked(db, me, _other_user_id(conversation, me))
     now = utcnow()
 
     message = Message(conversation_id=conversation.id, sender_id=me, text=text, created_at=now)

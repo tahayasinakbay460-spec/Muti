@@ -4,14 +4,18 @@
 //
 // İstemci yalnızca şunları gönderir: `chat:message` { text }, `game:dice_rolled` {},
 // `game:roulette_start` {} ve `game:roulette_bet` { color }.
-// Moderasyon (koltuk kilitleme, atma) REST ile yapılır; sonucu sunucu `room:seats_updated`,
-// `room:roles_updated` ve `room:user_kicked` olarak yayınlar.
+// Moderasyon (roller, koltuk, susturma, mesaj silme, atma, oda ayarları) REST ile yapılır;
+// sonucu sunucu `room:seats_updated`, `room:roles_updated`, `room:chat_muted`,
+// `chat:message_deleted`, `room:user_kicked`, `room:updated`, `room:closed` olarak yayınlar.
+// Odaya girince yalnızca bize `chat:history` (son mesajlar) gelir; koltuğa davet edilince `room:seat_invite`.
 // Mesajın sahibini ve zarın sonucunu sunucu belirler, sonra tüm odaya yayınlar.
 import { USE_MOCK, WS_BASE_URL, STORAGE_KEYS } from './config.js';
 import { refreshSession } from './api.js';
 import { users, gifts, chatLines, CURRENT_USER_ID } from './mock-data.js';
 
 const pick = (list) => list[Math.floor(Math.random() * list.length)];
+// Sunucunun sohbet mesajı biçimi: her mesajın silinebilmesi için kimliği var
+const mockChat = (user, text) => ({ id: Math.random().toString(16).slice(2), user, text, created_at: new Date().toISOString() });
 const MOCK_RED_NUMBERS = new Set([1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36]);
 
 class BaseChannel {
@@ -47,7 +51,7 @@ class MockRoomChannel extends BaseChannel {
 
     // Sohbet akışı
     this.timers.push(setInterval(() => {
-      this.emit('chat:message', { user: pick(others), text: pick(chatLines) });
+      this.emit('chat:message', mockChat(pick(others), pick(chatLines)));
     }, 3800));
 
     // Ara sıra başka kullanıcılardan hediye
@@ -78,7 +82,7 @@ class MockRoomChannel extends BaseChannel {
     // Oda boş görünmesin diye koltuktakilerden birkaç açılış mesajı
     this.timers.push(setTimeout(() => {
       this.room.seats.filter((s) => s.user && s.user.id !== CURRENT_USER_ID).slice(0, 3).forEach((s, i) => {
-        this.emit('chat:message', { user: s.user, text: chatLines[i] });
+        this.emit('chat:message', mockChat(s.user, chatLines[i]));
       });
     }, 0));
   }
@@ -86,7 +90,7 @@ class MockRoomChannel extends BaseChannel {
   // Mock'ta sunucu olmadığı için sunucunun yapacağı işi burada taklit ediyoruz
   send(event, payload) {
     if (event === 'chat:message') {
-      this.emit(event, { user: this.me, text: payload.text });
+      this.emit(event, mockChat(this.me, payload.text));
     } else if (event === 'game:dice_rolled') {
       const values = [1, 2].map(() => 1 + Math.floor(Math.random() * 6));
       this.timers.push(setTimeout(() => this.emit(event, { user: this.me, values }), 150));

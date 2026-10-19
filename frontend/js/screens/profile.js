@@ -3,6 +3,7 @@ import { api } from '../api.js';
 import { DEFAULT_COVER_URL } from '../config.js';
 import { esc, icon, avatarImg, formatCount, joinParts, vipBadge, levelBadge, toast, openSheet } from '../ui.js';
 import { openEditProfileSheet } from './edit-profile.js';
+import { openReportSheet } from './report.js';
 
 const TABS = [
   { id: 'wall', label: 'Duvar' },
@@ -10,6 +11,16 @@ const TABS = [
   { id: 'rewards', label: 'Oyun & Ödüller' },
   { id: 'about', label: 'Hakkında' },
 ];
+
+// Kendi profilimde: seviye ve bir sonraki seviyeye kalan deneyim puanı
+function levelProgress(user) {
+  const percent = Math.min(100, Math.round((user.experience / Math.max(1, user.next_level_experience)) * 100));
+  return `
+    <div class="level-progress" title="Hediye gönderdikçe harcadığın her coin 1 deneyim puanı kazandırır">
+      <span><b>Lv.${user.level}</b><small>${formatCount(user.experience)} / ${formatCount(user.next_level_experience)} XP</small><b>Lv.${user.level + 1}</b></span>
+      <i style="--progress:${percent}%"></i>
+    </div>`;
+}
 
 export async function renderProfile(root, { params }) {
   const me = await api.getMe();
@@ -37,6 +48,7 @@ export async function renderProfile(root, { params }) {
         </div>
         <div class="profile-badges">${vipBadge(user.vip_level)}${levelBadge(user.level)}</div>
       </div>
+      ${user.is_me ? levelProgress(user) : ''}
 
       <p class="profile-meta">${esc(joinParts([user.age && `${user.age} yaş`, user.city, `${user.joined_days} gündür burada`]))}</p>
       <p class="profile-bio">${esc(user.bio)}</p>
@@ -129,8 +141,11 @@ export async function renderProfile(root, { params }) {
       <div class="menu-list">
         <button data-menu="share">${icon('share', 20)} Profili paylaş</button>
         ${user.is_me
-          ? `<a href="#/wallet" data-close>${icon('wallet', 20)} Cüzdan</a><button data-menu="logout" class="is-danger">${icon('logout', 20)} Çıkış yap</button>`
-          : `<button data-menu="report" class="is-danger">${icon('close', 20)} Şikayet et</button>`}
+          ? `<a href="#/wallet" data-close>${icon('wallet', 20)} Cüzdan</a>
+             <a href="#/settings" data-close>${icon('edit', 20)} Ayarlar</a>
+             <button data-menu="logout" class="is-danger">${icon('logout', 20)} Çıkış yap</button>`
+          : `<button data-menu="block">${icon('lock', 20)} ${user.is_blocked ? 'Engeli kaldır' : 'Engelle'}</button>
+             <button data-menu="report" class="is-danger">${icon('close', 20)} Şikâyet et</button>`}
       </div>`);
     sheet.el.addEventListener('click', async (event) => {
       const item = event.target.closest('[data-menu]');
@@ -140,7 +155,15 @@ export async function renderProfile(root, { params }) {
         await api.logout();
         location.hash = '#/auth';
       } else if (item.dataset.menu === 'report') {
-        toast('Şikayetin alındı, incelenecek.');
+        openReportSheet('user', user.id, user.display_name);
+      } else if (item.dataset.menu === 'block') {
+        try {
+          const { is_blocked: isBlocked } = await api.setBlocked(user.id, !user.is_blocked);
+          user.is_blocked = isBlocked;
+          toast(isBlocked ? `${user.display_name} engellendi. Birbirinize mesaj ve hediye gönderemezsiniz.` : 'Engel kaldırıldı', 'success');
+        } catch (error) {
+          toast(error.message, 'error');
+        }
       } else {
         toast('Profil bağlantısı kopyalandı');
       }

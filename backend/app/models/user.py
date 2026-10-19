@@ -39,7 +39,10 @@ class User(Base):
     cover_url: Mapped[str | None] = mapped_column(String(500))
     bio: Mapped[str] = mapped_column(String(300), default="")
     vip_level: Mapped[int] = mapped_column(Integer, default=0)
+    # Seviye, deneyim puanından (experience) hesaplanır; bkz. services/level_service.py.
+    # Hediye gönderdikçe harcanan her coin 1 deneyim puanı kazandırır.
     level: Mapped[int] = mapped_column(Integer, default=1)
+    experience: Mapped[int] = mapped_column(BigInteger, default=0)
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # ── Cüzdan ────────────────────────────────────────────────────────────────

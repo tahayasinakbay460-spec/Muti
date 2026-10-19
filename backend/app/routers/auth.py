@@ -1,13 +1,13 @@
 """
-/api/v1/auth — kayıt, giriş, token yenileme, çıkış.
+/api/v1/auth — kayıt, giriş, token yenileme, çıkış, parola değiştirme.
 
 ROUTER NEDİR? İnternetten gelen isteği karşılayan en dış katman. Burada iş kuralı
 YAZILMAZ: router yalnızca isteği alır, ilgili servisi çağırır, sonucu döner.
 """
 from fastapi import APIRouter, status
 
-from app.core.deps import DbSession
-from app.schemas.auth import LoginRequest, RefreshRequest, RegisterRequest, TokenResponse
+from app.core.deps import CurrentUser, DbSession
+from app.schemas.auth import ChangePasswordRequest, LoginRequest, RefreshRequest, RegisterRequest, TokenResponse
 from app.services import auth_service
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -40,3 +40,9 @@ async def refresh(data: RefreshRequest, db: DbSession):
 async def logout(data: RefreshRequest, db: DbSession):
     """Bu cihazdaki oturumu kapatır (refresh token'ı iptal eder)."""
     await auth_service.logout(db, data.refresh_token)
+
+
+@router.post("/change-password", response_model=TokenResponse)
+async def change_password(data: ChangePasswordRequest, user: CurrentUser, db: DbSession):
+    """Parolayı değiştirir; diğer cihazlardaki oturumlar kapanır, bu cihaz için yeni token döner."""
+    return await auth_service.change_password(db, user, data)
