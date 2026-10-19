@@ -35,6 +35,8 @@ ERROR = "error"                                # { code, detail }  (yalnızca ha
 # Kişiye özel kanal (/ws/me)
 MESSAGE_NEW = "message:new"                    # { conversation_id, sender, message }
 NOTIFICATION_NEW = "notification:new"          # { id, type, text, actor, data, ... }  (bkz. notification_service)
+FAMILY_MESSAGE = "family:message"              # { family_id, message }  (aile üyelerine)
+COUPLE_UPDATED = "couple:updated"              # {}  (CP teklifi geldi / kabul edildi / ayrılık; istemci yeniden yükler)
 PING = "ping"                                  # istemci → sunucu: "hâlâ buradayım" (çevrimiçi durumu)
 
 # ── WebSocket kapanış kodları ─────────────────────────────────────────────────

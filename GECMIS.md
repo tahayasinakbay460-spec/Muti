@@ -25,6 +25,8 @@ Projede yapılan işlerin kaydı.
 
 **Öğrenme (2026-10-19):** `learning/websocket/` dersleri hazır (WebSocket temeli). Sırada: ses sinyali WebSocket'te nasıl taşınıyor, sonra ses sunucuları.
 
+**Bağlılık sistemleri (2026-10-19):** günlük giriş, görevler, aile (sohbetli), CP, sıralamalar, etkinlikler hazır. Sırada 3. grup (oda PK'si, yeni oyunlar, karaoke/birlikte izleme), sonra 4. grup (ajans, admin paneli).
+
 **Gelir sistemleri (2026-10-19):** mağaza (çerçeve, giriş efekti, sohbet balonu), VIP (3 kademe, günlük ödül), şanslı hediye, hazine sandığı, hediye paketleri hazır. GitHub'da CI var (`.github/workflows/ci.yml`). Kullanıcı CLAUDE.md "D. Hedef Özellikler" 2-4. grupların da yapılmasını istedi; sırada 2. grup (günlük giriş ödülü/görevler, sıralamalar, aile, CP, etkinlikler).
 
 **Sıradaki adım:** demo yayını ve giriş hız sınırı (aşağıdaki plan). Yayında ses için kendi TURN sunucumuz (coturn) gerekecek; https zorunlu (tarayıcı mikrofonu yalnızca güvenli adreste açar). WebRTC sağlayıcı değiştirilebilir kurulacak: bugün kullanılan servis ileride açık kaynak bir servisle ya da başka bir sağlayıcıyla değiştirilebilmeli. Demo yayını bunlardan sonra.
@@ -84,6 +86,26 @@ Kodda "DEMO KISAYOLU" diye işaretlidir. Mobil/canlı aşamasında değiştirile
 ---
 
 # Kayıtlar
+
+## 2026-10-19 — Bağlılık sistemleri (2. grup): günlük giriş, görevler, aile, CP, sıralamalar, etkinlikler
+
+**Amaç:** CLAUDE.md "D. Hedef Özellikler" 2. grubu: kullanıcıyı her gün geri getiren sistemler.
+
+**Ne yapıldı:**
+- **Günlük giriş:** 7 günlük döngü (10 → 200 coin), gün atlanırsa baştan. (kullanıcı, gün) benzersiz: aynı gün iki ödül yazılamaz. Ana sayfada günde bir kez hatırlatma penceresi.
+- **Görevler:** 4 günlük görev (odaya gir, 5 mesaj, 3 hediye, takip). Sayaçlar tek komutluk UPSERT ile artar (eşzamanlı işlemde sayım kaybolmaz); hediye sayacı hediyeyle aynı transaction'da. DEMO: sayaçlar veritabanında, canlıda Redis.
+- **Aile:** kurma (2.000 coin), katılma (50 üye sınırı tek komutla korunur), ayrılma, kurucu/yönetici/üye rütbeleri, üye çıkarma, slogan/rozet, dağıtma, aile sohbeti (`/ws/me` üzerinden `family:message` ile anında). Aile rozeti profilde, sohbette ve sıralamada.
+- **CP:** teklif (520 coin), kabul / red / geri çekme (iade), ayrılık. "Tek CP" kuralı kabulde iki kullanıcı satırına "boşsa yaz" ile atomik; CP olunca diğer bekleyen teklifler iadeyle kapanır. Profilde CP kartı ve teklif listesi; başkasının profilinde "CP teklif et".
+- **Sıralamalar:** zenginler / çekiciler / odalar / aileler × bugün / bu hafta / bu ay (takvim dönemi); kişi sıralamalarında kendi sıran. Puanlar para defterinden.
+- **Etkinlikler:** süreli kampanya; bitince ilk bakışta ödüller tek komutla "dağıtıldı" işaretlenip bir kez dağıtılır. DEMO: zamanlayıcı yok, canlıda cron.
+- Örnek veri: 3 aile (muti hiçbirinde değil), Selin-Kaan aktif CP, Ada'dan muti'ye bekleyen teklif, biri süren biri biten etkinlik; örnek hediyeler birkaç saat önceye alındı (Pazartesi "bu hafta" sıralaması boş kalıyordu).
+- **CI'daki JS kontrolünün kör noktası bulundu:** `node --check`, içinde `import` olan `.js` dosyasında sözdizimi hatası olsa bile başarılı dönüyordu (profildeki `'CP'siniz'` kesme işareti hatası bu yüzden kaçtı, sayfa açılmadı). `frontend/package.json` (`"type": "module"`) eklendi; artık yakalıyor, tüm dosyalar temiz.
+- Sıralama sekmelerinde degrade arka plan Chrome'da çizimi kilitliyordu (ekran görüntüsü alınamıyordu); ortak `.segmented` stiline geçildi. Çerçeveli avatarın uzun satırlarda yumurta gibi esnemesi düzeltildi.
+- Yakalanan hatalar: CP ayrılığında commit sonrası eski nesneye erişim (500; yeni log sistemi tam dökümle gösterdi), VIP denetim kaydının sessizce kaybolması (`audit(level=)` çakışması, önceki kayıtta). Ara sıra başarısız olan eski bir arama testi (rastgele misafir adında "2001" geçebiliyordu) düzeltildi.
+
+**Doğrulama:** 60 test geçiyor (yeni 8), kapsam %94, takım 5 kez art arda geçti; ruff, pip-audit, JS sözdizimi temiz. Tarayıcıda gerçek backend'le: günlük giriş penceresi ve ödül, görevler, sıralama (kürsü + aile rozetleri), aileye katılma ve aile sohbeti, profilde CP teklifini kabul, etkinlik listesi ve detayı; konsolda hata yok.
+
+**Açık kalanlar:** Kişinin "toplam aile katkısı" ayrılınca aileden düşer (şimdiki üyeler sayılıyor; bilinçli). Etkinlik ödülü zamanlayıcıyla değil ilk bakışta dağıtılıyor. Aile/CP mock'ları basitleştirilmiş (kur/teklif mock'ta yok). `backend/app.db.bak` yedeği bir noktada kayboldu; neyin sildiği bulunamadı (içerik yalnızca o sabah oluşturulan örnek veriydi).
 
 ## 2026-10-19 — Kayıt (log) sistemi, test kapsamı ölçümü ve eksik testler
 

@@ -24,6 +24,11 @@ const DEFAULT_STATE = {
   },
   vip: { level: 0, expires_at: null, claimed_on: null },
   bought_package_ids: [],
+  checkin: { day: 1, claimed_on: null },
+  claimed_tasks: [],
+  family_id: null,
+  cp_partner_id: null,
+  cp_declined: false,
 };
 
 function loadState() {
@@ -99,6 +104,36 @@ function grantItem(item, { days, until }) {
   state.owned_items[item.id] = { expires_at: expiresAt, is_equipped: true };
 }
 
+function mockFamily(id) {
+  const family = db.families.find((f) => f.id === id);
+  const memberCount = family.member_ids.length + (state.family_id === id ? 1 : 0);
+  return {
+    id: family.id, name: family.name, badge: family.badge, slogan: family.slogan, owner_id: family.member_ids[0],
+    member_count: memberCount, max_members: 50, week_coins: family.week_coins, level: family.level,
+    my_role: state.family_id === id ? 'member' : null,
+  };
+}
+
+function mockFamilyDetail(id) {
+  const family = db.families.find((f) => f.id === id);
+  const ids = [...family.member_ids, ...(state.family_id === id ? [db.CURRENT_USER_ID] : [])];
+  return {
+    ...mockFamily(id),
+    members: ids.map((uid, i) => ({ user: withMeta(findUser(uid)), role: i === 0 ? 'owner' : 'member', week_coins: Math.max(0, 9000 - i * 1500) })),
+  };
+}
+
+function mockCoupleStatus() {
+  const since = new Date(Date.now() - 12 * DAY_MS).toISOString();
+  const partner = state.cp_partner_id ? withMeta(findUser(state.cp_partner_id)) : null;
+  return {
+    active: partner ? { partner, status: 'active', requested_by_me: false, since, cp_coins: 1240 } : null,
+    incoming: partner || state.cp_declined ? [] : [{ partner: withMeta(findUser(2005)), status: 'pending', requested_by_me: false, since, cp_coins: 0 }],
+    outgoing: [],
+    proposal_price: 520,
+  };
+}
+
 function vipStatus() {
   const level = myVipLevel();
   return {
@@ -117,7 +152,11 @@ function withMeta(user) {
     ...(isMe ? state.profile : {}),
     is_me: isMe,
     is_following: state.following_ids.includes(user.id),
-    ...(isMe ? { coin_balance: state.coin_balance, vip_level: myVipLevel(), ...myCosmetics() } : {}),
+    ...(isMe ? {
+      coin_balance: state.coin_balance, vip_level: myVipLevel(), ...myCosmetics(),
+      cp_partner_id: state.cp_partner_id,
+      family: state.family_id ? (({ id, name, badge }) => ({ id, name, badge }))(db.families.find((f) => f.id === state.family_id)) : null,
+    } : {}),
   };
 }
 
@@ -612,6 +651,141 @@ const mockApi = {
     return { coins, coin_balance: state.coin_balance };
   },
 
+  // ── Bağlılık (mock: kurallar basitleştirilmiş, asıl kurallar backend'de) ──
+  async getCheckin() {
+    await delay(60);
+    return { day: state.checkin.day, claimed_today: state.checkin.claimed_on === today(), rewards: db.checkinRewards };
+  },
+
+  async claimCheckin() {
+    await delay(150);
+    if (state.checkin.claimed_on === today()) throw new ApiError('checkin_claimed', 'Bugünkü giriş ödülünü zaten aldın.');
+    const coins = db.checkinRewards[state.checkin.day - 1];
+    state.coin_balance += coins;
+    const result = { day: state.checkin.day, coins, coin_balance: state.coin_balance };
+    state.checkin = { day: state.checkin.day % 7 + 1, claimed_on: today() };
+    addTransaction('daily_checkin', `Günlük giriş ödülü (${result.day}. gün)`, coins);
+    saveState();
+    return result;
+  },
+
+  async listTasks() {
+    await delay(80);
+    return db.tasks.map((t) => ({ ...t, claimed: state.claimed_tasks.includes(t.id) }));
+  },
+
+  async claimTask(taskId) {
+    await delay(120);
+    const task = db.tasks.find((t) => t.id === taskId);
+    if (task.progress < task.target) throw new ApiError('task_not_completed', 'Görev henüz tamamlanmadı.');
+    if (state.claimed_tasks.includes(taskId)) throw new ApiError('task_claimed', 'Bu görevin ödülünü bugün zaten aldın.');
+    state.claimed_tasks.push(taskId);
+    state.coin_balance += task.coins;
+    addTransaction('task_reward', `Görev ödülü: ${task.title}`, task.coins);
+    saveState();
+    return { task_id: taskId, coins: task.coins, coin_balance: state.coin_balance };
+  },
+
+  async listFamilies(query = '') {
+    await delay(100);
+    const q = query.toLocaleLowerCase('tr');
+    return db.families.filter((f) => f.name.toLocaleLowerCase('tr').includes(q)).map((f) => mockFamily(f.id));
+  },
+
+  async getMyFamily() {
+    await delay(60);
+    return state.family_id ? mockFamilyDetail(state.family_id) : null;
+  },
+
+  async getFamily(id) {
+    await delay(80);
+    return mockFamilyDetail(Number(id));
+  },
+
+  async joinFamily(id) {
+    await delay(150);
+    if (state.family_id) throw new ApiError('already_in_family', 'Zaten bir ailedesin. Önce ailenden ayrıl.');
+    state.family_id = Number(id);
+    saveState();
+    return mockFamilyDetail(state.family_id);
+  },
+
+  async leaveFamily() {
+    await delay(120);
+    state.family_id = null;
+    saveState();
+  },
+
+  async createFamily() {
+    await delay(200);
+    throw new ApiError('mock_only', 'Mock modunda aile kurulamaz; gerçek backend ile dene.');
+  },
+
+  async updateFamily(id) { return mockFamilyDetail(Number(id)); },
+  async disbandFamily() { throw new ApiError('mock_only', 'Mock modunda desteklenmiyor.'); },
+  async kickFamilyMember(id) { return mockFamilyDetail(Number(id)); },
+  async setFamilyRole(id) { return mockFamilyDetail(Number(id)); },
+
+  async listFamilyMessages(id) {
+    await delay(80);
+    return db.familyMessages.filter((m) => m.family_id === Number(id)).map((m) => ({ ...m, sender: withMeta(findUser(m.sender_id)) }));
+  },
+
+  async sendFamilyMessage(id, text) {
+    await delay(100);
+    return { id: Date.now(), sender: withMeta(findUser(db.CURRENT_USER_ID)), text, created_at: new Date().toISOString() };
+  },
+
+  async getCouple() {
+    await delay(80);
+    return mockCoupleStatus();
+  },
+
+  async proposeCouple() { throw new ApiError('mock_only', 'Mock modunda CP teklifi gönderilemez.'); },
+
+  async acceptCouple(userId) {
+    await delay(150);
+    state.cp_partner_id = Number(userId);
+    saveState();
+    return mockCoupleStatus();
+  },
+
+  async declineCouple() {
+    await delay(120);
+    state.cp_declined = true;
+    saveState();
+    return mockCoupleStatus();
+  },
+
+  async breakUpCouple() {
+    await delay(120);
+    state.cp_partner_id = null;
+    saveState();
+    return mockCoupleStatus();
+  },
+
+  async getLeaderboard(kind, period) {
+    await delay(120);
+    const scores = [184500, 126300, 98750, 61200, 40800, 22100, 15400, 9800];
+    let entries;
+    if (kind === 'rooms') entries = db.rooms.slice(0, 8).map((r, i) => ({ rank: i + 1, score: scores[i], room: { id: r.id, title: r.title, cover_url: r.cover_url } }));
+    else if (kind === 'families') entries = db.families.map((f, i) => ({ rank: i + 1, score: scores[i], family: { id: f.id, name: f.name, badge: f.badge, member_count: f.member_ids.length } }));
+    else entries = [2001, 2012, 2015, 2003, 2010, 2002, 2005, 2008].map((id, i) => ({ rank: i + 1, score: scores[i], user: withMeta(findUser(id)) }));
+    return { kind, period, entries, me: null };
+  },
+
+  async listEvents() {
+    await delay(80);
+    return db.events;
+  },
+
+  async getEvent(id) {
+    await delay(100);
+    const event = db.events.find((e) => e.id === Number(id));
+    const entries = [2001, 2012, 2015, 2003, 2010].map((uid, i) => ({ rank: i + 1, score: [48200, 31900, 22400, 9100, 4300][i], user: withMeta(findUser(uid)) }));
+    return { ...event, entries, me: null };
+  },
+
   // Hazine sandığı: mock'ta hep dolum aşamasında (gerçek dolum ve açılma backend'de)
   async getChest() {
     await delay(60);
@@ -828,6 +1002,31 @@ const httpApi = {
   getVip: () => request('/vip'),
   purchaseVip: (level) => request('/vip/purchase', { method: 'POST', body: { level }, headers: idempotencyHeader() }),
   claimVipDailyReward: () => request('/vip/daily-reward', { method: 'POST' }),
+  // ── Bağlılık: günlük giriş, görevler, aile, CP, sıralama, etkinlik ──
+  getCheckin: () => request('/rewards/checkin'),
+  claimCheckin: () => request('/rewards/checkin', { method: 'POST' }),
+  listTasks: () => request('/tasks'),
+  claimTask: (taskId) => request(`/tasks/${encodeURIComponent(taskId)}/claim`, { method: 'POST' }),
+  listFamilies: (query = '') => request(`/families?query=${encodeURIComponent(query)}`),
+  createFamily: (payload) => request('/families', { method: 'POST', body: payload }),
+  getMyFamily: () => request('/families/me'),
+  getFamily: (id) => request(`/families/${id}`),
+  updateFamily: (id, changes) => request(`/families/${id}`, { method: 'PATCH', body: changes }),
+  disbandFamily: (id) => request(`/families/${id}`, { method: 'DELETE' }),
+  joinFamily: (id) => request(`/families/${id}/join`, { method: 'POST' }),
+  leaveFamily: () => request('/families/me/membership', { method: 'DELETE' }),
+  kickFamilyMember: (id, userId) => request(`/families/${id}/members/${userId}`, { method: 'DELETE' }),
+  setFamilyRole: (id, userId, role) => request(`/families/${id}/members/${userId}/role`, { method: 'PUT', body: { role } }),
+  listFamilyMessages: (id) => request(`/families/${id}/messages`),
+  sendFamilyMessage: (id, text) => request(`/families/${id}/messages`, { method: 'POST', body: { text } }),
+  getCouple: () => request('/couples/me'),
+  proposeCouple: (userId) => request(`/couples/${userId}`, { method: 'POST' }),
+  acceptCouple: (userId) => request(`/couples/${userId}/accept`, { method: 'POST' }),
+  declineCouple: (userId) => request(`/couples/${userId}/request`, { method: 'DELETE' }),
+  breakUpCouple: () => request('/couples/me', { method: 'DELETE' }),
+  getLeaderboard: (kind, period) => request(`/leaderboards?kind=${kind}&period=${period}`),
+  listEvents: () => request('/events'),
+  getEvent: (id) => request(`/events/${id}`),
   getChest: (roomId) => request(`/rooms/${roomId}/chest`),
   claimChest: (roomId) => request(`/rooms/${roomId}/chest/claim`, { method: 'POST' }),
   purchaseCoins: (packageId) => request('/wallet/purchase', { method: 'POST', body: { package_id: packageId }, headers: idempotencyHeader() }),

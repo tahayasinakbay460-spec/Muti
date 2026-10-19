@@ -16,3 +16,8 @@ Thumbs.db
 # Test önbelleği
 .pytest_cache/
 logs/
+
+# Test kapsamı ölçüm dosyaları
+.coverage
+.coverage.*
+htmlcov/

@@ -13,9 +13,9 @@ from app.core.errors import AppError, ForbiddenError, NotFoundError
 from app.core.database import utcnow
 from app.core.timefmt import as_utc, days_since
 from app.demo import content
-from app.models import Follow, User, UserBlock
+from app.models import Family, FamilyMember, Follow, User, UserBlock
 from app.realtime.state import room_state
-from app.schemas.user import ProfileUpdateRequest, UserOut
+from app.schemas.user import FamilyBadge, ProfileUpdateRequest, UserOut
 from app.services import level_service, notification_service, store_service
 
 
@@ -59,6 +59,13 @@ async def present_users(db: AsyncSession, users: list[User], viewer_id: int | No
         ))
 
     cosmetics = await store_service.equipped_cosmetics(db, user_ids)
+    families = {
+        member_id: FamilyBadge(id=family.id, name=family.name, badge=family.badge)
+        for member_id, family in await db.execute(
+            select(FamilyMember.user_id, Family).join(Family, Family.id == FamilyMember.family_id)
+            .where(FamilyMember.user_id.in_(user_ids))
+        )
+    }
     now = utcnow()
 
     result = []
@@ -81,6 +88,8 @@ async def present_users(db: AsyncSession, users: list[User], viewer_id: int | No
             is_guest=user.is_guest,
             is_online=user.id in online_ids,
             **cosmetics.get(user.id, {}),
+            family=families.get(user.id),
+            cp_partner_id=user.cp_partner_id,
             joined_days=days_since(user.created_at),
             created_at=as_utc(user.created_at),
             followers_count=user.followers_count,
@@ -189,6 +198,9 @@ async def toggle_follow(db: AsyncSession, viewer_id: int, target_id: int) -> boo
     await require_not_blocked(db, viewer_id, target_id)
     if not await set_follow(db, viewer_id, target_id, follow=True):
         return True
+    # Döngüsel import olmasın diye burada (engagement → wallet → user_service).
+    from app.services import engagement_service
+    await engagement_service.record(db, viewer_id, engagement_service.METRIC_FOLLOW)
     await db.commit()
 
     viewer = await get_user(db, viewer_id)

@@ -1,0 +1,6 @@
+{
+  "name": "muti-frontend",
+  "private": true,
+  "description": "Build adımı yok. Bu dosya yalnızca Node araçlarına (CI sözdizimi kontrolü) js/ dosyalarının ES modülü olduğunu söyler.",
+  "type": "module"
+}

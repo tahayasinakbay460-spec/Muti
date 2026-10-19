@@ -15,11 +15,10 @@ from sqlalchemy import or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.core.database import utcnow
 from app.core.errors import ConflictError, ForbiddenError
 from app.core.logs import audit
-from app.core.timefmt import as_utc
+from app.core.timefmt import as_utc, local_today
 from app.models import StoreItem, User
 from app.schemas.store import DailyRewardResult, StoreItemBrief, VipPurchaseResult, VipStatus, VipTierOut
 from app.services import store_service, wallet_service
@@ -52,11 +51,6 @@ VIP_TIERS = {
 }
 
 
-def _today():
-    """Kullanıcının takvimine göre bugün (DEMO: sabit Türkiye saati, bkz. config)."""
-    return (utcnow() + timedelta(hours=settings.display_utc_offset_hours)).date()
-
-
 async def get_status(db: AsyncSession, user: User) -> VipStatus:
     all_ids = {item_id for tier in VIP_TIERS.values() for item_id in tier.item_ids}
     items = {item.id: item for item in await db.scalars(select(StoreItem).where(StoreItem.id.in_(all_ids)))}
@@ -64,7 +58,7 @@ async def get_status(db: AsyncSession, user: User) -> VipStatus:
     return VipStatus(
         level=level,
         expires_at=as_utc(user.vip_expires_at) if level and user.vip_expires_at else None,
-        daily_reward_available=bool(level) and user.vip_daily_claimed_on != _today(),
+        daily_reward_available=bool(level) and user.vip_daily_claimed_on != local_today(),
         tiers=[
             VipTierOut(
                 level=tier.level, name=tier.name, price_30d=tier.price_30d, daily_coins=tier.daily_coins,
@@ -129,7 +123,7 @@ async def claim_daily_reward(db: AsyncSession, user: User) -> DailyRewardResult:
     level = user.active_vip_level()
     if not level:
         raise ForbiddenError("Günlük ödül VIP üyelere özel.", code="vip_required")
-    today = _today()
+    today = local_today()
 
     # "Bugün almadıysa bugün aldı olarak işaretle" tek komutla: aynı anda gelen ikinci
     # istek hiçbir satırı değiştiremez ve reddedilir (para kuralındaki yöntemin aynısı).

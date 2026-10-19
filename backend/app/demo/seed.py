@@ -22,7 +22,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import utcnow
 from app.core.security import hash_password
-from app.models import CoinPackage, Conversation, Follow, Gift, Message, Room, StoreItem, Transaction, User
+from app.models import (
+    CoinPackage, Conversation, Couple, Event, Family, FamilyMember, FamilyMessage, Follow, Gift, Message, Room,
+    StoreItem, Transaction, User,
+)
 from app.services import store_service, vip_service
 from app.realtime.state import InMemoryRoomStateStore, RoomStateStore
 
@@ -115,6 +118,23 @@ GIFT_BUNDLES = [
     (8, "Kraliyet Paketi", 8000, 2000, "₺399,99", 103, 30, False),
 ]
 
+# Aileler: (id, ad, rozet, slogan, kurucu, [(üye, rol)]). Ana kullanıcı hiçbirinde değil:
+# demoda aileye katılma ya da aile kurma gösterilebilsin.
+FAMILIES = [
+    (1, "Gece Kuşları", "🦉", "Sabaha kadar sohbet, oyun ve müzik.", 2001,
+     [(2003, "admin"), (2008, "member"), (2011, "member"), (2015, "member")]),
+    (2, "Aslanlar", "🦁", "Hediyede, oyunda, sohbette bir numara.", 2012,
+     [(2010, "admin"), (2004, "member"), (2014, "member")]),
+    (3, "Müzik Kulübü", "🎵", "Her akşam canlı müzik odası.", 2009, [(2007, "member"), (2013, "member")]),
+]
+FAMILY_MESSAGES = [
+    (1, 2001, "Bu akşam 21:00'de aile odasında buluşuyoruz 🎉", 180),
+    (1, 2003, "Ben geliyorum, şarkı listesini hazırladım 🎵", 170),
+    (1, 2015, "Haftalık sıralamada ilk 3'e girelim!", 60),
+]
+# CP: (kullanıcı, kullanıcı, durum, teklif eden). Ada'nın ana kullanıcıya bekleyen teklifi var.
+COUPLES = [(2002, 2003, "active", 2002), (2005, MAIN_USER_ID, "pending", 2005)]
+
 # Ana kullanıcının sohbetleri: (karşıdaki kişi, okunmamış sayısı, [(ben mi yazdım, metin, kaç dakika önce)])
 CONVERSATIONS = [
     (2001, 2, [(False, "Bu akşam odaya gelecek misin?", 14), (True, "Gelirim, 10 dakikaya oradayım.", 11), (False, "Süper, koltuk ayırıyorum 🎤", 10)]),
@@ -125,6 +145,9 @@ CONVERSATIONS = [
 
 # Liderlik tablosu dolu görünsün diye geçmiş hediye toplamları: (kullanıcı, toplam coin)
 TOP_GIFTERS = [(2001, 184500), (2012, 126300), (2015, 98750), (2003, 61200), (2010, 40800)]
+# Bu hediyeleri kim aldı, hangi odada (sıralamaların "Çekiciler" ve "Odalar" sekmeleri dolsun):
+# gönderen → (alan, oda). Hepsi birkaç saat önce: "bugün / bu hafta / bu ay" dönemlerinin hepsinde görünür.
+GIFT_TARGETS = {2001: (2015, 104211), 2012: (2003, 102938), 2015: (2001, 104211), 2003: (2012, 102938), 2010: (2005, 107340)}
 
 
 async def seed_database(db: AsyncSession) -> None:
@@ -193,9 +216,46 @@ async def seed_database(db: AsyncSession) -> None:
         Transaction(user_id=MAIN_USER_ID, type="reward", currency="coin", amount=50, balance_after=12450,
                     label="Günlük giriş ödülü", created_at=now - timedelta(days=1)),
     ])
-    for uid, total in TOP_GIFTERS:
+    for hours, (uid, total) in enumerate(TOP_GIFTERS, start=1):
+        receiver_id, room_id = GIFT_TARGETS[uid]
+        sent_at = now - timedelta(hours=hours)
         db.add(Transaction(user_id=uid, type="gift_sent", currency="coin", amount=-total, balance_after=5000,
-                           label="Hediyeler (örnek veri)", created_at=now - timedelta(days=5)))
+                           label="Hediyeler (örnek veri)", counterparty_id=receiver_id, room_id=room_id, created_at=sent_at))
+        db.add(Transaction(user_id=receiver_id, type="gift_received", currency="diamond", amount=total // 2,
+                           balance_after=total // 2, label="Hediyeler (örnek veri)", counterparty_id=uid,
+                           room_id=room_id, created_at=sent_at))
+
+    # Aileler, CP ve etkinlikler
+    for fid, name, badge, slogan, owner_id, members in FAMILIES:
+        db.add(Family(id=fid, name=name, badge=badge, slogan=slogan, owner_id=owner_id, member_count=len(members) + 1))
+    await db.flush()
+    for fid, _name, _badge, _slogan, owner_id, members in FAMILIES:
+        db.add(FamilyMember(user_id=owner_id, family_id=fid, role="owner"))
+        db.add_all([FamilyMember(user_id=uid, family_id=fid, role=role) for uid, role in members])
+    db.add_all([
+        FamilyMessage(family_id=fid, sender_id=uid, text=text, created_at=now - timedelta(minutes=minutes))
+        for fid, uid, text, minutes in FAMILY_MESSAGES
+    ])
+    for a, b, status, requested_by in COUPLES:
+        low, high = min(a, b), max(a, b)
+        db.add(Couple(user_low_id=low, user_high_id=high, requested_by=requested_by, status=status,
+                      accepted_at=now - timedelta(days=12) if status == "active" else None))
+        if status == "active":
+            for uid, partner in ((a, b), (b, a)):
+                (await db.get(User, uid)).cp_partner_id = partner
+        else:
+            # Teklif edenin yüzük bedeli ödenmiş olsun (reddedilirse iade defterle tutarlı kalsın).
+            db.add(Transaction(user_id=requested_by, type="cp_proposal", currency="coin", amount=-520,
+                               balance_after=5000 - 520, label="CP teklifi → Muti", counterparty_id=MAIN_USER_ID,
+                               created_at=now - timedelta(hours=3)))
+    db.add_all([
+        Event(title="Hafta Sonu Hediye Yarışı", emoji="🏆", metric="gifts_sent", rewards=[5000, 3000, 1000],
+              description="Etkinlik süresince en çok hediye gönderen ilk 3 kişi coin kazanır.",
+              starts_at=now - timedelta(days=1), ends_at=now + timedelta(days=6)),
+        Event(title="Yıldızlar Gecesi", emoji="⭐", metric="gifts_received", rewards=[3000, 2000, 1000],
+              description="En çok hediye alan yayıncılar ödüllendirildi.",
+              starts_at=now - timedelta(days=10), ends_at=now - timedelta(days=1)),
+    ])
 
     for other_id, unread, messages in CONVERSATIONS:
         low, high = min(MAIN_USER_ID, other_id), max(MAIN_USER_ID, other_id)

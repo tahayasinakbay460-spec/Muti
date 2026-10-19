@@ -4,22 +4,23 @@ import { APP_NAME, CATEGORY_LABELS } from '../config.js';
 import { esc, icon, avatarImg, formatCoins, formatCount, toast } from '../ui.js';
 import { roomRow, coinPill } from './components.js';
 import { paintNotificationBadge } from '../inbox.js';
+import { maybeShowCheckin } from './tasks.js';
 
 // Üst sekmeler. Henüz ekranı olmayanlar "Yakında" bildirimi gösterir.
 const TOP_TABS = [
   { id: 'discover', label: 'Keşfet', icon: 'flame' },
   { id: 'rooms', label: 'Odalar', icon: 'home', href: '#/explore' },
   { id: 'games', label: 'Oyunlar', icon: 'gamepad', scrollTo: 'games' },
-  { id: 'events', label: 'Etkinlik', icon: 'trophy' },
+  { id: 'events', label: 'Etkinlik', icon: 'trophy', href: '#/events' },
   { id: 'following', label: 'Takip', icon: 'users', href: '#/following' },
 ];
 
 const QUICK_TILES = [
-  { id: 'popular', label: 'Popüler Odalar', emoji: '🎙️', href: '#/explore' },
-  { id: 'streamers', label: 'Günün yayıncıları', emoji: '🏆', scrollTo: 'streamers' },
+  { id: 'tasks', label: 'Görevler', emoji: '🎯', href: '#/tasks' },
+  { id: 'leaderboard', label: 'Sıralama', emoji: '🏆', href: '#/leaderboard' },
+  { id: 'families', label: 'Aileler', emoji: '🛡️', href: '#/families' },
   { id: 'game-rooms', label: 'Oyun Odaları', emoji: '🎮', href: '#/explore?category=game' },
-  { id: 'cities', label: '81 İl Odası', emoji: '📍' },
-  { id: 'vip', label: 'VIP Odalar', emoji: '👑' },
+  { id: 'vip', label: 'VIP', emoji: '👑', href: '#/vip' },
 ];
 
 // Oda içi oyunlar. Oynanabilenler (isPlayable) oda içinden açılır: kart oyun odalarına götürür.
@@ -213,6 +214,9 @@ export async function renderHome(root) {
     const next = (currentIndex() + 1) % banners.length;
     track.scrollTo({ left: next * slideStep(), behavior: 'smooth' });
   }, 4500);
+
+  // Bugünkü giriş ödülü alınmadıysa günde bir kez hatırlat
+  maybeShowCheckin();
 
   return () => clearInterval(bannerTimer);
 }

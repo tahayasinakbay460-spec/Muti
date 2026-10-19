@@ -45,6 +45,9 @@ class User(Base):
     vip_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # VIP günlük ödülünün en son alındığı gün (günde bir kez alınabilir).
     vip_daily_claimed_on: Mapped[date | None] = mapped_column(Date)
+    # CP (çift) eşi. Kabul anında iki satır da tek komutla "boşsa doldur" yöntemiyle yazılır:
+    # aynı anda iki teklif kabul edilse bile kimse iki CP'ye sahip olamaz (bkz. couple_service).
+    cp_partner_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     # Seviye, deneyim puanından (experience) hesaplanır; bkz. services/level_service.py.
     # Hediye gönderdikçe harcanan her coin 1 deneyim puanı kazandırır.
     level: Mapped[int] = mapped_column(Integer, default=1)

@@ -16,6 +16,13 @@ class EntryEffect(BaseModel):
     emoji: str
 
 
+class FamilyBadge(BaseModel):
+    """Kullanıcının ailesi: profilde ve sohbette rozet olarak görünür."""
+    id: int
+    name: str
+    badge: str
+
+
 class UserOut(BaseModel):
     """Bir kullanıcının dışarıya gösterilen hali."""
     id: int
@@ -38,6 +45,8 @@ class UserOut(BaseModel):
     frame: str | None = None
     entry_effect: EntryEffect | None = None
     chat_bubble: str | None = None
+    family: FamilyBadge | None = None
+    cp_partner_id: int | None = None     # CP (çift) eşi; ayrıntısı /couples ile alınır
     joined_days: int          # kaç gündür üye
     created_at: datetime
     followers_count: int

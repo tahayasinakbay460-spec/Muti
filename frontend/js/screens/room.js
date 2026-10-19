@@ -193,7 +193,7 @@ export async function renderRoom(root, { params }) {
     addChatLine(`
       <div class="chat-line" data-message-id="${esc(id)}">
         ${framedAvatar(user, 'avatar-sm')}
-        <div><b>${esc(user.display_name)}${ROLE_LABELS[role] ? ` <span class="mini-role mini-role-${role}">${ROLE_LABELS[role]}</span>` : ''}${user.vip_level ? ` <span class="mini-vip">VIP${user.vip_level}</span>` : ''}</b><p class="${user.chat_bubble ? `chat-bubble ${esc(user.chat_bubble)}` : ''}">${esc(text)}</p></div>
+        <div><b>${esc(user.display_name)}${ROLE_LABELS[role] ? ` <span class="mini-role mini-role-${role}">${ROLE_LABELS[role]}</span>` : ''}${user.vip_level ? ` <span class="mini-vip">VIP${user.vip_level}</span>` : ''}${user.family ? ` <span class="family-chip">${esc(user.family.badge)}</span>` : ''}</b><p class="${user.chat_bubble ? `chat-bubble ${esc(user.chat_bubble)}` : ''}">${esc(text)}</p></div>
       </div>`);
   }
 

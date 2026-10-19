@@ -14,7 +14,9 @@ from app.realtime import events
 from app.realtime.hub import room_hub
 from app.schemas.economy import GiftOut, GiftSendRequest, GiftSendResult
 from app.schemas.user import TopGifter
-from app.services import level_service, notification_service, treasure_service, user_service, wallet_service
+from app.services import (
+    engagement_service, level_service, notification_service, treasure_service, user_service, wallet_service,
+)
 
 # ŞANSLI HEDİYE ÇARPAN TABLOSU: (çarpan, 1000 çekilişte kaç kez çıkar)
 # Her şanslı hediye adedi için ayrı çekiliş yapılır; çıkan çarpan × hediye fiyatı kadar coin
@@ -133,6 +135,8 @@ async def send_gift(
                 db, user_id=sender_id, currency="coin", delta=lucky_win, type="lucky_win",
                 label=f"Şanslı hediye: {gift.name} x{lucky_multiplier}", gift_id=gift.id, room_id=data.room_id,
             )
+        # Günlük görev sayacı ("3 kez hediye gönder") hediyeyle birlikte kalıcı olur.
+        await engagement_service.record(db, sender_id, engagement_service.METRIC_GIFT_SENT)
         # Harcanan her coin 1 deneyim puanı: seviye hediyeyle aynı transaction'da artar.
         level_up = await level_service.add_experience(db, sender_id, total_coins)
         # İki adım da başarılı → ikisini birlikte kalıcı yap.

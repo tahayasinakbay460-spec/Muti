@@ -17,7 +17,9 @@ def test_user_search_by_name_username_and_id(client, muti):
     by_name = client.get(f"{API}/users/search", headers=muti, params={"query": "mer"}).json()
     assert by_name and all("mer" in (u["display_name"] + u["username"]).lower() for u in by_name)
     by_id = client.get(f"{API}/users/search", headers=muti, params={"query": "2001"}).json()
-    assert [u["id"] for u in by_id] == [2001]
+    # ID'si 2001 olan ilk sırada. (Rastgele adlı misafirlerden birinin adında "2001" geçebilir;
+    # onlar da çıkabilir, bu yüzden "yalnızca o" değil "ilk o" kontrol edilir.)
+    assert by_id[0]["id"] == 2001
     # SQL joker karakterleri düz karakter sayılır: "%" her şeyi eşleştirmez.
     assert client.get(f"{API}/users/search", headers=muti, params={"query": "%"}).json() == []
 

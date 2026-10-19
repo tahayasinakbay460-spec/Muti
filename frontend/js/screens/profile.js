@@ -4,6 +4,7 @@ import { DEFAULT_COVER_URL } from '../config.js';
 import { esc, icon, avatarImg, formatCount, joinParts, vipBadge, levelBadge, toast, openSheet } from '../ui.js';
 import { openEditProfileSheet } from './edit-profile.js';
 import { openReportSheet } from './report.js';
+import { onInbox } from '../inbox.js';
 
 const KIND_LABELS = { frame: 'Çerçeve', entry_effect: 'Giriş efekti', chat_bubble: 'Sohbet balonu' };
 const daysLeft = (iso) => Math.max(1, Math.ceil((new Date(iso) - Date.now()) / 86400000));
@@ -49,7 +50,7 @@ export async function renderProfile(root, { params }) {
           <h1>${esc(user.display_name)} ${user.is_verified ? `<span class="verified">${icon('verified', 18)}</span>` : ''}</h1>
           <button class="id-copy" data-action="copy-id">ID ${user.id} ${icon('copy', 13)}</button>
         </div>
-        <div class="profile-badges">${vipBadge(user.vip_level)}${levelBadge(user.level)}</div>
+        <div class="profile-badges">${vipBadge(user.vip_level)}${levelBadge(user.level)}${user.family ? `<a class="family-chip" href="#/family/${user.family.id}">${esc(user.family.badge)} ${esc(user.family.name)}</a>` : ''}</div>
       </div>
       ${user.is_me ? levelProgress(user) : ''}
 
@@ -70,6 +71,8 @@ export async function renderProfile(root, { params }) {
         <div><b>${formatCount(user.friends_count)}</b><small>Arkadaş</small></div>
         <div><b>${formatCount(user.visitors_count)}</b><small>Ziyaretçi</small></div>
       </div>
+
+      <div id="cp-slot"></div>
 
       <div class="quick-tiles">
         <button data-tab-jump="items"><i>💠</i><span><b>Eşyalar</b><small id="item-count">${items.length}</small></span></button>
@@ -136,6 +139,70 @@ export async function renderProfile(root, { params }) {
       </dl>`,
   };
 
+  // ─── CP (çift) ─────────────────────────────────────────────────────────────
+  const cpSlot = root.querySelector('#cp-slot');
+  const daysSince = (iso) => Math.max(1, Math.ceil((Date.now() - new Date(iso)) / 86400000));
+  // `subtitle` boşsa: "12 gündür CP · 🪙 1.240" (yalnızca kendi CP'mde bu bilgiler var)
+  const cpCard = (couple, subtitle = '') => `
+    <div class="cp-card">
+      <a href="#/profile/${user.id}">${avatarImg(user, 'avatar-md')}</a>
+      <span class="cp-heart">💞</span>
+      <a href="#/profile/${couple.partner.id}">${avatarImg(couple.partner, 'avatar-md')}</a>
+      <span class="member-info">
+        <b>${esc(user.display_name)} & ${esc(couple.partner.display_name)}</b>
+        <small>${subtitle || `${daysSince(couple.since)} gündür CP · 🪙 ${formatCount(couple.cp_coins)}`}</small>
+      </span>
+    </div>`;
+
+  async function renderCp() {
+    if (!user.is_me) {
+      if (!user.cp_partner_id) return;
+      const partner = await api.getUser(user.cp_partner_id).catch(() => null);
+      if (partner) cpSlot.innerHTML = `<section class="section">${cpCard({ partner }, 'CP 💞')}</section>`;
+      return;
+    }
+    const status = await api.getCouple();
+    const requests = [
+      ...status.incoming.map((r) => `
+        <div class="cp-request">${avatarImg(r.partner, 'avatar-sm')}<span><b>${esc(r.partner.display_name)}</b> sana CP teklif etti 💍</span>
+          <button class="btn btn-sm btn-primary" data-cp="accept" data-partner="${r.partner.id}">Kabul</button>
+          <button class="btn btn-sm btn-soft" data-cp="decline" data-partner="${r.partner.id}">Reddet</button></div>`),
+      ...status.outgoing.map((r) => `
+        <div class="cp-request">${avatarImg(r.partner, 'avatar-sm')}<span><b>${esc(r.partner.display_name)}</b> yanıt bekleniyor</span>
+          <button class="btn btn-sm btn-soft" data-cp="decline" data-partner="${r.partner.id}">Geri çek</button></div>`),
+    ].join('');
+    cpSlot.innerHTML = status.active || requests
+      ? `<section class="section">
+           ${status.active ? `${cpCard(status.active)}<button class="link-btn" data-cp="breakup">CP'yi sonlandır</button>` : ''}
+           ${requests}
+         </section>`
+      : '';
+  }
+  renderCp();
+  const stopCp = user.is_me ? onInbox('couple:updated', renderCp) : null;
+
+  cpSlot.addEventListener('click', async (event) => {
+    const button = event.target.closest('[data-cp]');
+    if (!button) return;
+    button.disabled = true;
+    const partnerId = Number(button.dataset.partner);
+    try {
+      if (button.dataset.cp === 'accept') {
+        await api.acceptCouple(partnerId);
+        toast("💞 Artık CP'siniz!", 'success');
+      } else if (button.dataset.cp === 'decline') {
+        await api.declineCouple(partnerId);
+      } else {
+        await api.breakUpCouple();
+        toast('CP sonlandırıldı');
+      }
+      await renderCp();
+    } catch (error) {
+      toast(error.message, 'error');
+      button.disabled = false;
+    }
+  });
+
   function showTab(tabId) {
     activeTab = tabId;
     root.querySelectorAll('#profile-tabs button').forEach((b) => b.classList.toggle('is-active', b.dataset.tab === tabId));
@@ -153,14 +220,22 @@ export async function renderProfile(root, { params }) {
              <a href="#/vip" data-close>👑 VIP</a>
              <a href="#/settings" data-close>${icon('edit', 20)} Ayarlar</a>
              <button data-menu="logout" class="is-danger">${icon('logout', 20)} Çıkış yap</button>`
-          : `<button data-menu="block">${icon('lock', 20)} ${user.is_blocked ? 'Engeli kaldır' : 'Engelle'}</button>
+          : `${!user.cp_partner_id && !me.cp_partner_id ? `<button data-menu="propose">💍 CP teklif et</button>` : ''}
+             <button data-menu="block">${icon('lock', 20)} ${user.is_blocked ? 'Engeli kaldır' : 'Engelle'}</button>
              <button data-menu="report" class="is-danger">${icon('close', 20)} Şikâyet et</button>`}
       </div>`);
     sheet.el.addEventListener('click', async (event) => {
       const item = event.target.closest('[data-menu]');
       if (!item) return;
       sheet.close();
-      if (item.dataset.menu === 'logout') {
+      if (item.dataset.menu === 'propose') {
+        try {
+          await api.proposeCouple(user.id);
+          toast(`💍 ${user.display_name} kişisine CP teklif ettin. Reddedilirse coin iade edilir.`, 'success');
+        } catch (error) {
+          toast(error.code === 'insufficient_balance' ? 'Coin bakiyen yetersiz.' : error.message, 'error');
+        }
+      } else if (item.dataset.menu === 'logout') {
         await api.logout();
         location.hash = '#/auth';
       } else if (item.dataset.menu === 'report') {
@@ -236,4 +311,6 @@ export async function renderProfile(root, { params }) {
       toast('Bu özellik yakında geliyor');
     }
   });
+
+  return () => stopCp?.();
 }

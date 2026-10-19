@@ -186,3 +186,39 @@ export const notifications = [
   { id: 2, type: 'follow', text: 'Selin seni takip etmeye başladı.', actor_id: 2003, data: { user_id: 2003 }, is_read: false, time_label: '1 saat önce' },
   { id: 1, type: 'level_up', text: 'Tebrikler! Lv.12 oldun 🎉', actor_id: null, data: {}, is_read: true, time_label: 'Dün' },
 ];
+
+// ─── Bağlılık sistemleri (backend demo/seed.py ve engagement_service ile aynı) ───
+export const checkinRewards = [10, 20, 30, 50, 80, 120, 200];
+
+// Mock'ta görev ilerlemesi sabit (gerçek ilerleme backend sayaçlarından gelir)
+export const tasks = [
+  { id: 'join_room', title: 'Bir odaya katıl', target: 1, progress: 1, coins: 10 },
+  { id: 'chat_5', title: 'Odada 5 mesaj yaz', target: 5, progress: 3, coins: 20 },
+  { id: 'gift_3', title: '3 kez hediye gönder', target: 3, progress: 0, coins: 50 },
+  { id: 'follow_1', title: 'Yeni birini takip et', target: 1, progress: 1, coins: 10 },
+];
+
+// member_ids[0] kurucu
+export const families = [
+  { id: 1, name: 'Gece Kuşları', badge: '🦉', slogan: 'Sabaha kadar sohbet, oyun ve müzik.', member_ids: [2001, 2003, 2008, 2011, 2015], week_coins: 48200, level: 4 },
+  { id: 2, name: 'Aslanlar', badge: '🦁', slogan: 'Hediyede, oyunda, sohbette bir numara.', member_ids: [2012, 2010, 2004, 2014], week_coins: 31900, level: 3 },
+  { id: 3, name: 'Müzik Kulübü', badge: '🎵', slogan: 'Her akşam canlı müzik odası.', member_ids: [2009, 2007, 2013], week_coins: 9100, level: 1 },
+];
+
+export const familyMessages = [
+  { id: 1, family_id: 1, sender_id: 2001, text: "Bu akşam 21:00'de aile odasında buluşuyoruz 🎉", created_at: new Date(Date.now() - 3 * 3600000).toISOString() },
+  { id: 2, family_id: 1, sender_id: 2003, text: 'Ben geliyorum, şarkı listesini hazırladım 🎵', created_at: new Date(Date.now() - 2.8 * 3600000).toISOString() },
+];
+
+export const events = [
+  {
+    id: 1, title: 'Hafta Sonu Hediye Yarışı', emoji: '🏆', metric: 'gifts_sent', rewards: [5000, 3000, 1000], status: 'active',
+    description: 'Etkinlik süresince en çok hediye gönderen ilk 3 kişi coin kazanır.',
+    starts_at: new Date(Date.now() - 86400000).toISOString(), ends_at: new Date(Date.now() + 6 * 86400000).toISOString(),
+  },
+  {
+    id: 2, title: 'Yıldızlar Gecesi', emoji: '⭐', metric: 'gifts_received', rewards: [3000, 2000, 1000], status: 'ended',
+    description: 'En çok hediye alan yayıncılar ödüllendirildi.',
+    starts_at: new Date(Date.now() - 10 * 86400000).toISOString(), ends_at: new Date(Date.now() - 86400000).toISOString(),
+  },
+];

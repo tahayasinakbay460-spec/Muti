@@ -12,6 +12,10 @@ import { renderProfile } from './screens/profile.js';
 import { renderWallet } from './screens/wallet.js';
 import { renderStore } from './screens/store.js';
 import { renderVip } from './screens/vip.js';
+import { renderTasks } from './screens/tasks.js';
+import { renderLeaderboard } from './screens/leaderboard.js';
+import { renderFamilies, renderFamily } from './screens/families.js';
+import { renderEvents, renderEvent } from './screens/events.js';
 import { renderNotifications } from './screens/notifications.js';
 import { renderSettings } from './screens/settings.js';
 import { openCreateRoomSheet } from './screens/create-room.js';
@@ -29,6 +33,12 @@ const routes = [
   { pattern: /^\/wallet$/, render: renderWallet, tab: 'wallet' },
   { pattern: /^\/store$/, render: renderStore, tab: 'profile' },
   { pattern: /^\/vip$/, render: renderVip, tab: 'profile' },
+  { pattern: /^\/tasks$/, render: renderTasks, tab: 'home' },
+  { pattern: /^\/leaderboard$/, render: renderLeaderboard, tab: 'home' },
+  { pattern: /^\/families$/, render: renderFamilies, tab: 'home' },
+  { pattern: /^\/family\/(\d+)$/, render: renderFamily, tab: 'home' },
+  { pattern: /^\/events$/, render: renderEvents, tab: 'home' },
+  { pattern: /^\/event\/(\d+)$/, render: renderEvent, tab: 'home' },
   { pattern: /^\/notifications$/, render: renderNotifications },
   { pattern: /^\/settings$/, render: renderSettings },
 ];

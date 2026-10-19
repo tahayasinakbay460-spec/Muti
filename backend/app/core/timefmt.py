@@ -5,7 +5,7 @@ DEMO KISAYOLU: Bu etiketleri normalde istemci üretmelidir (kullanıcının kend
 dilimi ve diliyle). Web demo hazır etiket beklediği için şimdilik sunucu üretiyor.
 API her zaman ham `created_at` alanını da döner; mobil uygulama onu kullanmalı.
 """
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from app.core.config import settings
 from app.core.database import utcnow
@@ -52,3 +52,32 @@ def clock_label(value: datetime) -> str:
     if shown.date() == today - timedelta(days=1):
         return "Dün"
     return shown.strftime("%d.%m")
+
+
+def local_today() -> date:
+    """
+    Kullanıcının takvimine göre bugün. Günlük ödül ve görevler gece yarısı (yerel saat) yenilenir.
+    DEMO KISAYOLU: sabit Türkiye saati (settings.display_utc_offset_hours). Kullanıcının kendi
+    saat dilimi profilde tutulmaya başlayınca buradan okunmalı.
+    """
+    return (utcnow() + timedelta(hours=settings.display_utc_offset_hours)).date()
+
+
+def local_day_start(day: date) -> datetime:
+    """Yerel takvimdeki bir günün başlangıç anı (UTC olarak). Sıralama dönemleri bununla hesaplanır."""
+    midnight = datetime(day.year, day.month, day.day, tzinfo=timezone.utc)
+    return midnight - timedelta(hours=settings.display_utc_offset_hours)
+
+
+def period_start(period: str) -> datetime:
+    """
+    Sıralama dönemi başlangıcı (yerel takvime göre): "day" bugün 00:00, "week" bu Pazartesi,
+    "month" ayın 1'i. Takvime bağlı dönem kullanıyoruz (son 7 gün değil): herkes aynı anda
+    sıfırdan başlar, "haftanın birincisi" gibi ödüller adil olur.
+    """
+    today = local_today()
+    if period == "day":
+        return local_day_start(today)
+    if period == "week":
+        return local_day_start(today - timedelta(days=today.weekday()))
+    return local_day_start(today.replace(day=1))
