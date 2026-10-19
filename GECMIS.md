@@ -25,6 +25,13 @@ Projede yapılan işlerin kaydı.
 
 **Öğrenme (2026-10-19):** `learning/websocket/` dersleri hazır (WebSocket temeli). Sırada: ses sinyali WebSocket'te nasıl taşınıyor, sonra ses sunucuları.
 
+**Yapılmayanlar listesi (2026-10-19 akşam, kullanıcıyla konuşuldu):**
+- *Ürün:* Ludo/Domino/UNO/101 Okey gibi büyük oyunlar; fotoğraf yükleme (avatar, mesajda resim/ses); profil duvarı ve başarımlar hâlâ sabit içerik (`demo/content.py`); şifremi unuttum, e-posta/telefon doğrulama, Google/Apple ile giriş; çok dil; arkadaş eşleştirme; yönetici rol seviyeleri ve panelden banner/mağaza/VIP fiyatı düzenleme; rulet/zar hız sınırı sessiz atıyor; mock modu yeni özelliklerin çoğunda eksik.
+- *Para:* gerçek ödeme (App Store / Google Play satın alma doğrulaması, web için ödeme sağlayıcısı), gerçek abonelik (VIP şu an coinle), elmas → para çekimi ve ajans komisyon ödemesi (KYC, fatura).
+- *Altyapı:* hosting + alan adı + HTTPS, PostgreSQL + Alembic migration (şema değişince veritabanı siliniyor), Redis (oda durumu, banlılar, sayaçlar; birden fazla sunucu), Docker, TURN (coturn), LiveKit canlı deneme, zamanlanmış işler (etkinlik ödülü, eski mesaj silme), veritabanı yedeği, HTTP hız sınırı, frontend önbellek başlıkları, log toplama + Sentry + uyarılar, yük testi, kendi görsellerimiz.
+- *Mobil:* iOS/Android uygulaması yok; push bildirim; mağaza hesapları ve incelemesi.
+- *Hukuk:* KVKK aydınlatma metni, gizlilik politikası, kullanım şartları; yaş sınırı; küfür/içerik filtresi; yöneticinin mesaj okuma politikası; şanslı hediye ve hazine sandığı (parayla alınan coinle rastgele ödül) için olasılıkların gösterilmesi ve şans oyunu mevzuatı kontrolü.
+
 **Yönetim paneli (2026-10-19 akşam):** masaüstü panel `frontend/admin.html` (giriş: `admin` / `demo1234`); finans grafikleri, para hareketleri, kullanıcı yönetimi, bütün özel mesajlar ve oda sohbet geçmişi (DEMO, KVKK notu), katalog düzenleme, duyuru.
 
 **İşletme (2026-10-19):** yönetim paneli ve ajans sistemi hazır; hedef özelliklerin dört grubu da tamam. Sırada: genel eksik/fazla değerlendirmesi ve canlıya çıkış yol haritası (kullanıcı hiç ürün yayınlamadı; adımlar sade anlatılacak).
