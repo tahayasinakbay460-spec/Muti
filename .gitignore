@@ -5,6 +5,7 @@ __pycache__/
 
 # Yerel veritabanı ve sırlar
 *.db
+*.db.bak
 .env
 
 # Editör / işletim sistemi

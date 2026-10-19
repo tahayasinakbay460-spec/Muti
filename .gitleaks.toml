@@ -1,0 +1,11 @@
+# Sızmış sır taraması (CI'daki "secrets" işi) için ayarlar.
+# Varsayılan kuralların hepsi geçerli; yalnızca bilerek yazılmış sahte değerler hariç tutulur.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Testlerdeki sahte anahtarlar ve boş örnek ayar dosyası"
+paths = [
+  '''backend/tests/''',
+  '''backend/\.env\.example''',
+]
