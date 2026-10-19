@@ -15,6 +15,8 @@ servisler yüzeysel, en son `realtime/hub.py`.
 **Açık kalanlar:** `user_service.load_users_out` / `present_users`,
 `schemas/room.py`.
 
+**Öğrenme durumu (2026-10-19 akşam):** WebSocket dersleri 1-3 hazır (`learning/websocket/`); planlanan devamı: çoklu oda, token ile kimlik, kopma ve yeniden bağlanma, tarayıcıdan bağlanma, projede iz sürme, ses tanışması (WebRTC mini örnek), ses sunucuları. Log, token, ses ve telefon erişimi konuşmaları GECMIS.md gün özetinde.
+
 **WebSocket temeli (2026-10-19):** projeden bağımsız dersler `learning/websocket/` altında (echo → herkese yayın → event/payload). Sırada: `voice:signal` ve sohbet mesajının `room_socket.py` + `hub.py` içindeki yolu, sonra ses sunucuları.
 
 ---

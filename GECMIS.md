@@ -25,6 +25,8 @@ Projede yapılan işlerin kaydı.
 
 **Öğrenme (2026-10-19):** `learning/websocket/` dersleri hazır (WebSocket temeli). Sırada: ses sinyali WebSocket'te nasıl taşınıyor, sonra ses sunucuları.
 
+**Yarın buradan devam (2026-10-20):** Kayıtlar bölümünün en üstündeki "Gün özeti" kaydını oku: önerilen sıra, kararlar, açık sorular orada.
+
 **Yapılmayanlar listesi (2026-10-19 akşam, kullanıcıyla konuşuldu):**
 - *Ürün:* Ludo/Domino/UNO/101 Okey gibi büyük oyunlar; fotoğraf yükleme (avatar, mesajda resim/ses); profil duvarı ve başarımlar hâlâ sabit içerik (`demo/content.py`); şifremi unuttum, e-posta/telefon doğrulama, Google/Apple ile giriş; çok dil; arkadaş eşleştirme; yönetici rol seviyeleri ve panelden banner/mağaza/VIP fiyatı düzenleme; rulet/zar hız sınırı sessiz atıyor; mock modu yeni özelliklerin çoğunda eksik.
 - *Para:* gerçek ödeme (App Store / Google Play satın alma doğrulaması, web için ödeme sağlayıcısı), gerçek abonelik (VIP şu an coinle), elmas → para çekimi ve ajans komisyon ödemesi (KYC, fatura).
@@ -99,6 +101,31 @@ Kodda "DEMO KISAYOLU" diye işaretlidir. Mobil/canlı aşamasında değiştirile
 ---
 
 # Kayıtlar
+
+## 2026-10-19 — Gün özeti: konuşulanlar, kararlar, yarın nereden devam
+
+**Yarın buradan başla:** Önerilen sıra (kullanıcı henüz seçmedi): (1) PostgreSQL + Alembic migration — şema değişince veritabanı silinmesin; (2) canlıya çıkış: Docker, sunucu, alan adı, HTTPS, TURN, giriş hız sınırı, Sentry; (3) gerçek ödeme + yasal metinler; (4) mobil uygulama + mağaza; (5) büyük oyunlar ve kalan özellikler. Kullanıcı hiç ürün yayınlamadı: her adım ne işe yarar, sade ve örnekle anlatılacak. Tam liste: "Yapılmayanlar listesi" (yukarıda).
+
+**Kullanıcıya anlatılanlar (soru-cevap):**
+- *"Oturumun sona erdi" neden çıktı:* veritabanı sıfırlanınca tarayıcıdaki refresh token sunucuda bulunamıyor. Access token (JWT) 15 dk, refresh token 30 gün; JWT kullanmamaktan değil süresi dolunca biter; refresh ilk istekte, tek kullanımlık (rotation), sunucu üretir. Sekmeyi kapatmak çıkış değildir ("beni hatırla"); çalınma tespiti, çıkış, şifre değişikliği koruması anlatıldı.
+- *Telefondan girmek:* kod hazır (`HOST=0.0.0.0`, adres sayfadan alınıyor); engel Windows güvenlik duvarı (Wi-Fi "Ortak" profilde, 5500/8000 portları kapalı) — çözüm: ağı "Özel" yap + port kuralı. `127.0.0.1` / `0.0.0.0` / `192.168.x.x` farkı anlatıldı. Telefonda mikrofon http'de çalışmaz (HTTPS gerekir).
+- *Ses nasıl çalışıyor:* şu an mesh WebRTC (LiveKit kurulu değil). Sunucu yalnızca "tanışma" mesajlarını (`voice:signal`) WebSocket'ten taşır, ses tarayıcıdan tarayıcıya doğrudan gider. STUN / TURN / SFU (LiveKit) farkı anlatıldı.
+- *WebSocket:* HTTP (mektup) ile WebSocket (açık telefon hattı) farkı; `learning/websocket/` altında 3 ders (echo, herkese yayın, event/payload). Kullanıcı ders planının devamını (çoklu oda, token, yeniden bağlanma, tarayıcı, ses tanışması) sonra yapmak istedi.
+- *Log nedir, sektörde nasıl izlenir:* uvicorn'un eski satırları ile yeni kayıtların farkı (istek numarası, kullanıcı, süre, güvenlik/para olayları); sektörde merkezi log (Loki/ELK/Datadog), uyarılar, Sentry, metrik ve izleme (observability). Not: "CP hatasını log sayesinde buldum" ifadesi abartıydı, düzeltildi.
+- *Mesajlar nerede tutuluyor:* özel ve aile mesajları veritabanında; oda sohbeti önceden yalnızca bellekteydi, artık `room_messages` tablosunda. Veritabanı DB Browser for SQLite ile görülebilir (canlıda PostgreSQL + DBeaver/pgAdmin). Yöneticinin mesaj okumasının KVKK/mağaza riski anlatıldı; önerilen şikâyete bağlı erişim.
+
+**Kullanıcı kararları:**
+- Müşteri demosu acil değil; önce özellikler, sonra genel değerlendirme ve yayın.
+- Hedef özelliklerin 4 grubu da yapılsın (yapıldı). Süre tahmini verme ("haftalar sürer" demek yanlıştı).
+- Çalışma şekli: her işte test, güvenlik taraması, tarayıcıda deneme, CI yeşil, GECMIS kaydı (Claude hafızasına da yazıldı).
+- Demo için yönetici bütün özel mesajları ve oda mesajlarını görebilsin (her okuma denetim kaydında; canlıda yeniden konuşulacak).
+- Yönetim paneli gerçek sesli sohbet uygulamaları gibi, zengin olsun (masaüstü panel yapıldı).
+
+**Kullanıcının açık sorusu:** "CLAUDE.md seni iyi kontrol edemiyor galiba." Öneri verildi (kritik kuralları dosyanın başına kısa liste, uzun dosya haritasını ayrı dosyaya; kesin kurallar için hook), kullanıcının hangi durumu kastettiği henüz konuşulmadı. Bugün bulunan sapma: "önce frontend sonra backend" kuralına uyulmadı.
+
+**Gün içinde bulunan önemli sorunlar (ayrıntıları ilgili kayıtlarda):** starlette'te 14 güvenlik açığı (FastAPI güncellendi); ara sıra takılan WebSocket testleri; CI JS kontrolünün `import` içeren dosyalarda hatayı görmemesi (`frontend/package.json` ile çözüldü); tarayıcı önbelleğinin eski JS dosyası yüzünden boş sayfa (yayında `Cache-Control` gerekli); hız sınırında hamlelerin sessizce kaybolması; `backend/.coverage` dosyasının yanlışlıkla commit'lenmesi; `backend/app.db.bak` yedeğinin kaybolması (sebep bulunamadı).
+
+**Giriş bilgileri (demo):** uygulama `http://127.0.0.1:5500` (hesap `muti` / `demo1234`), yönetim paneli `http://127.0.0.1:5500/admin.html` (`admin` / `demo1234`). Veritabanı bugün birkaç kez sıfırlandı; açınca yeniden giriş gerekebilir.
 
 ## 2026-10-19 — Masaüstü yönetim paneli ve mesaj inceleme
 
