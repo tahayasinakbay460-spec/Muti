@@ -33,10 +33,11 @@ from app.core.logs import request_id_var, user_id_var
 from app.core.security import decode_access_token
 from app.models import Room, User
 from app.realtime import events
+from app.realtime.duels import duels
 from app.realtime.games import roulette
 from app.realtime.hub import room_hub
 from app.realtime.state import room_state
-from app.services import engagement_service, room_service, user_service
+from app.services import activity_service, engagement_service, room_service, user_service
 from app.voice import voice_provider
 
 logger = logging.getLogger(__name__)
@@ -139,6 +140,9 @@ async def room_socket(websocket: WebSocket, room_id: int, token: str = "") -> No
     chat_limiter = RateLimiter(limit=5, period=5)    # 5 saniyede en fazla 5 mesaj
     dice_limiter = RateLimiter(limit=1, period=1.5)  # 1.5 saniyede en fazla 1 zar
     game_limiter = RateLimiter(limit=5, period=5)    # rulet: 5 saniyede en fazla 5 işlem
+    # İki kişilik oyunlar: sıra tabanlı, insan saniyede bir hamleyi zor geçer; sınır yalnızca
+    # otomatik gönderimi (bot, hile) keser.
+    duel_limiter = RateLimiter(limit=20, period=10)
     # Ses bağlantısı kurulurken her karşı taraf için onlarca küçük mesaj gider; sınır geniş.
     voice_limiter = RateLimiter(limit=300, period=10)
 
@@ -212,6 +216,24 @@ async def room_socket(websocket: WebSocket, room_id: int, token: str = "") -> No
                 except AppError as error:
                     await _send_error(websocket, error.code, error.detail)
 
+            elif event in (events.GAME_DUEL_CREATE, events.GAME_DUEL_JOIN, events.GAME_DUEL_MOVE, events.GAME_DUEL_LEAVE):
+                if not duel_limiter.allow():
+                    # Sessizce atmıyoruz: hamlesi kaybolan oyuncu nedenini bilsin.
+                    await _send_error(websocket, "rate_limited", "Çok hızlı oynuyorsun, biraz yavaşla.")
+                    continue
+                table_id = str(payload.get("table_id", ""))
+                try:
+                    if event == events.GAME_DUEL_CREATE:
+                        await duels.create(room_id, user_payload, str(payload.get("game", "")))
+                    elif event == events.GAME_DUEL_JOIN:
+                        await duels.join(room_id, user_payload, table_id)
+                    elif event == events.GAME_DUEL_MOVE:
+                        await duels.move(room_id, user_id, table_id, payload.get("move"))
+                    else:
+                        await duels.leave(room_id, user_id, table_id)
+                except AppError as error:
+                    await _send_error(websocket, error.code, error.detail)
+
             elif event == events.VOICE_SIGNAL and voice_provider.relays_signals:
                 if not voice_limiter.allow():
                     continue
@@ -247,5 +269,8 @@ async def room_socket(websocket: WebSocket, room_id: int, token: str = "") -> No
                     await room_service.publish_seats(db, room)
         if fully_left:
             await room_hub.publish(room_id, events.ROOM_USER_LEFT, {"user_id": user_id})
+            # Odadan tamamen çıkan oyuncu masasında hükmen kaybeder, karaoke sırasından düşer.
+            await duels.leave(room_id, user_id)
+            await activity_service.leave_karaoke(user_id, room_id)
         await _publish_listener_count(room_id)
         logger.info("Room left", extra={"fields": {"room_id": room_id}})

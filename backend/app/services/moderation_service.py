@@ -20,10 +20,11 @@ from app.core.logs import audit
 from app.demo.content import COVER_CHOICES
 from app.models import Room, RoomMember
 from app.realtime import events
+from app.realtime.duels import duels
 from app.realtime.hub import room_hub
 from app.realtime.state import room_state
 from app.schemas.room import RoomMemberOut, RoomOut, RoomUpdateRequest
-from app.services import notification_service, room_service, treasure_service, user_service
+from app.services import activity_service, notification_service, room_service, treasure_service, user_service
 from app.services.room_service import ADMIN, HOST, LISTENER, ROLE_RANK
 from app.voice import voice_provider
 
@@ -35,10 +36,7 @@ MEMBER_LIST_LIMIT = 200
 
 async def _require_moderator(db: AsyncSession, room: Room, actor_id: int) -> str:
     """İşlemi yapan kişi oda sahibi ya da yönetici değilse hata fırlatır; rolünü döner."""
-    role = await room_service.get_role(db, room, actor_id)
-    if ROLE_RANK[role] < ROLE_RANK[ADMIN]:
-        raise ForbiddenError("Bu işlem için oda yöneticisi olmalısın.", code="not_room_moderator")
-    return role
+    return await room_service.require_moderator(db, room, actor_id)
 
 
 async def _require_outranks(db: AsyncSession, room: Room, actor_id: int, actor_role: str, target_id: int) -> str:
@@ -305,4 +303,6 @@ async def close_room(db: AsyncSession, actor_id: int, room_id: int) -> None:
     await room_hub.disconnect_room(room.id, events.CLOSE_ROOM_NOT_FOUND)
     await room_state.drop_room(room.id)
     treasure_service.drop_room(room.id)
+    activity_service.drop_room(room.id)
+    duels.drop_room(room.id)
     await voice_provider.close_room(room.id)

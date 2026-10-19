@@ -786,6 +786,20 @@ const mockApi = {
     return { ...event, entries, me: null };
   },
 
+  // Oda içi etkinlikler: mock'ta yok (PK, video, karaoke ve oyun masaları sunucu tarafında yönetilir)
+  async getActivities() {
+    await delay(60);
+    return { pk: null, media: null, karaoke: { singer: null, queue: [] }, duels: [] };
+  },
+  async startPk() { throw new ApiError('mock_only', 'Mock modunda PK yok; gerçek backend ile dene.'); },
+  async stopPk() { throw new ApiError('mock_only', 'Mock modunda PK yok.'); },
+  async setMedia() { throw new ApiError('mock_only', 'Mock modunda birlikte izleme yok.'); },
+  async controlMedia() { throw new ApiError('mock_only', 'Mock modunda birlikte izleme yok.'); },
+  async stopMedia() {},
+  async joinKaraoke() { throw new ApiError('mock_only', 'Mock modunda karaoke yok.'); },
+  async leaveKaraoke() { return { singer: null, queue: [] }; },
+  async nextSinger() { throw new ApiError('mock_only', 'Mock modunda karaoke yok.'); },
+
   // Hazine sandığı: mock'ta hep dolum aşamasında (gerçek dolum ve açılma backend'de)
   async getChest() {
     await delay(60);
@@ -1027,6 +1041,16 @@ const httpApi = {
   getLeaderboard: (kind, period) => request(`/leaderboards?kind=${kind}&period=${period}`),
   listEvents: () => request('/events'),
   getEvent: (id) => request(`/events/${id}`),
+  // ── Oda içi etkinlikler (PK, birlikte izleme, karaoke); iki kişilik oyunlar WebSocket'te ──
+  getActivities: (roomId) => request(`/rooms/${roomId}/activities`),
+  startPk: (roomId, minutes) => request(`/rooms/${roomId}/pk`, { method: 'POST', body: { minutes } }),
+  stopPk: (roomId) => request(`/rooms/${roomId}/pk`, { method: 'DELETE' }),
+  setMedia: (roomId, url) => request(`/rooms/${roomId}/media`, { method: 'PUT', body: { url } }),
+  controlMedia: (roomId, action, position) => request(`/rooms/${roomId}/media/control`, { method: 'POST', body: { action, position } }),
+  stopMedia: (roomId) => request(`/rooms/${roomId}/media`, { method: 'DELETE' }),
+  joinKaraoke: (roomId) => request(`/rooms/${roomId}/karaoke/queue`, { method: 'POST' }),
+  leaveKaraoke: (roomId) => request(`/rooms/${roomId}/karaoke/queue`, { method: 'DELETE' }),
+  nextSinger: (roomId) => request(`/rooms/${roomId}/karaoke/next`, { method: 'POST' }),
   getChest: (roomId) => request(`/rooms/${roomId}/chest`),
   claimChest: (roomId) => request(`/rooms/${roomId}/chest/claim`, { method: 'POST' }),
   purchaseCoins: (packageId) => request('/wallet/purchase', { method: 'POST', body: { package_id: packageId }, headers: idempotencyHeader() }),

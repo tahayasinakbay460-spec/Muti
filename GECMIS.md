@@ -25,6 +25,8 @@ Projede yapılan işlerin kaydı.
 
 **Öğrenme (2026-10-19):** `learning/websocket/` dersleri hazır (WebSocket temeli). Sırada: ses sinyali WebSocket'te nasıl taşınıyor, sonra ses sunucuları.
 
+**Oda içi eğlence (2026-10-19):** PK, Dört Bağla, Taş-Kağıt-Makas, birlikte izleme, karaoke sırası hazır. Sırada 4. grup (ajans, admin paneli), ardından genel eksik değerlendirmesi ve canlıya çıkış yol haritası.
+
 **Bağlılık sistemleri (2026-10-19):** günlük giriş, görevler, aile (sohbetli), CP, sıralamalar, etkinlikler hazır. Sırada 3. grup (oda PK'si, yeni oyunlar, karaoke/birlikte izleme), sonra 4. grup (ajans, admin paneli).
 
 **Gelir sistemleri (2026-10-19):** mağaza (çerçeve, giriş efekti, sohbet balonu), VIP (3 kademe, günlük ödül), şanslı hediye, hazine sandığı, hediye paketleri hazır. GitHub'da CI var (`.github/workflows/ci.yml`). Kullanıcı CLAUDE.md "D. Hedef Özellikler" 2-4. grupların da yapılmasını istedi; sırada 2. grup (günlük giriş ödülü/görevler, sıralamalar, aile, CP, etkinlikler).
@@ -86,6 +88,22 @@ Kodda "DEMO KISAYOLU" diye işaretlidir. Mobil/canlı aşamasında değiştirile
 ---
 
 # Kayıtlar
+
+## 2026-10-19 — Oda içi eğlence (3. grup): PK, iki kişilik oyunlar, birlikte izleme, karaoke
+
+**Amaç:** CLAUDE.md "D. Hedef Özellikler" 3. grup. (Kullanıcı kararı: müşteri demosu acil değil; önce 3-4. gruplar, sonra genel eksik değerlendirmesi.)
+
+**Ne yapıldı:**
+- **Oda PK'si** (`activity_service`): oda sahibi/yönetici 1/3/5/10 dk başlatır; koltukların ilk yarısı kırmızı, ikinci yarısı mavi. Süre boyunca takım koltuğuna giden hediyeler puan olur (gift_service bağlar), sonunda kazanan ve MVP duyurulur; erken bitirilebilir. Arayüzde canlı skor çubuğu, geri sayım, takım renkli koltuklar.
+- **İki kişilik oyunlar** (`realtime/duels.py`, WebSocket): Dört Bağla (sıra, sütun doluluğu, 4 yönde kazanma kontrolü) ve Taş-Kağıt-Makas (3 turdan 2; seçim iki taraf seçene kadar rakibe de gizli). Hamle süresi 45 sn, süre dolarsa ya da oyuncu odadan/masadan çıkarsa hükmen yenilgi; rakipsiz masa 2 dk sonra kapanır; odada en fazla 3 masa. İzleyiciler de tahtayı canlı görür.
+- **Birlikte izleme:** yalnızca YouTube (bağlantıdan kimlik sunucuda ayıklanır, başka site gömülemez). Sunucu video trafiği taşımaz; "hangi video, hangi saniye" bilgisini paylaşır, tarayıcılar YouTube IFrame API ile senkron oynatır (2 sn'den küçük kaymada atlama yok, sunucu saat farkı düzeltilir). Oynat/durdur/sar/kapat yalnızca yönetici.
+- **Karaoke sırası:** odadakiler sıraya girer/çıkar, yönetici sıradakine geçer; şarkıcı odada şeritte gösterilir; odadan çıkan sıradan düşer.
+- `room_service.require_moderator` ortak hale getirildi (moderasyon da bunu kullanıyor). Oda arayüzü ayrı modülde (`room-activities.js`), room.js yalnızca bağlıyor.
+- **Bulunan sorun:** oyun mesajlarındaki hız sınırı aşılınca mesaj sessizce atılıyordu; hızlı oynayan kullanıcının hamlesi uyarısız kayboluyordu (test takıldığı için fark edildi). Düellolara ayrı, daha geniş sınır; aşılırsa `rate_limited` hatası döner.
+
+**Doğrulama:** 72 test (yeni 12), kapsam %94, takım 3 kez art arda geçti; ruff, pip-audit, JS sözdizimi temiz. Tarayıcıda gerçek backend'le ikinci kullanıcı (merve) WebSocket'ten yönetilerek: PK başlatma ve mavi takıma hediye (skor çubuğu, renkli koltuklar), YouTube videosunun odada oynaması, Dört Bağla'da iki oyuncunun hamlelerinin senkronu, etkinlik paneli; konsolda hata yok.
+
+**Açık kalanlar:** Ludo, Domino, UNO gibi büyük oyunlar yok (her biri ayrı iş). Rulet/zar mesajlarında hız sınırı hâlâ sessiz atıyor. Karaoke'de şarkı sözü/altyapı yok (sıra yönetimi var; altyapı birlikte izleme ile açılabilir). Oyunlarda coin bahsi yok (bilinçli).
 
 ## 2026-10-19 — Bağlılık sistemleri (2. grup): günlük giriş, görevler, aile, CP, sıralamalar, etkinlikler
 

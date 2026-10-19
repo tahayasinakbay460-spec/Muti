@@ -37,6 +37,14 @@ async def get_role(db: AsyncSession, room: Room, user_id: int) -> str:
     return role or LISTENER
 
 
+async def require_moderator(db: AsyncSession, room: Room, user_id: int) -> str:
+    """Kişi oda sahibi ya da yönetici değilse hata fırlatır; rolünü döner. (Yetki her zaman sunucuda.)"""
+    role = await get_role(db, room, user_id)
+    if ROLE_RANK[role] < ROLE_RANK[ADMIN]:
+        raise ForbiddenError("Bu işlem için oda yöneticisi olmalısın.", code="not_room_moderator")
+    return role
+
+
 async def get_roles(db: AsyncSession, room: Room, user_ids: list[int]) -> dict[int, str]:
     """Birden çok kişinin rolü, tek sorguyla (dinleyici listesi için)."""
     roles = {uid: LISTENER for uid in user_ids}

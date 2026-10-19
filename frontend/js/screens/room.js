@@ -3,6 +3,7 @@ import { api } from '../api.js';
 import { connectRoom } from '../realtime.js';
 import { joinVoice } from '../voice/index.js';
 import { openReportSheet } from './report.js';
+import { mountRoomActivities } from './room-activities.js';
 import { CATEGORY_LABELS } from '../config.js';
 import { esc, icon, avatarImg, framedAvatar, formatCoins, vipBadge, levelBadge, toast, openSheet, joinParts } from '../ui.js';
 
@@ -82,13 +83,16 @@ export async function renderRoom(root, { params }) {
         <span class="pill pill-glass">🔥 Saatlik Sıralama ${room.hourly_rank}.</span>
         <button class="pill pill-glass" data-action="announcement">📢 Duyuru</button>
         <button class="chest-pill" id="chest" data-action="chest" aria-label="Hazine sandığı" hidden></button>
+        <button class="pill pill-glass" data-action="activities">🎉 Etkinlik</button>
         <button class="room-audience" data-action="members" aria-label="Odadakiler">
           <span class="avatar-stack">${audience.map((s) => avatarImg(s.user, 'avatar-xs')).join('')}</span>
           <span class="pill pill-glass" id="audience-more">+${Math.max(0, room.listener_count - audience.length)}</span>
         </button>
       </div>
 
+      <div class="pk-bar" id="pk-bar" hidden></div>
       <div class="seat-grid" id="seats"></div>
+      <div class="media-slot" id="media-slot" hidden></div>
 
       <div class="room-stream">
         <div class="room-chat" id="chat"></div>
@@ -113,6 +117,8 @@ export async function renderRoom(root, { params }) {
   const giftFeedEl = root.querySelector('#gift-feed');
   const giftStageEl = root.querySelector('#gift-stage');
   const micBtn = root.querySelector('#mic-btn');
+  // Oda içi etkinlikler (PK, birlikte izleme, karaoke, iki kişilik oyunlar); aşağıda bağlanır
+  let activities = null;
 
   // ─── KOLTUKLAR ─────────────────────────────────────────────────────────────
   function renderSeats() {
@@ -137,6 +143,9 @@ export async function renderRoom(root, { params }) {
           ${ROLE_LABELS[role] ? `<small class="seat-role seat-role-${role}">${ROLE_LABELS[role]}</small>` : ''}
         </button>`;
     }).join('');
+
+    // PK sürüyorsa koltuklar takım rengini alır
+    activities?.decorateSeats();
 
     const seat = mySeat();
     micBtn.hidden = !seat;
@@ -463,6 +472,8 @@ export async function renderRoom(root, { params }) {
       <div class="segmented game-tabs">
         <button class="is-active" data-game-tab="roulette">🎡 Rulet</button>
         <button data-game-tab="dice">🎲 Zar</button>
+        <button data-game-tab="connect4">🔴 Dört Bağla</button>
+        <button data-game-tab="rps">✊ TKM</button>
       </div>
       <div id="game-panel"></div>`, { className: 'sheet-dark' });
 
@@ -471,7 +482,9 @@ export async function renderRoom(root, { params }) {
     const showTab = (tab) => {
       unmount?.();
       sheet.el.querySelectorAll('[data-game-tab]').forEach((b) => b.classList.toggle('is-active', b.dataset.gameTab === tab));
-      unmount = tab === 'roulette' ? mountRoulette(panel) : mountDice(panel);
+      if (tab === 'roulette') unmount = mountRoulette(panel);
+      else if (tab === 'dice') unmount = mountDice(panel);
+      else unmount = activities.mountDuel(panel, tab);
     };
     sheet.el.querySelector('.game-tabs').addEventListener('click', (event) => {
       const tab = event.target.closest('[data-game-tab]');
@@ -985,6 +998,7 @@ export async function renderRoom(root, { params }) {
     else if (action === 'members') openMembersSheet();
     else if (action === 'announcement') toast(room.announcement);
     else if (action === 'chest') claimChest();
+    else if (action === 'activities') activities.openActivitiesSheet();
     else if (action === 'toggle-mic') updateRoom(await api.toggleMute(room.id));
     else if (action === 'emoji') {
       const input = root.querySelector('#room-bar input');
@@ -1103,12 +1117,14 @@ export async function renderRoom(root, { params }) {
     location.hash = '#/home';
   }
 
+  activities = mountRoomActivities({ root, getRoom: () => room, me, channel, isModerator, addSystemLine });
   renderSeats();
   addSystemLine(`📢 ${esc(room.announcement)}`);
 
   return () => {
     isDisposed = true;
     clearInterval(chestTimer);
+    activities.dispose();
     voice?.close();
     channel.close();
   };

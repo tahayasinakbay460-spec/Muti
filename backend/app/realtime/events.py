@@ -30,6 +30,11 @@ ROOM_UPDATED = "room:updated"                  # { title, category, cover_url, a
 ROOM_CLOSED = "room:closed"                    # {}  (ardından herkesin bağlantısı kapanır)
 ROOM_CHEST_UPDATED = "room:chest_updated"      # { chest }  (hazine sandığı doldu/açıldı/kapandı)
 ROOM_CHEST_CLAIMED = "room:chest_claimed"      # { user, coins, coins_left }
+ROOM_PK_UPDATED = "room:pk_updated"            # { pk }  (başladı / puan değişti / bitti)
+ROOM_MEDIA_UPDATED = "room:media_updated"      # { media | null }  (birlikte izleme)
+ROOM_KARAOKE_UPDATED = "room:karaoke_updated"  # { karaoke: { singer, queue } }
+GAME_DUEL_UPDATED = "game:duel_updated"        # { table }  (iki kişilik masa durumu)
+GAME_DUEL_CLOSED = "game:duel_closed"          # { table_id }
 ERROR = "error"                                # { code, detail }  (yalnızca hatayı yapan kişiye)
 
 # Kişiye özel kanal (/ws/me)
@@ -55,6 +60,10 @@ VOICE_SIGNAL = "voice:signal"
 # ── İstemciden sunucuya gelen olaylar (yukarıdakilerden farklı olanlar) ────────
 GAME_ROULETTE_START = "game:roulette_start"    # {}  → turu başlat
 GAME_ROULETTE_BET = "game:roulette_bet"        # { color: "red" | "black" | "green" }
+GAME_DUEL_CREATE = "game:duel_create"          # { game: "connect4" | "rps" }
+GAME_DUEL_JOIN = "game:duel_join"              # { table_id }
+GAME_DUEL_MOVE = "game:duel_move"              # { table_id, move }  (sütun 0-6 ya da rock/paper/scissors)
+GAME_DUEL_LEAVE = "game:duel_leave"            # { table_id }
 
 
 # ── İstemciden sunucuya gelen veriler ─────────────────────────────────────────

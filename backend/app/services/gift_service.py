@@ -15,7 +15,8 @@ from app.realtime.hub import room_hub
 from app.schemas.economy import GiftOut, GiftSendRequest, GiftSendResult
 from app.schemas.user import TopGifter
 from app.services import (
-    engagement_service, level_service, notification_service, treasure_service, user_service, wallet_service,
+    activity_service, engagement_service, level_service, notification_service, treasure_service, user_service,
+    wallet_service,
 )
 
 # ŞANSLI HEDİYE ÇARPAN TABLOSU: (çarpan, 1000 çekilişte kaç kez çıkar)
@@ -178,6 +179,7 @@ async def send_gift(
             "lucky_multiplier": lucky_multiplier,
         })
         await treasure_service.add_gift_coins(data.room_id, total_coins)
+        await activity_service.add_gift(data.room_id, receiver.id, people[sender_id].model_dump(mode="json"), total_coins)
     return result
 
 

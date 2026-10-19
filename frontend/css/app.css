@@ -1244,3 +1244,59 @@ small { font-size: 12px; color: var(--muted); }
 .event-rewards div { display: grid; justify-items: center; gap: 4px; padding: 12px 4px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); }
 .event-rewards i { font-style: normal; font-size: 26px; }
 .event-rewards b { font-size: 13px; color: var(--gold); }
+
+/* ─── ODA İÇİ ETKİNLİKLER: PK, birlikte izleme, karaoke, iki kişilik oyunlar ─────── */
+.game-tabs { grid-template-columns: repeat(4, 1fr); }
+.game-tabs button { font-size: 12px; height: 36px; }
+
+/* PK çubuğu: kırmızı solda, mavi sağda; ortadaki çizginin yeri puan oranını gösterir */
+.pk-bar { flex: none; display: flex; align-items: center; gap: 8px; margin: 0 12px 6px; padding: 6px 10px; border-radius: 999px; background: rgba(0, 0, 0, 0.45); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+.pk-score { min-width: 44px; font-size: 13px; font-weight: 800; text-align: center; }
+.pk-score-red { color: #ff6b81; }
+.pk-score-blue { color: #6bb8ff; }
+.pk-track { flex: 1; height: 10px; border-radius: 999px; background: #2b6bff; overflow: hidden; }
+.pk-track i { display: block; height: 100%; background: #ff2d55; transition: width 0.4s ease; }
+.pk-clock { flex: none; font-size: 11px; font-weight: 700; color: #ffe08a; }
+.seat.pk-red .seat-circle { box-shadow: 0 0 0 3px #ff2d55; }
+.seat.pk-blue .seat-circle { box-shadow: 0 0 0 3px #2b6bff; }
+
+/* Birlikte izleme ve karaoke */
+.media-slot { flex: none; margin: 0 12px 6px; }
+.media-frame { position: relative; width: 100%; aspect-ratio: 16 / 9; max-height: 190px; border-radius: 14px; overflow: hidden; background: #000; }
+.media-frame iframe, .media-frame #yt-player { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+.karaoke-singer { margin-top: 6px; padding: 6px 12px; border-radius: 999px; background: linear-gradient(90deg, rgba(255, 77, 157, 0.55), rgba(177, 75, 255, 0.45)); font-size: 12px; text-align: center; }
+
+/* Etkinlik paneli */
+.activity-block { padding: 12px 0; border-bottom: 1px solid var(--line); display: grid; gap: 8px; }
+.activity-block:last-child { border-bottom: 0; }
+.activity-block h3 { font-size: 15px; font-weight: 800; }
+.activity-block p, .activity-block small { font-size: 12px; color: var(--muted); line-height: 1.4; }
+.activity-options { display: flex; flex-wrap: wrap; gap: 8px; }
+.activity-form { display: flex; gap: 8px; }
+.activity-form input { flex: 1; min-width: 0; height: 38px; padding: 0 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface-2); color: var(--text); }
+.karaoke-queue { display: grid; gap: 6px; font-size: 13px; }
+.karaoke-queue span { display: flex; align-items: center; gap: 6px; }
+
+/* İki kişilik oyun masaları */
+.duel-list { display: grid; gap: 12px; margin-bottom: 12px; max-height: 52vh; overflow-y: auto; }
+.duel-table { padding: 12px; border-radius: 16px; background: var(--surface-2); display: grid; gap: 10px; }
+.duel-players { display: flex; align-items: center; justify-content: center; gap: 10px; }
+.duel-player { display: flex; align-items: center; gap: 6px; padding: 4px 10px 4px 4px; border-radius: 999px; border: 2px solid transparent; font-size: 12px; max-width: 45%; }
+.duel-player b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.duel-p1 { background: rgba(255, 45, 85, 0.18); }
+.duel-p2 { background: rgba(255, 197, 61, 0.18); }
+.duel-player.is-turn { border-color: var(--green); }
+.duel-player.is-winner { border-color: var(--gold); box-shadow: 0 0 12px rgba(255, 197, 61, 0.5); }
+.duel-vs { font-size: 11px; font-weight: 800; color: var(--muted); }
+.duel-status { text-align: center; font-size: 13px; color: #d5d2e4; }
+.c4-board { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; padding: 6px; border-radius: 12px; background: #2b4dbd; }
+.c4-cell { aspect-ratio: 1; border-radius: 50%; background: #10204f; border: 0; }
+.c4-1 { background: #ff2d55; }
+.c4-2 { background: #ffc53d; }
+.c4-board.can-play .c4-cell:hover { outline: 2px solid rgba(255, 255, 255, 0.6); }
+.rps { display: grid; gap: 8px; justify-items: center; }
+.rps-score { font-size: 24px; font-weight: 800; }
+.rps-last, .rps-chosen { font-size: 12px; color: var(--muted); }
+.rps-choices { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; width: 100%; }
+.rps-choices button { display: grid; justify-items: center; gap: 2px; padding: 10px 4px; border-radius: 14px; background: var(--surface-3); font-size: 12px; font-weight: 700; }
+.rps-choices i { font-style: normal; font-size: 30px; }
