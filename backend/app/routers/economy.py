@@ -36,8 +36,9 @@ async def send_gift(data: GiftSendRequest, user_id: CurrentUserId, db: DbSession
 
 
 @router.get("/wallet/packages", response_model=list[CoinPackageOut])
-async def list_coin_packages(_user_id: CurrentUserId, db: DbSession):
-    return await wallet_service.list_packages(db)
+async def list_coin_packages(user_id: CurrentUserId, db: DbSession):
+    """Coin paketleri ve hediye paketleri (coinin yanında mağaza eşyası verenler)."""
+    return await wallet_service.list_packages(db, user_id)
 
 
 @router.post("/wallet/purchase", response_model=PurchaseResult)

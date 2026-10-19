@@ -14,12 +14,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import utcnow
-from app.core.errors import InsufficientBalanceError, NotFoundError, UnavailableError
+from app.core.errors import ConflictError, InsufficientBalanceError, NotFoundError, UnavailableError
 from app.core.timefmt import as_utc, time_ago_label
-from app.models import CoinPackage, Transaction, User
+from app.models import CoinPackage, StoreItem, Transaction, User
 from app.schemas.economy import (
     CoinPackageOut, ExchangeResult, IncomeSummary, PurchaseResult, Supporter, TransactionOut,
 )
+from app.schemas.store import StoreItemBrief
 from app.services import user_service
 
 
@@ -29,12 +30,13 @@ async def change_balance(
     user_id: int,
     currency: str,            # "coin" | "diamond"
     delta: int,               # artı: ekle, eksi: düş
-    type: str,                # purchase | gift_sent | gift_received | reward | exchange
+    type: str,                # bkz. Transaction.type
     label: str,
     idempotency_key: str | None = None,
     counterparty_id: int | None = None,
     gift_id: int | None = None,
     package_id: int | None = None,
+    item_id: int | None = None,
     room_id: int | None = None,
     quantity: int | None = None,
 ) -> int:
@@ -73,7 +75,7 @@ async def change_balance(
     db.add(Transaction(
         user_id=user_id, type=type, currency=currency, amount=delta, balance_after=balance_after,
         label=label, idempotency_key=idempotency_key, counterparty_id=counterparty_id,
-        gift_id=gift_id, package_id=package_id, room_id=room_id, quantity=quantity,
+        gift_id=gift_id, package_id=package_id, item_id=item_id, room_id=room_id, quantity=quantity,
     ))
     # flush: satırı şimdi veritabanına gönder (henüz kalıcı değil). Aynı idempotency
     # anahtarı daha önce kullanılmışsa hata tam burada çıkar.
@@ -104,9 +106,32 @@ async def get_coin_balance(db: AsyncSession, user_id: int) -> int:
 
 # ── Coin paketleri ve satın alma ──────────────────────────────────────────────
 
-async def list_packages(db: AsyncSession) -> list[CoinPackageOut]:
-    packages = await db.scalars(select(CoinPackage).where(CoinPackage.is_active).order_by(CoinPackage.coins))
-    return [CoinPackageOut.model_validate(package) for package in packages]
+async def _bought_package_ids(db: AsyncSession, user_id: int) -> set[int]:
+    rows = await db.scalars(
+        select(Transaction.package_id).where(
+            Transaction.user_id == user_id, Transaction.type == "purchase", Transaction.package_id.is_not(None),
+        )
+    )
+    return set(rows)
+
+
+async def list_packages(db: AsyncSession, user_id: int) -> list[CoinPackageOut]:
+    """Coin paketleri ve hediye paketleri (paketler önce, sonra coin miktarına göre)."""
+    packages = list(await db.scalars(
+        select(CoinPackage).where(CoinPackage.is_active).order_by(CoinPackage.item_id.is_(None), CoinPackage.coins)
+    ))
+    item_ids = {p.item_id for p in packages if p.item_id}
+    items = {i.id: i for i in await db.scalars(select(StoreItem).where(StoreItem.id.in_(item_ids)))} if item_ids else {}
+    bought = await _bought_package_ids(db, user_id)
+
+    result = []
+    for package in packages:
+        out = CoinPackageOut.model_validate(package)
+        if package.item_id in items:
+            out.item = StoreItemBrief.model_validate(items[package.item_id])
+        out.is_bought = package.is_one_time and package.id in bought
+        result.append(out)
+    return result
 
 
 async def purchase(db: AsyncSession, user_id: int, package_id: int, idempotency_key: str | None) -> PurchaseResult:
@@ -131,14 +156,22 @@ async def purchase(db: AsyncSession, user_id: int, package_id: int, idempotency_
     package = await db.get(CoinPackage, package_id)
     if package is None or not package.is_active:
         raise NotFoundError("Coin paketi bulunamadı.")
+    if package.is_one_time and package.id in await _bought_package_ids(db, user_id):
+        raise ConflictError("Bu paketi zaten aldın.", code="package_already_bought")
     total = package.coins + package.bonus
+    item = await db.get(StoreItem, package.item_id) if package.item_id else None
+
+    # Döngüsel import olmasın diye burada: store_service de wallet_service'i kullanıyor.
+    from app.services import store_service
 
     try:
         balance = await change_balance(
             db, user_id=user_id, currency="coin", delta=total, type="purchase",
-            label=f"Coin satın alma ({package.price_label})",
+            label=f"{package.title or 'Coin satın alma'} ({package.price_label})",
             package_id=package.id, idempotency_key=idempotency_key,
         )
+        if item is not None:
+            await store_service.grant_item(db, user_id, item, days=package.item_days)
         await db.commit()
     except IntegrityError:
         # Aynı anahtarla iki istek tam aynı anda geldi ve diğeri bizden önce yazdı.
@@ -149,7 +182,9 @@ async def purchase(db: AsyncSession, user_id: int, package_id: int, idempotency_
             raise
         return await replay(previous)
 
-    return PurchaseResult(coin_balance=balance, added=total)
+    return PurchaseResult(
+        coin_balance=balance, added=total, item=StoreItemBrief.model_validate(item) if item else None,
+    )
 
 
 # ── Yayıncı geliri (elmas) ────────────────────────────────────────────────────

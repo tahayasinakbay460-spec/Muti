@@ -71,6 +71,16 @@ class Settings(BaseSettings):
     # Elmasların gerçek paraya çevrilip çekilmesi. Ödeme altyapısı ve kimlik doğrulama
     # (KYC) olmadan açılmaz; şimdilik kapalı.
     withdrawals_enabled: bool = False
+    # Şanslı hediyede alıcının payı. Gönderen coin geri kazanabildiği için normal hediyeden düşük.
+    lucky_gift_receiver_share_percent: int = Field(default=10, ge=0, le=100)
+
+    # ── Hazine sandığı (oda içi) ──────────────────────────────────────────────
+    # Odada gönderilen hediyelerin coin toplamı bu sayıya ulaşınca sandık açılır.
+    chest_target_coins: int = Field(default=10_000, ge=1)
+    # Açılan sandıkta dağıtılan coin: hedefin yüzde kaçı.
+    chest_reward_percent: int = Field(default=10, ge=0, le=100)
+    # Sandık açık kalma süresi (saniye); süre dolunca kalan coin dağıtılmaz.
+    chest_open_seconds: int = Field(default=60, ge=5)
 
     # ── Sesli görüşme (WebRTC) ────────────────────────────────────────────────
     # "mesh":    tarayıcılar birbirine doğrudan bağlanır, ek sunucu gerekmez (küçük odalar).

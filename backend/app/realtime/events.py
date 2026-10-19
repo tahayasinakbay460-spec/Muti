@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field, field_validator
 CHAT_MESSAGE = "chat:message"                  # { id, user, text, created_at }
 CHAT_HISTORY = "chat:history"                  # { messages: [...] }  (yalnızca odaya yeni girene)
 CHAT_MESSAGE_DELETED = "chat:message_deleted"  # { message_id }
-GIFT_SENT = "gift:sent"                        # { sender, receiver, gift, quantity }
+GIFT_SENT = "gift:sent"                        # { sender, receiver, gift, quantity, lucky_win, lucky_multiplier }
 GAME_DICE_ROLLED = "game:dice_rolled"          # { user, values: [zar1, zar2] }
 GAME_ROULETTE_STARTED = "game:roulette_started"      # { round_id, started_by, betting_seconds }
 GAME_ROULETTE_BET_PLACED = "game:roulette_bet_placed"  # { round_id, user, color }
@@ -28,6 +28,8 @@ ROOM_CHAT_MUTED = "room:chat_muted"            # { user, seconds }  (seconds 0 �
 ROOM_SEAT_INVITE = "room:seat_invite"          # { by, expires_in }  (yalnızca davet edilene)
 ROOM_UPDATED = "room:updated"                  # { title, category, cover_url, announcement, free_seating }
 ROOM_CLOSED = "room:closed"                    # {}  (ardından herkesin bağlantısı kapanır)
+ROOM_CHEST_UPDATED = "room:chest_updated"      # { chest }  (hazine sandığı doldu/açıldı/kapandı)
+ROOM_CHEST_CLAIMED = "room:chest_claimed"      # { user, coins, coins_left }
 ERROR = "error"                                # { code, detail }  (yalnızca hatayı yapan kişiye)
 
 # Kişiye özel kanal (/ws/me)

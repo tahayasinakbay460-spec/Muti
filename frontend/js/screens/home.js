@@ -86,7 +86,7 @@ export async function renderHome(root) {
     <header class="topbar">
       <div class="logo"><span class="logo-mark">M</span><span class="logo-text">${APP_NAME}</span></div>
       <div class="topbar-actions">
-        <a class="icon-btn icon-btn-plain" href="#/explore" aria-label="Ara">${icon('search', 22)}</a>
+        <a class="icon-btn icon-btn-plain" href="#/explore?focus=1" aria-label="Ara">${icon('search', 22)}</a>
         <button class="icon-btn icon-btn-plain" data-action="notifications" aria-label="Bildirimler">${icon('bell', 22)}</button>
         ${coinPill(me.coin_balance)}
       </div>
@@ -135,7 +135,7 @@ export async function renderHome(root) {
     </section>
 
     <section class="section" id="streamers">
-      <div class="section-head"><h2>Popüler Yayıncılar</h2><a href="#/explore">Tümünü Gör ${icon('chevron-right', 13)}</a></div>
+      <div class="section-head"><h2>Popüler Yayıncılar</h2><a href="#/explore?mode=people">Tümünü Gör ${icon('chevron-right', 13)}</a></div>
       <div class="streamer-strip">
         ${streamers.map(({ user, roomId }, i) => `
           <a class="streamer" href="${roomId ? `#/room/${roomId}` : `#/profile/${user.id}`}">

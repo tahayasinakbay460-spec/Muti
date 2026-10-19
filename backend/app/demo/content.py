@@ -3,7 +3,7 @@ DEMO KISAYOLU — sabit içerik.
 
 Bu dosyadaki veriler henüz veritabanında tablo olarak yok; frontend'in ekranları
 dolu görünsün diye buradan sabit olarak dönüyor. İlgili özellik gerçekten yazıldığında
-(duvar gönderileri, çerçeve mağazası, başarımlar, banner yönetimi) buradaki listeler
+(duvar gönderileri, başarımlar, banner yönetimi) buradaki listeler
 silinip yerlerine tablo + servis gelecek.
 
 Görsel yolları frontend'in kendi `assets/` klasörünü gösterir.
@@ -25,16 +25,6 @@ PROFILE_EXTRAS = {
          "like_count": 128, "comment_count": 24},
         {"id": 2, "time_label": "1 hafta önce", "text": "Yeni avatar çerçevemi aldım 🎮",
          "image_urls": ["assets/covers/city.jpg"], "like_count": 86, "comment_count": 11},
-    ],
-    "avatar_frames": [
-        {"id": 1, "name": "Klasik", "style": "frame-classic", "is_owned": True},
-        {"id": 2, "name": "Neon", "style": "frame-neon", "is_owned": True},
-        {"id": 3, "name": "Altın", "style": "frame-gold", "is_owned": True},
-        {"id": 4, "name": "Buz", "style": "frame-ice", "is_owned": False},
-        {"id": 5, "name": "Alev", "style": "frame-fire", "is_owned": False},
-        {"id": 6, "name": "Orman", "style": "frame-forest", "is_owned": False},
-        {"id": 7, "name": "Galaksi", "style": "frame-galaxy", "is_owned": False},
-        {"id": 8, "name": "Kraliyet", "style": "frame-royal", "is_owned": False},
     ],
     "achievements": [
         {"id": 1, "name": "Zar Ustası", "emoji": "🎲", "detail": "Seviye 5"},

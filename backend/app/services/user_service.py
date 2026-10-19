@@ -10,12 +10,13 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import AppError, ForbiddenError, NotFoundError
+from app.core.database import utcnow
 from app.core.timefmt import as_utc, days_since
 from app.demo import content
 from app.models import Follow, User, UserBlock
 from app.realtime.state import room_state
 from app.schemas.user import ProfileUpdateRequest, UserOut
-from app.services import level_service, notification_service
+from app.services import level_service, notification_service, store_service
 
 
 async def get_user(db: AsyncSession, user_id: int) -> User:
@@ -57,6 +58,9 @@ async def present_users(db: AsyncSession, users: list[User], viewer_id: int | No
             select(UserBlock.blocked_id).where(UserBlock.blocker_id == viewer_id, UserBlock.blocked_id.in_(user_ids))
         ))
 
+    cosmetics = await store_service.equipped_cosmetics(db, user_ids)
+    now = utcnow()
+
     result = []
     for user in users:
         is_me = user.id == viewer_id
@@ -69,13 +73,14 @@ async def present_users(db: AsyncSession, users: list[User], viewer_id: int | No
             avatar_url=user.avatar_url,
             cover_url=user.cover_url,
             bio=user.bio,
-            vip_level=user.vip_level,
+            vip_level=user.active_vip_level(now),
             level=user.level,
             experience=user.experience,
             next_level_experience=level_service.experience_for(user.level + 1),
             is_verified=user.is_verified,
             is_guest=user.is_guest,
             is_online=user.id in online_ids,
+            **cosmetics.get(user.id, {}),
             joined_days=days_since(user.created_at),
             created_at=as_utc(user.created_at),
             followers_count=user.followers_count,

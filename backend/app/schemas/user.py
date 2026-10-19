@@ -9,6 +9,13 @@ from datetime import datetime
 from pydantic import BaseModel, Field, field_validator
 
 
+class EntryEffect(BaseModel):
+    """Odaya girişte herkese gösterilen efekt."""
+    name: str
+    style: str
+    emoji: str
+
+
 class UserOut(BaseModel):
     """Bir kullanıcının dışarıya gösterilen hali."""
     id: int
@@ -26,6 +33,11 @@ class UserOut(BaseModel):
     is_verified: bool
     is_guest: bool
     is_online: bool
+    # ── Takılı kozmetikler (mağaza / VIP) ─────────────────────────────────────
+    # Frontend'in kullanacağı CSS sınıfı adları; takılı eşya yoksa null.
+    frame: str | None = None
+    entry_effect: EntryEffect | None = None
+    chat_bubble: str | None = None
     joined_days: int          # kaç gündür üye
     created_at: datetime
     followers_count: int
@@ -81,6 +93,5 @@ class TopGifter(BaseModel):
 class ProfileExtras(BaseModel):
     """Profil ekranının alt bölümleri. DEMO: içerik şimdilik sabit (demo/content.py)."""
     wall_posts: list[dict]
-    avatar_frames: list[dict]
     achievements: list[dict]
     recent_rewards: list[dict]

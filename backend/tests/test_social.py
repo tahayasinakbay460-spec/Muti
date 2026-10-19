@@ -2,7 +2,7 @@
 Arama, engelleme, şikâyet, bildirim, seviye, yayıncı geliri ve hesap ayarları testleri.
 """
 from tests.conftest import API, auth_headers
-from tests.test_api import me, new_guest, receive_until
+from tests.test_api import me, new_guest, receive_until, wait_until_registered
 
 
 def register(client, username: str) -> dict:
@@ -20,6 +20,16 @@ def test_user_search_by_name_username_and_id(client, muti):
     assert [u["id"] for u in by_id] == [2001]
     # SQL joker karakterleri düz karakter sayılır: "%" her şeyi eşleştirmez.
     assert client.get(f"{API}/users/search", headers=muti, params={"query": "%"}).json() == []
+
+
+def test_room_search_by_title_and_id(client, muti):
+    rooms = client.get(f"{API}/rooms", headers=muti).json()
+    target = rooms[0]
+    by_id = client.get(f"{API}/rooms", headers=muti, params={"query": str(target["id"])}).json()
+    assert target["id"] in [r["id"] for r in by_id]
+    word = target["title"].split()[0]
+    by_title = client.get(f"{API}/rooms", headers=muti, params={"query": word}).json()
+    assert target["id"] in [r["id"] for r in by_title]
 
 
 def test_block_stops_messages_gifts_follows_and_hides_from_search(client, guest):
@@ -64,6 +74,7 @@ def test_gift_gives_experience_level_income_and_notifications(client, guest):
     token = receiver["Authorization"].removeprefix("Bearer ")
 
     with client.websocket_connect(f"/ws/me?token={token}") as socket:
+        wait_until_registered(socket)
         # Taç 299 coin: gönderen 299 XP kazanır → Lv.2 (100 XP), alan 149 elmas kazanır.
         client.post(f"{API}/gifts/send", headers=sender, json={"receiver_id": receiver_id, "gift_id": 6, "quantity": 1})
         pushed = receive_until(socket, "notification:new")

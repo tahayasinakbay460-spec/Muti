@@ -1,6 +1,8 @@
 """
-Hediyeler: katalog, hediye gönderme, en çok hediye gönderenler.
+Hediyeler: katalog, hediye gönderme (şanslı hediye dahil), en çok hediye gönderenler.
 """
+import secrets
+
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,7 +14,31 @@ from app.realtime import events
 from app.realtime.hub import room_hub
 from app.schemas.economy import GiftOut, GiftSendRequest, GiftSendResult
 from app.schemas.user import TopGifter
-from app.services import level_service, notification_service, user_service, wallet_service
+from app.services import level_service, notification_service, treasure_service, user_service, wallet_service
+
+# ŞANSLI HEDİYE ÇARPAN TABLOSU: (çarpan, 1000 çekilişte kaç kez çıkar)
+# Her şanslı hediye adedi için ayrı çekiliş yapılır; çıkan çarpan × hediye fiyatı kadar coin
+# gönderene geri döner. Beklenen geri dönüş: (150·1 + 50·2 + 25·5 + 10·10 + 4·50 + 1·100) / 1000
+# = %77,5. Kalan %22,5'in %10'u alıcıya (bkz. lucky_gift_receiver_share_percent), gerisi
+# uygulamanın payı. Tabloyu değiştirirken bu hesabı güncelle: geri dönüş %100'ü geçerse
+# kullanıcılar hediye göndererek bedava coin üretir.
+LUCKY_TABLE = ((0, 760), (1, 150), (2, 50), (5, 25), (10, 10), (50, 4), (100, 1))
+LUCKY_TABLE_TOTAL = sum(weight for _, weight in LUCKY_TABLE)
+
+
+def _draw_multiplier() -> int:
+    ticket = secrets.randbelow(LUCKY_TABLE_TOTAL)
+    for multiplier, weight in LUCKY_TABLE:
+        if ticket < weight:
+            return multiplier
+        ticket -= weight
+    return 0
+
+
+def draw_lucky_win(price: int, quantity: int) -> tuple[int, int]:
+    """Şanslı hediye çekilişi. Dönüş: (gönderene geri dönen toplam coin, çıkan en büyük çarpan)."""
+    multipliers = [_draw_multiplier() for _ in range(quantity)]
+    return sum(multipliers) * price, max(multipliers)
 
 
 async def list_gifts(db: AsyncSession) -> list[GiftOut]:
@@ -32,7 +58,10 @@ async def _build_result(
 
 
 async def _replay(db: AsyncSession, sender_id: int, previous: Transaction) -> GiftSendResult:
-    """Aynı idempotency anahtarı tekrar geldi: işlemi yeniden yapma, ilk sonucu dön."""
+    """
+    Aynı idempotency anahtarı tekrar geldi: işlemi yeniden yapma, ilk sonucu dön.
+    Şanslı hediyenin kazancı tekrar gösterilmez (lucky_win 0); bakiye yine de doğrudur.
+    """
     gift = await db.get(Gift, previous.gift_id)
     receiver = await db.get(User, previous.counterparty_id)
     balance = await wallet_service.get_coin_balance(db, sender_id)
@@ -64,8 +93,11 @@ async def send_gift(
         raise NotFoundError("Oda bulunamadı.")
 
     total_coins = gift.price * data.quantity
+    share_percent = settings.lucky_gift_receiver_share_percent if gift.is_lucky else settings.gift_receiver_share_percent
     # Alıcının kazancı. `//` tamsayı bölmesidir: küsurat çıkmaz, float kullanılmaz.
-    receiver_diamonds = total_coins * settings.gift_receiver_share_percent // 100
+    receiver_diamonds = total_coins * share_percent // 100
+    # Şanslı hediyede sonucu SUNUCU çeker; istemci sonucu etkileyemez.
+    lucky_win, lucky_multiplier = draw_lucky_win(gift.price, data.quantity) if gift.is_lucky else (0, 0)
 
     async def debit_sender() -> int:
         return await wallet_service.change_balance(
@@ -95,6 +127,12 @@ async def send_gift(
         else:
             await credit_receiver()
             coin_balance = await debit_sender()
+        if lucky_win:
+            # Gönderenin satırı yukarıda zaten kilitlendi; yeniden güncellemek kilit sırasını bozmaz.
+            coin_balance = await wallet_service.change_balance(
+                db, user_id=sender_id, currency="coin", delta=lucky_win, type="lucky_win",
+                label=f"Şanslı hediye: {gift.name} x{lucky_multiplier}", gift_id=gift.id, room_id=data.room_id,
+            )
         # Harcanan her coin 1 deneyim puanı: seviye hediyeyle aynı transaction'da artar.
         level_up = await level_service.add_experience(db, sender_id, total_coins)
         # İki adım da başarılı → ikisini birlikte kalıcı yap.
@@ -112,6 +150,7 @@ async def send_gift(
         raise
 
     result = await _build_result(db, sender_id, gift, receiver, data.quantity, coin_balance)
+    result.lucky_win, result.lucky_multiplier = lucky_win, lucky_multiplier
 
     sender = await user_service.get_user(db, sender_id)
     await notification_service.notify(
@@ -131,7 +170,10 @@ async def send_gift(
             "receiver": people[receiver.id].model_dump(mode="json"),
             "gift": result.gift.model_dump(),
             "quantity": data.quantity,
+            "lucky_win": lucky_win,
+            "lucky_multiplier": lucky_multiplier,
         })
+        await treasure_service.add_gift_coins(data.room_id, total_coins)
     return result
 
 

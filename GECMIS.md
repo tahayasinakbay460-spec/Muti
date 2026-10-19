@@ -23,6 +23,10 @@ Projede yapılan işlerin kaydı.
 
 **2026-10-19 kullanıcı kararı:** Sıra şöyle değişti: (1) moderasyonu tamamla ✅, (2) gerçek ses (WebRTC) ✅, (3) eksik temel özellikler: arama, ayarlar ekranı, bildirim merkezi, engelleme ve şikâyet, yayıncı geliri, seviye sistemi ✅. Commit edildi (GitHub'a gönderilmedi).
 
+**Öğrenme (2026-10-19):** `learning/websocket/` dersleri hazır (WebSocket temeli). Sırada: ses sinyali WebSocket'te nasıl taşınıyor, sonra ses sunucuları.
+
+**Gelir sistemleri (2026-10-19):** mağaza (çerçeve, giriş efekti, sohbet balonu), VIP (3 kademe, günlük ödül), şanslı hediye, hazine sandığı, hediye paketleri hazır. GitHub'da CI var (`.github/workflows/ci.yml`). Kullanıcı CLAUDE.md "D. Hedef Özellikler" 2-4. grupların da yapılmasını istedi; sırada 2. grup (günlük giriş ödülü/görevler, sıralamalar, aile, CP, etkinlikler).
+
 **Sıradaki adım:** demo yayını ve giriş hız sınırı (aşağıdaki plan). Yayında ses için kendi TURN sunucumuz (coturn) gerekecek; https zorunlu (tarayıcı mikrofonu yalnızca güvenli adreste açar). WebRTC sağlayıcı değiştirilebilir kurulacak: bugün kullanılan servis ileride açık kaynak bir servisle ya da başka bir sağlayıcıyla değiştirilebilmeli. Demo yayını bunlardan sonra.
 
 **Demo yayını planı (2026-10-18'de yazıldı):** Müşteri bu hafta uygulamayı canlı görmek istiyor. Görüşmenin günü henüz belli değil; başlarken sorulacak. Sırayla:
@@ -80,6 +84,45 @@ Kodda "DEMO KISAYOLU" diye işaretlidir. Mobil/canlı aşamasında değiştirile
 ---
 
 # Kayıtlar
+
+## 2026-10-19 — Gelir sistemleri (mağaza, VIP, şanslı hediye, hazine sandığı, hediye paketi) ve CI
+
+**Amaç:** CLAUDE.md "D. Hedef Özellikler" 1. grubu (para kazandıran sistemler). Ardından GitHub'a gönderim ve Eva_Agent projesindeki (dal `phase-0-skeleton`) CI'a benzer bir kalite kapısı.
+
+**Ne yapıldı:**
+- **Mağaza:** `models/store.py` (`StoreItem`, `UserItem`), `store_service`, `routers/store.py`. Çerçeve (8), giriş efekti (5), sohbet balonu (4); 7/30 gün; tekrar alınca süre kalan sürenin üstüne eklenir; her türden bir eşya takılı. Takılı eşyalar `UserOut.frame / entry_effect / chat_bubble` olarak her yerde (oda yayınları dahil) gelir. Profildeki sabit çerçeve listesi (`content.py avatar_frames`) kaldırıldı, yerine gerçek eşyalar.
+- **VIP:** `vip_service` (Gümüş 3.000 / Altın 8.000 / Elmas 20.000 coin, 30 gün; DEMO: coinle, canlıda mağaza aboneliği). Üyelik eşyaları üyelikle biter. Günlük ödül tek komutluk atomik güncellemeyle günde bir kez. `User.vip_expires_at`, `vip_daily_claimed_on`; süresi dolan üyelik `active_vip_level()` ile 0 görünür. Örnek verideki VIP 1-8 değerleri 1-3'e indirildi; ana kullanıcı `muti` VIP değil (demoda VIP alınabilsin).
+- **Şanslı hediye:** `Gift.is_lucky`; 3 hediye (Yonca, Kurabiye, Altın Zar). Çarpanı sunucu çeker (`LUCKY_TABLE`, beklenen geri dönüş %77,5; testle korunuyor). Alıcı payı %10. Kazanç aynı transaction'da, odaya `gift:sent` içinde duyurulur; x10 ve üstü büyük şerit.
+- **Hazine sandığı:** `treasure_service` (DEMO: bellek içi). Odadaki hediyeler doldurur (hedef 10.000 coin), açılınca 60 sn; havuz %10; kişi başı bir kez, odada olmak şart. Olaylar `room:chest_updated`, `room:chest_claimed`; uçlar `GET/POST /rooms/{id}/chest(/claim)`.
+- **Hediye paketleri:** `CoinPackage.title / item_id / item_days / is_one_time`. Başlangıç Paketi (tek seferlik, 7 gün Neon çerçeve), Kraliyet Paketi (30 gün Roket efekti).
+- **Frontend:** `#/store`, `#/vip` ekranları; odada koltuk/sohbet çerçevesi, sohbet balonu, giriş efekti şeridi, şanslı etiket ve duyuru, sandık göstergesi; cüzdanda paketler ve Mağaza/VIP kısayolu; profilde "Eşyalar" sekmesi. Mock API aynı metodları sunar.
+- **CI:** `.github/workflows/ci.yml` (ruff lint + pytest, pip-audit, JS sözdizimi, gitleaks) ve `.gitleaks.toml`. pip-audit, starlette 0.38.6'da 14 bilinen açık buldu → FastAPI 0.115.0 → 0.148.0 (starlette 1.9.0); testler değişmeden geçti. ruff'ın bulduğu 3 küçük sorun düzeltildi.
+- **Testlerdeki ara sıra takılma çözüldü:** WebSocket açılınca kişi odaya hemen eklenmiyor; test o arada sinyal/bildirim gönderirse mesaj düşüyor ve test sonsuza kadar bekliyordu. Testler artık önce katılımı (`chat:history`) ya da `/ws/me` kaydını (`wait_until_registered`) bekliyor.
+- `.gitignore`: `*.db.bak` eklendi. Eski veritabanı `backend/app.db.bak` olarak yedeklendi (şema değişti, yeni `app.db` örnek veriyle oluşur).
+
+**Doğrulama:** 44 test geçiyor; tüm takım art arda 10 kez çalıştırıldı, 10'u da geçti. ruff, JS sözdizimi ve pip-audit yerelde temiz. Tarayıcıda (gerçek backend) denendi: mağaza, giriş efekti sekmesi, VIP satın alma (bakiye 12.450 → 9.450), odada balon/çerçeve/sandık açılıp coin kapma, cüzdan paketleri, profil eşyaları; konsolda hata yok. gitleaks yerelde çalıştırılamadı (yalnızca GitHub'da).
+
+**Açık kalanlar:** Hedef özelliklerin 2-4. grupları. Kullanıcının `backend/venv`'i yeni FastAPI'ye güncellendi; başka makinede `pip install -r requirements.txt` gerekir. Tek seferlik paket aynı anda iki farklı istekle alınırsa iki kez verilebilir (demo için kabul edildi; canlıda benzersiz kısıt). Sandık ve VIP günlük ödülü PostgreSQL'de denenmedi.
+
+## 2026-10-19 — Birleşik arama ve rakip araştırması
+
+**Amaç:** Arama kutusu hem odaları hem kişileri arasın, sonuçlar süzülebilsin. TopTop benzeri uygulamalarda olup bizde olmayan özellikler araştırılsın.
+
+**Ne yapıldı:** Keşfet ekranı tek kutu + Tümü / Odalar / Kişiler sekmeleri (`explore.js`); Tümü'de kişilerden 3, odalardan 5 sonuç ve "Tümünü gör". Odalar ID ile de aranabiliyor (`room_service.list_rooms`, mock da). Ana sayfa arama simgesi klavyeyi açıyor (`?focus=1`), "Popüler Yayıncılar → Tümünü Gör" Kişiler sekmesine gidiyor. Araştırma sonucu CLAUDE.md'ye "D. Hedef Özellikler" olarak yazıldı (VIP/soylu, mağaza, şanslı hediye, günlük ödül/görev, sıralamalar, aile, CP, oda PK'si, oyunlar, ajans, admin paneli).
+
+**Doğrulama:** Yeni test `test_room_search_by_title_and_id`; tüm testler geçti (35). Arayüz tarayıcıda denenmedi.
+
+**Açık kalanlar:** Hedef özelliklerden hangisiyle başlanacağı kullanıcıya soruldu (öneri: giriş efekti + çerçeve + mağaza → günlük ödül + sıralama → oda PK'si).
+
+## 2026-10-19 — WebSocket öğrenme dersleri
+
+**Amaç:** Kullanıcı ses sistemine geçmeden önce WebSocket mantığını projeden bağımsız, basit örneklerle öğrenmek istedi.
+
+**Ne yapıldı:** `learning/websocket/` klasörü: `1_echo` (açık kalan hat), `2_broadcast` (odadaki herkese yayın, sunucunun kendiliğinden konuşması), `3_events` (`event`/`payload` biçimi, sunucu otoritesi). Her derste `server.py` + `client.py`, nasıl çalıştırılacağı `README.md`'de. Proje koduna dokunulmadı.
+
+**Doğrulama:** Ders 3 sunucusu iki istemciyle denendi: sohbet herkese gitti, `/hile` ile gönderilen 6-6 ve sahte isim yok sayıldı, bozuk mesajda hata sadece gönderene gitti.
+
+**Açık kalanlar:** Sıradaki dersler: (2) ses sinyalinin (`voice:signal`) WebSocket'te taşınması ve sohbet mesajının projedeki yolu, (3) ses sunucuları (STUN/TURN/LiveKit).
 
 ## 2026-10-19 — Gerçek ses (WebRTC) ve eksik temel özellikler
 

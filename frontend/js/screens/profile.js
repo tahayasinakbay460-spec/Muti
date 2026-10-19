@@ -1,13 +1,16 @@
-// Profil: kapak, istatistikler ve sekmeler (Duvar, Çerçeveler, Oyun & Ödüller, Hakkında)
+// Profil: kapak, istatistikler ve sekmeler (Duvar, Eşyalar, Oyun & Ödüller, Hakkında)
 import { api } from '../api.js';
 import { DEFAULT_COVER_URL } from '../config.js';
 import { esc, icon, avatarImg, formatCount, joinParts, vipBadge, levelBadge, toast, openSheet } from '../ui.js';
 import { openEditProfileSheet } from './edit-profile.js';
 import { openReportSheet } from './report.js';
 
+const KIND_LABELS = { frame: 'Çerçeve', entry_effect: 'Giriş efekti', chat_bubble: 'Sohbet balonu' };
+const daysLeft = (iso) => Math.max(1, Math.ceil((new Date(iso) - Date.now()) / 86400000));
+
 const TABS = [
   { id: 'wall', label: 'Duvar' },
-  { id: 'frames', label: 'Çerçeveler' },
+  { id: 'items', label: 'Eşyalar' },
   { id: 'rewards', label: 'Oyun & Ödüller' },
   { id: 'about', label: 'Hakkında' },
 ];
@@ -25,10 +28,10 @@ function levelProgress(user) {
 export async function renderProfile(root, { params }) {
   const me = await api.getMe();
   const user = params[0] ? await api.getUser(params[0]) : me;
-  const extras = await api.getProfileExtras(user.id);
-  const ownedFrames = extras.avatar_frames.filter((f) => f.is_owned).length;
+  const [extras, initialItems] = await Promise.all([api.getProfileExtras(user.id), api.listUserItems(user.id)]);
+  // Kullanıcının süresi dolmamış mağaza eşyaları (çerçeve, giriş efekti, sohbet balonu)
+  let items = initialItems;
   let activeTab = 'wall';
-  let activeFrameId = 1;
 
   root.innerHTML = `
     <div class="profile">
@@ -41,7 +44,7 @@ export async function renderProfile(root, { params }) {
       </div>
 
       <div class="profile-head">
-        <div class="profile-avatar frame-classic" id="profile-avatar">${avatarImg(user)}</div>
+        <div class="profile-avatar ${esc(user.frame || '')}" id="profile-avatar">${avatarImg(user)}</div>
         <div class="profile-id">
           <h1>${esc(user.display_name)} ${user.is_verified ? `<span class="verified">${icon('verified', 18)}</span>` : ''}</h1>
           <button class="id-copy" data-action="copy-id">ID ${user.id} ${icon('copy', 13)}</button>
@@ -69,7 +72,7 @@ export async function renderProfile(root, { params }) {
       </div>
 
       <div class="quick-tiles">
-        <button data-tab-jump="frames"><i>💠</i><span><b>Çerçeveler</b><small>${ownedFrames}/${extras.avatar_frames.length}</small></span></button>
+        <button data-tab-jump="items"><i>💠</i><span><b>Eşyalar</b><small id="item-count">${items.length}</small></span></button>
         <button data-tab-jump="rewards"><i>🏆</i><span><b>Oyun Ödülleri</b><small>${extras.achievements.length}</small></span></button>
         <button data-tab-jump="rewards"><i>🎖️</i><span><b>Rozetler</b><small>${extras.recent_rewards.length}</small></span></button>
       </div>
@@ -98,15 +101,19 @@ export async function renderProfile(root, { params }) {
         </footer>
       </article>`).join(''),
 
-    frames: () => `
+    items: () => `
       <div class="frame-grid">
-        ${extras.avatar_frames.map((f) => `
-          <button class="frame-item ${f.id === activeFrameId ? 'is-active' : ''} ${f.is_owned ? '' : 'is-locked'}" data-frame="${f.id}">
-            <span class="frame-preview ${f.style}">${avatarImg(user)}${f.is_owned ? '' : `<i class="frame-lock">${icon('lock', 14)}</i>`}</span>
-            <b>${esc(f.name)}</b>
-            <small>${f.id === activeFrameId ? 'Kullanımda' : f.is_owned ? 'Sahipsin' : 'Kilitli'}</small>
+        ${items.map((item) => `
+          <button class="frame-item ${item.is_equipped ? 'is-active' : ''}" data-owned-item="${item.id}">
+            ${item.kind === 'frame'
+              ? `<span class="frame-preview ${esc(item.style)}">${avatarImg(user)}</span>`
+              : `<span class="owned-icon ${item.kind === 'chat_bubble' ? esc(item.style) : ''}">${item.emoji}</span>`}
+            <b>${esc(item.name)}</b>
+            <small>${item.is_equipped ? 'Kullanımda' : `${KIND_LABELS[item.kind]} · ${daysLeft(item.owned_until)} gün`}</small>
           </button>`).join('')}
-      </div>`,
+        ${user.is_me ? `<a class="frame-item frame-shop" href="#/store"><span class="owned-icon">🛍️</span><b>Mağaza</b><small>Yeni eşya al</small></a>` : ''}
+      </div>
+      ${!items.length && !user.is_me ? '<p class="member-empty">Henüz eşyası yok.</p>' : ''}`,
 
     rewards: () => `
       <h3 class="sub-title">Oyun Başarıları</h3>
@@ -142,6 +149,8 @@ export async function renderProfile(root, { params }) {
         <button data-menu="share">${icon('share', 20)} Profili paylaş</button>
         ${user.is_me
           ? `<a href="#/wallet" data-close>${icon('wallet', 20)} Cüzdan</a>
+             <a href="#/store" data-close>${icon('crown', 20)} Mağaza</a>
+             <a href="#/vip" data-close>👑 VIP</a>
              <a href="#/settings" data-close>${icon('edit', 20)} Ayarlar</a>
              <button data-menu="logout" class="is-danger">${icon('logout', 20)} Çıkış yap</button>`
           : `<button data-menu="block">${icon('lock', 20)} ${user.is_blocked ? 'Engeli kaldır' : 'Engelle'}</button>
@@ -180,14 +189,21 @@ export async function renderProfile(root, { params }) {
       return root.querySelector('#profile-tabs').scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
-    const frame = event.target.closest('[data-frame]');
-    if (frame) {
-      const selected = extras.avatar_frames.find((f) => f.id === Number(frame.dataset.frame));
-      if (!selected.is_owned) return toast('Bu çerçeve kilitli. Seviye atlayarak veya mağazadan açabilirsin.');
+    // Kendi eşyama dokununca takılır ya da çıkarılır (aynı türden takılı olan otomatik çıkar)
+    const owned = event.target.closest('[data-owned-item]');
+    if (owned) {
       if (!user.is_me) return;
-      activeFrameId = selected.id;
-      avatarEl.className = `profile-avatar ${selected.style}`;
-      return showTab('frames');
+      const selected = items.find((i) => i.id === Number(owned.dataset.ownedItem));
+      try {
+        await api.equipStoreItem(selected.id, !selected.is_equipped);
+        items = await api.listUserItems(user.id);
+        const frame = items.find((i) => i.kind === 'frame' && i.is_equipped);
+        avatarEl.className = `profile-avatar ${frame ? frame.style : ''}`;
+        toast(selected.is_equipped ? `${selected.name} çıkarıldı` : `${selected.name} takıldı`, 'success');
+        return showTab('items');
+      } catch (error) {
+        return toast(error.message, 'error');
+      }
     }
 
     const action = event.target.closest('[data-action]')?.dataset.action;

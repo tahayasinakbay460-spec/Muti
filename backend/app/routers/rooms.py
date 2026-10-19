@@ -9,7 +9,8 @@ from app.core.deps import CurrentUserId, DbSession
 from app.schemas.room import (
     ChatMuteRequest, RoomCreateRequest, RoomFollowResult, RoomMemberOut, RoomOut, RoomRoleRequest, RoomUpdateRequest,
 )
-from app.services import moderation_service, room_service
+from app.schemas.store import ChestClaimResult, ChestOut
+from app.services import moderation_service, room_service, treasure_service
 from app.voice import VoiceJoinInfo
 
 router = APIRouter(prefix="/rooms", tags=["rooms"])
@@ -172,3 +173,17 @@ async def delete_chat_message(
     """Sohbetteki bir mesajı siler: kendi mesajını herkes, başkasınınkini yönetici."""
     await moderation_service.delete_chat_message(db, user_id, room_id, message_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/{room_id}/chest", response_model=ChestOut)
+async def get_chest(room_id: int, user_id: CurrentUserId, db: DbSession):
+    """Odanın hazine sandığı: dolum durumu ya da açıksa kalan coin ve bitiş anı."""
+    await room_service.get_room_row(db, room_id)
+    return treasure_service.get_chest(room_id, user_id)
+
+
+@router.post("/{room_id}/chest/claim", response_model=ChestClaimResult)
+async def claim_chest(room_id: int, user_id: CurrentUserId, db: DbSession):
+    """Açık sandıktan coin kapar (kişi başı bir kez, odada olmak gerekir). Miktarı sunucu çeker."""
+    await room_service.get_room_row(db, room_id)
+    return await treasure_service.claim(db, room_id, user_id)

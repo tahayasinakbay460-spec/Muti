@@ -4,7 +4,7 @@ import { connectRoom } from '../realtime.js';
 import { joinVoice } from '../voice/index.js';
 import { openReportSheet } from './report.js';
 import { CATEGORY_LABELS } from '../config.js';
-import { esc, icon, avatarImg, formatCoins, vipBadge, levelBadge, toast, openSheet, joinParts } from '../ui.js';
+import { esc, icon, avatarImg, framedAvatar, formatCoins, vipBadge, levelBadge, toast, openSheet, joinParts } from '../ui.js';
 
 const MAX_CHAT_LINES = 60;
 const QUANTITIES = [1, 5, 10, 99];
@@ -22,6 +22,9 @@ const GIFT_MEDIUM_FROM = 99;
 const GIFT_BIG_FROM = 999;
 const GIFT_COMBO_MS = 4000;
 const CONFETTI_COLORS = ['#ff4d9d', '#ffc53d', '#8b5cff', '#2ee6a6', '#3d8bff'];
+// Şanslı hediyede bu çarpan ve üstü odada büyük duyuruyla gösterilir
+const LUCKY_BIG_MULTIPLIER = 10;
+const ENTRY_EFFECT_MS = 3200;
 const ROLE_RANK = { host: 4, admin: 3, vip: 2, listener: 1 };
 const ROLE_LABELS = { host: 'Oda Sahibi', admin: 'Yönetici', vip: 'VIP' };
 const CHAT_MUTE_OPTIONS = [
@@ -78,6 +81,7 @@ export async function renderRoom(root, { params }) {
       <div class="room-pills">
         <span class="pill pill-glass">🔥 Saatlik Sıralama ${room.hourly_rank}.</span>
         <button class="pill pill-glass" data-action="announcement">📢 Duyuru</button>
+        <button class="chest-pill" id="chest" data-action="chest" aria-label="Hazine sandığı" hidden></button>
         <button class="room-audience" data-action="members" aria-label="Odadakiler">
           <span class="avatar-stack">${audience.map((s) => avatarImg(s.user, 'avatar-xs')).join('')}</span>
           <span class="pill pill-glass" id="audience-more">+${Math.max(0, room.listener_count - audience.length)}</span>
@@ -124,7 +128,7 @@ export async function renderRoom(root, { params }) {
       const isSpeaking = speakingIndexes.includes(seat.index) && !seat.is_muted;
       return `
         <button class="seat ${isSpeaking ? 'is-speaking' : ''} ${isHost ? 'is-host' : ''}" data-seat="${seat.index}">
-          <span class="seat-circle">
+          <span class="seat-circle ${seat.user.frame ? `has-frame ${esc(seat.user.frame)}` : ''}">
             ${isHost ? '<i class="seat-crown">👑</i>' : ''}
             ${avatarImg(seat.user)}
             <i class="seat-mic ${seat.is_muted ? 'is-muted' : ''} ${seat.is_mic_blocked ? 'is-blocked' : ''}" title="${seat.is_mic_blocked ? 'Mikrofonu yönetici kapattı' : ''}">${icon(seat.is_mic_blocked ? 'lock' : seat.is_muted ? 'mic-off' : 'mic', 12)}</i>
@@ -188,8 +192,8 @@ export async function renderRoom(root, { params }) {
     const role = roleOf(user.id);
     addChatLine(`
       <div class="chat-line" data-message-id="${esc(id)}">
-        ${avatarImg(user, 'avatar-sm')}
-        <div><b>${esc(user.display_name)}${ROLE_LABELS[role] ? ` <span class="mini-role mini-role-${role}">${ROLE_LABELS[role]}</span>` : ''}${user.vip_level ? ` <span class="mini-vip">VIP${user.vip_level}</span>` : ''}</b><p>${esc(text)}</p></div>
+        ${framedAvatar(user, 'avatar-sm')}
+        <div><b>${esc(user.display_name)}${ROLE_LABELS[role] ? ` <span class="mini-role mini-role-${role}">${ROLE_LABELS[role]}</span>` : ''}${user.vip_level ? ` <span class="mini-vip">VIP${user.vip_level}</span>` : ''}</b><p class="${user.chat_bubble ? `chat-bubble ${esc(user.chat_bubble)}` : ''}">${esc(text)}</p></div>
       </div>`);
   }
 
@@ -209,8 +213,12 @@ export async function renderRoom(root, { params }) {
   const bigGiftQueue = [];
   let isPlayingBigGift = false;
 
-  function showGift({ sender, receiver, gift, quantity }) {
+  function showGift({ sender, receiver, gift, quantity, lucky_win: luckyWin = 0, lucky_multiplier: luckyMultiplier = 0 }) {
     addSystemLine(`<b>${esc(sender.display_name)}</b>, <b>${esc(receiver.display_name)}</b> kişisine ${gift.emoji} ${esc(gift.name)} x${quantity} gönderdi`);
+    if (luckyWin) {
+      addSystemLine(`🍀 <b>${esc(sender.display_name)}</b> şanslı hediyeden <b>x${luckyMultiplier}</b> yakaladı: <b>+${formatCoins(luckyWin)}</b> coin`);
+      if (luckyMultiplier >= LUCKY_BIG_MULTIPLIER) playLuckyBanner(sender, luckyMultiplier, luckyWin);
+    }
 
     const total = gift.price * quantity;
     addToGiftFeed({ sender, receiver, gift, quantity });
@@ -291,6 +299,105 @@ export async function renderRoom(root, { params }) {
     }, 3400);
   }
 
+  // Şanslı hediyede büyük çarpan: odadaki herkese üstten kayan altın duyuru
+  function playLuckyBanner(sender, multiplier, coins) {
+    const banner = document.createElement('div');
+    banner.className = 'lucky-banner';
+    banner.innerHTML = `🍀 <b>${esc(sender.display_name)}</b> x${multiplier} kazandı! <b>+${formatCoins(coins)}</b>`;
+    giftStageEl.appendChild(banner);
+    setTimeout(() => banner.remove(), 3600);
+  }
+
+  // ─── GİRİŞ EFEKTİ ──────────────────────────────────────────────────────────
+  // Mağazadan ya da VIP'ten giriş efekti olan kişi odaya girince ekranın ortasından süzülen şerit
+  const entryQueue = [];
+  let isPlayingEntry = false;
+
+  function playNextEntry() {
+    if (isPlayingEntry || !entryQueue.length) return;
+    isPlayingEntry = true;
+    const user = entryQueue.shift();
+    const effect = user.entry_effect;
+    const el = document.createElement('div');
+    el.className = `entry-effect ${esc(effect.style)}`;
+    el.innerHTML = `<i>${effect.emoji}</i>${framedAvatar(user, 'avatar-sm')}<span><b>${esc(user.display_name)}</b> odaya giriş yaptı</span>`;
+    giftStageEl.appendChild(el);
+    setTimeout(() => {
+      el.remove();
+      isPlayingEntry = false;
+      playNextEntry();
+    }, ENTRY_EFFECT_MS);
+  }
+
+  function onUserJoined({ user }) {
+    addSystemLine(`<b>${esc(user.display_name)}</b> odaya katıldı 👋`);
+    if (user.entry_effect) {
+      entryQueue.push(user);
+      playNextEntry();
+    }
+  }
+
+  // ─── HAZİNE SANDIĞI ────────────────────────────────────────────────────────
+  // Odadaki hediyeler sandığı doldurur; dolunca herkes bir kez kapar. Miktarı sunucu belirler.
+  const chestEl = root.querySelector('#chest');
+  let chest = null;
+  let chestTimer = null;
+  // Bu sandıktan aldık mı? (yayın herkese aynı gider; kişiye özel bilgiyi burada tutuyoruz)
+  let claimedChestId = null;
+
+  function renderChest() {
+    if (!chest) return;
+    chestEl.hidden = false;
+    clearInterval(chestTimer);
+    const isOpen = chest.status === 'open';
+    chestEl.classList.toggle('is-open', isOpen && claimedChestId !== chest.chest_id);
+    if (!isOpen) {
+      const percent = Math.min(100, Math.floor((chest.progress / chest.target) * 100));
+      chestEl.innerHTML = `🎁 <span class="chest-bar"><i style="width:${percent}%"></i></span><small>%${percent}</small>`;
+      return;
+    }
+    const tick = () => {
+      const seconds = Math.max(0, Math.ceil((new Date(chest.ends_at) - Date.now()) / 1000));
+      chestEl.innerHTML = claimedChestId === chest.chest_id
+        ? `🎁 <small>Aldın · ${seconds} sn</small>`
+        : `🎁 <b>Kap!</b> <small>${seconds} sn</small>`;
+    };
+    tick();
+    chestTimer = setInterval(tick, 1000);
+  }
+
+  function updateChest(next) {
+    // Sandık bilgisi ekrandan çıktıktan sonra gelirse zamanlayıcı başlatma
+    if (isDisposed) return;
+    if (next.status === 'open' && chest?.status !== 'open') {
+      addSystemLine(`🎁 Hazine sandığı açıldı! İçinde <b>${formatCoins(next.coins_left)}</b> coin var, hemen kap!`);
+    }
+    if (next.claimed_by_me) claimedChestId = next.chest_id;
+    chest = next;
+    renderChest();
+  }
+
+  async function claimChest() {
+    if (!chest) return;
+    if (chest.status !== 'open') {
+      return toast(`Odada hediye gönderildikçe sandık dolar: ${formatCoins(chest.progress)} / ${formatCoins(chest.target)} coin`);
+    }
+    if (claimedChestId === chest.chest_id) return toast('Bu sandıktan zaten aldın.');
+    try {
+      const result = await api.claimChest(room.id);
+      claimedChestId = chest.chest_id;
+      me.coin_balance = result.coin_balance;
+      renderChest();
+      toast(`🎁 Sandıktan ${formatCoins(result.coins)} coin kaptın!`, 'success');
+    } catch (error) {
+      if (error.code === 'chest_already_claimed') claimedChestId = chest.chest_id;
+      renderChest();
+      toast(error.message, 'error');
+    }
+  }
+
+  api.getChest(room.id).then(updateChest).catch(() => {});
+
   function openGiftSheet(preselectedReceiverId) {
     const receivers = room.seats.filter((s) => s.user && s.user.id !== me.id).map((s) => s.user);
     if (!receivers.length) return toast('Koltukta hediye gönderebileceğin kimse yok.');
@@ -309,7 +416,7 @@ export async function renderRoom(root, { params }) {
       <div class="gift-grid" id="gift-grid">
         ${gifts.map((g) => `
           <button class="gift-item ${g.id === giftId ? 'is-active' : ''}" data-gift="${g.id}">
-            <i>${g.emoji}</i><b>${esc(g.name)}</b><small><span class="coin coin-sm"></span>${formatCoins(g.price)}</small>
+            ${g.is_lucky ? '<span class="lucky-tag">Şanslı</span>' : ''}<i>${g.emoji}</i><b>${esc(g.name)}</b><small><span class="coin coin-sm"></span>${formatCoins(g.price)}</small>
           </button>`).join('')}
       </div>
       <div class="gift-sheet-foot">
@@ -335,7 +442,11 @@ export async function renderRoom(root, { params }) {
           me.coin_balance = result.coin_balance;
           sheet.el.querySelector('#gift-balance').textContent = formatCoins(result.coin_balance);
           // Animasyonu odaya sunucu yayınlar; bu satır yalnızca mock'ta bir şey yapar
-          channel.simulateServerEvent('gift:sent', { sender: me, receiver: result.receiver, gift: result.gift, quantity });
+          channel.simulateServerEvent('gift:sent', {
+            sender: me, receiver: result.receiver, gift: result.gift, quantity,
+            lucky_win: result.lucky_win, lucky_multiplier: result.lucky_multiplier,
+          });
+          if (result.lucky_win) toast(`🍀 x${result.lucky_multiplier} yakaladın! +${formatCoins(result.lucky_win)} coin`, 'success');
           // Büyük hediyede panel kapanır ki tam ekran animasyon görünsün
           if (result.gift.price * quantity >= GIFT_BIG_FROM) sheet.close();
         } catch (error) {
@@ -873,6 +984,7 @@ export async function renderRoom(root, { params }) {
     else if (action === 'game') openGameSheet();
     else if (action === 'members') openMembersSheet();
     else if (action === 'announcement') toast(room.announcement);
+    else if (action === 'chest') claimChest();
     else if (action === 'toggle-mic') updateRoom(await api.toggleMute(room.id));
     else if (action === 'emoji') {
       const input = root.querySelector('#room-bar input');
@@ -907,7 +1019,11 @@ export async function renderRoom(root, { params }) {
   channel
     .on('chat:message', addMessage)
     .on('gift:sent', showGift)
-    .on('room:user_joined', ({ user }) => addSystemLine(`<b>${esc(user.display_name)}</b> odaya katıldı 👋`))
+    .on('room:user_joined', onUserJoined)
+    .on('room:chest_updated', ({ chest: next }) => updateChest(next))
+    .on('room:chest_claimed', ({ user, coins }) => {
+      if (user.id !== me.id) addSystemLine(`🎁 <b>${esc(user.display_name)}</b> sandıktan ${formatCoins(coins)} coin kaptı`);
+    })
     .on('game:dice_rolled', (roll) => {
       if (roll.user.id === me.id && pendingDiceRoll) pendingDiceRoll(roll);
       else addDiceLine(roll);
@@ -992,6 +1108,7 @@ export async function renderRoom(root, { params }) {
 
   return () => {
     isDisposed = true;
+    clearInterval(chestTimer);
     voice?.close();
     channel.close();
   };

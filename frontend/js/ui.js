@@ -63,6 +63,12 @@ export function avatarImg(user, className = '') {
   return `<img class="avatar ${className}" src="${esc(user.avatar_url || DEFAULT_AVATAR_URL)}" alt="${esc(user.display_name)}" loading="lazy" />`;
 }
 
+// Mağazadan çerçeve takmış kullanıcının avatarı halkayla çizilir (bkz. app.css "Avatar çerçeveleri")
+export function framedAvatar(user, className = '') {
+  if (!user.frame) return avatarImg(user, className);
+  return `<span class="avatar-frame ${esc(user.frame)}">${avatarImg(user, className)}</span>`;
+}
+
 // "26 • Ankara" — yaşını/şehrini girmemiş kullanıcıda boş kalan parça atlanır
 export function joinParts(parts, separator = ' • ') {
   return parts.filter(Boolean).join(separator);

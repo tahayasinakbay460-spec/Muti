@@ -5,6 +5,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.store import StoreItemBrief
 from app.schemas.user import UserOut
 
 
@@ -16,6 +17,7 @@ class GiftOut(BaseModel):
     name: str
     emoji: str
     price: int
+    is_lucky: bool
 
 
 class GiftSendRequest(BaseModel):
@@ -32,6 +34,9 @@ class GiftSendResult(BaseModel):
     gift: GiftOut
     receiver: UserOut
     quantity: int
+    # Şanslı hediyede gönderene geri dönen coin ve tek seferde çıkan en büyük çarpan.
+    lucky_win: int = 0
+    lucky_multiplier: int = 0
 
 
 class CoinPackageOut(BaseModel):
@@ -43,6 +48,12 @@ class CoinPackageOut(BaseModel):
     price_label: str
     is_popular: bool
     is_best_value: bool
+    # Hediye paketi ise: başlığı, içindeki eşya ve süresi.
+    title: str | None = None
+    item: StoreItemBrief | None = None
+    item_days: int = 0
+    is_one_time: bool = False
+    is_bought: bool = False   # tek seferlik paket bu kullanıcı tarafından alındı mı?
 
 
 class PurchaseRequest(BaseModel):
@@ -52,6 +63,7 @@ class PurchaseRequest(BaseModel):
 class PurchaseResult(BaseModel):
     coin_balance: int         # yeni bakiye
     added: int                # eklenen coin (paket + bonus)
+    item: StoreItemBrief | None = None   # paketle gelen eşya
 
 
 class ExchangeRequest(BaseModel):

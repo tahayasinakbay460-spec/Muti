@@ -18,6 +18,9 @@ class Gift(Base):
     name: Mapped[str] = mapped_column(String(40))
     emoji: Mapped[str] = mapped_column(String(16))
     price: Mapped[int] = mapped_column(Integer)
+    # Şanslı hediye: gönderen, sunucunun çektiği çarpanla coin geri kazanabilir
+    # (bkz. gift_service.draw_lucky_win). Alıcının payı normal hediyeden düşüktür.
+    is_lucky: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
@@ -33,6 +36,14 @@ class CoinPackage(Base):
     price_label: Mapped[str] = mapped_column(String(20))
     is_popular: Mapped[bool] = mapped_column(Boolean, default=False)
     is_best_value: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    # ── Hediye paketi (bundle) ────────────────────────────────────────────────
+    # Doluysa bu bir "paket": coinin yanında mağaza eşyası da verir (ör. 7 günlük çerçeve).
+    title: Mapped[str | None] = mapped_column(String(40))
+    item_id: Mapped[int | None] = mapped_column(ForeignKey("store_items.id"))
+    item_days: Mapped[int] = mapped_column(Integer, default=0)
+    # Kullanıcı başına yalnızca bir kez alınabilir (ör. "Başlangıç Paketi").
+    is_one_time: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
@@ -62,7 +73,8 @@ class Transaction(Base):
     id: Mapped[int] = mapped_column(BigIntPk, primary_key=True)
     # Bakiyesi değişen kullanıcı.
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
-    # purchase | gift_sent | gift_received | reward
+    # purchase | gift_sent | gift_received | reward | exchange | store_purchase | vip_purchase
+    # | vip_daily | lucky_win | chest_reward
     type: Mapped[str] = mapped_column(String(32))
     # coin | diamond
     currency: Mapped[str] = mapped_column(String(16))
@@ -77,6 +89,7 @@ class Transaction(Base):
     counterparty_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))  # hediyede karşı taraf
     gift_id: Mapped[int | None] = mapped_column(ForeignKey("gifts.id"))
     package_id: Mapped[int | None] = mapped_column(ForeignKey("coin_packages.id"))
+    item_id: Mapped[int | None] = mapped_column(ForeignKey("store_items.id"))   # mağaza alımında
     room_id: Mapped[int | None] = mapped_column(ForeignKey("rooms.id"))
     quantity: Mapped[int | None] = mapped_column(Integer)
 

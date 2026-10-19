@@ -15,6 +15,15 @@ const DEFAULT_STATE = {
     { id: 2, type: 'gift_sent', label: 'Hediye: Taç → Merve', amount: -299, time_label: '2 gün önce' },
     { id: 3, type: 'reward', label: 'Günlük giriş ödülü', amount: 50, time_label: 'Dün' },
   ],
+  // Mağaza: eşya id → { expires_at (ms), is_equipped }
+  owned_items: {
+    2: { expires_at: Date.now() + 30 * 86400000, is_equipped: true },
+    1: { expires_at: Date.now() + 7 * 86400000, is_equipped: false },
+    102: { expires_at: Date.now() + 30 * 86400000, is_equipped: true },
+    201: { expires_at: Date.now() + 7 * 86400000, is_equipped: true },
+  },
+  vip: { level: 0, expires_at: null, claimed_on: null },
+  bought_package_ids: [],
 };
 
 function loadState() {
@@ -47,6 +56,58 @@ class ApiError extends Error {
 }
 
 const findUser = (id) => db.users.find((u) => u.id === Number(id));
+const DAY_MS = 86400000;
+const findItem = (id) => db.storeItems.find((i) => i.id === Number(id));
+const isOwned = (id) => (state.owned_items[id]?.expires_at || 0) > Date.now();
+const myVipLevel = () => (state.vip.expires_at && state.vip.expires_at > Date.now() ? state.vip.level : 0);
+const today = () => new Date().toISOString().slice(0, 10);
+
+// Takılı kozmetikler: { frame, entry_effect, chat_bubble } (backend UserOut ile aynı alanlar)
+function myCosmetics() {
+  const result = { frame: null, entry_effect: null, chat_bubble: null };
+  Object.entries(state.owned_items).forEach(([id, owned]) => {
+    const item = findItem(id);
+    if (!item || !owned.is_equipped || owned.expires_at <= Date.now()) return;
+    if (item.kind === 'entry_effect') result.entry_effect = { name: item.name, style: item.style, emoji: item.emoji };
+    else result[item.kind] = item.style;
+  });
+  return result;
+}
+
+function storeItemOut(item) {
+  const owned = state.owned_items[item.id];
+  const active = isOwned(item.id);
+  return {
+    ...item,
+    is_owned: active,
+    owned_until: active ? new Date(owned.expires_at).toISOString() : null,
+    is_equipped: active && owned.is_equipped,
+  };
+}
+
+function unequipKind(kind) {
+  Object.entries(state.owned_items).forEach(([id, owned]) => {
+    if (findItem(id)?.kind === kind) owned.is_equipped = false;
+  });
+}
+
+// Eşya verir; süre kalan sürenin üstüne eklenir ve aynı türden takılı olan çıkar
+function grantItem(item, { days, until }) {
+  const current = Math.max(state.owned_items[item.id]?.expires_at || 0, Date.now());
+  const expiresAt = days ? current + days * DAY_MS : Math.max(until, current);
+  unequipKind(item.kind);
+  state.owned_items[item.id] = { expires_at: expiresAt, is_equipped: true };
+}
+
+function vipStatus() {
+  const level = myVipLevel();
+  return {
+    level,
+    expires_at: level ? new Date(state.vip.expires_at).toISOString() : null,
+    daily_reward_available: Boolean(level) && state.vip.claimed_on !== today(),
+    tiers: db.vipTiers.map(({ item_ids: ids, ...tier }) => ({ ...tier, items: ids.map(findItem) })),
+  };
+}
 
 function withMeta(user) {
   if (!user) return null;
@@ -56,7 +117,7 @@ function withMeta(user) {
     ...(isMe ? state.profile : {}),
     is_me: isMe,
     is_following: state.following_ids.includes(user.id),
-    ...(isMe ? { coin_balance: state.coin_balance } : {}),
+    ...(isMe ? { coin_balance: state.coin_balance, vip_level: myVipLevel(), ...myCosmetics() } : {}),
   };
 }
 
@@ -202,7 +263,6 @@ const mockApi = {
     await delay(80);
     return {
       wall_posts: db.wallPosts,
-      avatar_frames: db.avatarFrames,
       achievements: db.achievements,
       recent_rewards: db.recentRewards,
     };
@@ -266,7 +326,7 @@ const mockApi = {
     if (category && category !== 'for_you') list = list.filter((r) => r.category === category);
     if (query) {
       const q = query.toLocaleLowerCase('tr');
-      list = list.filter((r) => r.title.toLocaleLowerCase('tr').includes(q));
+      list = list.filter((r) => r.title.toLocaleLowerCase('tr').includes(q) || String(r.id) === query.trim());
     }
     return list.map(expandRoom);
   },
@@ -434,23 +494,133 @@ const mockApi = {
     if (state.coin_balance < total) throw new ApiError('insufficient_balance', 'Coin bakiyen yetersiz.');
     state.coin_balance -= total;
     addTransaction('gift_sent', `Hediye: ${gift.name} x${quantity} → ${receiver.display_name}`, -total);
+    // Şanslı hediye: mock'ta basit bir çekiliş (gerçek oranlar backend'de, gift_service.LUCKY_TABLE)
+    let luckyWin = 0;
+    let luckyMultiplier = 0;
+    if (gift.is_lucky) {
+      for (let i = 0; i < quantity; i += 1) {
+        const roll = Math.random();
+        const multiplier = roll < 0.76 ? 0 : roll < 0.91 ? 1 : roll < 0.96 ? 2 : roll < 0.985 ? 5 : 10;
+        luckyWin += multiplier * gift.price;
+        luckyMultiplier = Math.max(luckyMultiplier, multiplier);
+      }
+      if (luckyWin) {
+        state.coin_balance += luckyWin;
+        addTransaction('lucky_win', `Şanslı hediye: ${gift.name} x${luckyMultiplier}`, luckyWin);
+      }
+    }
     saveState();
-    return { coin_balance: state.coin_balance, gift, receiver: withMeta(receiver), quantity };
+    return {
+      coin_balance: state.coin_balance, gift, receiver: withMeta(receiver), quantity,
+      lucky_win: luckyWin, lucky_multiplier: luckyMultiplier,
+    };
   },
 
   async listCoinPackages() {
     await delay(80);
-    return db.coinPackages;
+    return db.coinPackages.map((p) => ({
+      ...p,
+      item: p.item_id ? findItem(p.item_id) : null,
+      is_bought: Boolean(p.is_one_time && state.bought_package_ids.includes(p.id)),
+    }));
   },
 
   async purchaseCoins(packageId) {
     await delay(700);
     const pack = db.coinPackages.find((p) => p.id === packageId);
+    if (pack.is_one_time && state.bought_package_ids.includes(pack.id)) {
+      throw new ApiError('package_already_bought', 'Bu paketi zaten aldın.');
+    }
     const total = pack.coins + pack.bonus;
     state.coin_balance += total;
-    addTransaction('purchase', `Coin satın alma (${pack.price_label})`, total);
+    state.bought_package_ids.push(pack.id);
+    addTransaction('purchase', `${pack.title || 'Coin satın alma'} (${pack.price_label})`, total);
+    const item = pack.item_id ? findItem(pack.item_id) : null;
+    if (item) grantItem(item, { days: pack.item_days });
     saveState();
-    return { coin_balance: state.coin_balance, added: total };
+    return { coin_balance: state.coin_balance, added: total, item };
+  },
+
+  // ── Mağaza ve VIP ──
+  async listStoreItems(kind) {
+    await delay(80);
+    return db.storeItems.filter((i) => !kind || i.kind === kind).map(storeItemOut);
+  },
+
+  async purchaseStoreItem(itemId, days) {
+    await delay(300);
+    const item = findItem(itemId);
+    if (item.vip_level_required > myVipLevel()) {
+      throw new ApiError('vip_required', `Bu eşya VIP ${item.vip_level_required} ve üstüne özel.`);
+    }
+    const price = days === 7 ? item.price_7d : item.price_30d;
+    if (state.coin_balance < price) throw new ApiError('insufficient_balance', 'Coin bakiyen yetersiz.');
+    state.coin_balance -= price;
+    addTransaction('store_purchase', `Mağaza: ${item.name} (${days} gün)`, -price);
+    grantItem(item, { days });
+    saveState();
+    return { coin_balance: state.coin_balance, item: storeItemOut(item) };
+  },
+
+  async equipStoreItem(itemId, equipped) {
+    await delay(100);
+    const item = findItem(itemId);
+    if (!isOwned(itemId)) throw new ApiError('item_not_owned', 'Bu eşyaya sahip değilsin.');
+    if (equipped) unequipKind(item.kind);
+    state.owned_items[itemId].is_equipped = equipped;
+    saveState();
+    return storeItemOut(item);
+  },
+
+  async listUserItems(userId) {
+    await delay(80);
+    // Mock'ta yalnızca ana kullanıcının eşyaları tutuluyor
+    if (Number(userId) !== db.CURRENT_USER_ID) return [];
+    return db.storeItems.filter((i) => isOwned(i.id)).map(storeItemOut);
+  },
+
+  async getVip() {
+    await delay(80);
+    return vipStatus();
+  },
+
+  async purchaseVip(level) {
+    await delay(400);
+    const tier = db.vipTiers.find((t) => t.level === level);
+    const current = myVipLevel();
+    if (current > level) throw new ApiError('vip_higher_active', 'Daha yüksek bir VIP üyeliğin zaten var.');
+    if (state.coin_balance < tier.price_30d) throw new ApiError('insufficient_balance', 'Coin bakiyen yetersiz.');
+    state.coin_balance -= tier.price_30d;
+    const start = current === level ? state.vip.expires_at : Date.now();
+    state.vip = { ...state.vip, level, expires_at: Math.max(start, Date.now()) + 30 * DAY_MS };
+    tier.item_ids.forEach((id) => grantItem(findItem(id), { until: state.vip.expires_at }));
+    addTransaction('vip_purchase', `VIP ${level} · ${tier.name} (30 gün)`, -tier.price_30d);
+    saveState();
+    return { coin_balance: state.coin_balance, status: vipStatus() };
+  },
+
+  async claimVipDailyReward() {
+    await delay(200);
+    const level = myVipLevel();
+    if (!level) throw new ApiError('vip_required', 'Günlük ödül VIP üyelere özel.');
+    if (state.vip.claimed_on === today()) throw new ApiError('daily_reward_claimed', 'Bugünkü ödülünü zaten aldın.');
+    const coins = db.vipTiers.find((t) => t.level === level).daily_coins;
+    state.vip.claimed_on = today();
+    state.coin_balance += coins;
+    addTransaction('vip_daily', `VIP ${level} günlük ödül`, coins);
+    saveState();
+    return { coins, coin_balance: state.coin_balance };
+  },
+
+  // Hazine sandığı: mock'ta hep dolum aşamasında (gerçek dolum ve açılma backend'de)
+  async getChest() {
+    await delay(60);
+    return { chest_id: 'mock', status: 'filling', progress: 3200, target: 10000, ends_at: null, coins_left: 0, claimed_by_me: false };
+  },
+
+  async claimChest() {
+    await delay(100);
+    throw new ApiError('chest_closed', 'Sandık şu an açık değil.');
   },
 
   async listTransactions(currency = 'coin') {
@@ -651,6 +821,15 @@ const httpApi = {
   listGifts: () => request('/gifts'),
   sendGift: (payload) => request('/gifts/send', { method: 'POST', body: payload, headers: idempotencyHeader() }),
   listCoinPackages: () => request('/wallet/packages'),
+  listStoreItems: (kind) => request(`/store/items${kind ? `?kind=${kind}` : ''}`),
+  purchaseStoreItem: (itemId, days) => request(`/store/items/${itemId}/purchase`, { method: 'POST', body: { days }, headers: idempotencyHeader() }),
+  equipStoreItem: (itemId, equipped) => request(`/store/items/${itemId}/equip`, { method: 'PUT', body: { equipped } }),
+  listUserItems: (userId) => request(`/users/${userId}/items`),
+  getVip: () => request('/vip'),
+  purchaseVip: (level) => request('/vip/purchase', { method: 'POST', body: { level }, headers: idempotencyHeader() }),
+  claimVipDailyReward: () => request('/vip/daily-reward', { method: 'POST' }),
+  getChest: (roomId) => request(`/rooms/${roomId}/chest`),
+  claimChest: (roomId) => request(`/rooms/${roomId}/chest/claim`, { method: 'POST' }),
   purchaseCoins: (packageId) => request('/wallet/purchase', { method: 'POST', body: { package_id: packageId }, headers: idempotencyHeader() }),
   listTransactions: (currency = 'coin') => request(`/wallet/transactions?currency=${currency}`),
   listConversations: () => request('/conversations'),

@@ -2,7 +2,26 @@
 import { api } from '../api.js';
 import { esc, icon, avatarImg, formatCoins, toast } from '../ui.js';
 
-const TX_ICONS = { gift_sent: 'gift', gift_received: 'gift', exchange: 'flame' };
+const TX_ICONS = {
+  gift_sent: 'gift', gift_received: 'gift', exchange: 'flame', lucky_win: 'flame', chest_reward: 'gift',
+  vip_purchase: 'crown', vip_daily: 'crown', store_purchase: 'crown',
+};
+
+// Hediye paketi: coinin yanında süreli bir mağaza eşyası verir
+function bundleCard(p) {
+  const item = p.item;
+  const itemPreview = item.kind === 'frame' ? `<i class="vip-frame ${esc(item.style)}"></i>` : `<i>${item.emoji}</i>`;
+  return `
+    <button class="bundle" data-package="${p.id}" ${p.is_bought ? 'disabled' : ''}>
+      ${p.is_one_time ? `<span class="package-tag">${p.is_bought ? 'Alındı' : 'Tek seferlik'}</span>` : ''}
+      <span class="bundle-item">${itemPreview}</span>
+      <span class="bundle-body">
+        <b>${esc(p.title)}</b>
+        <small><span class="coin coin-sm"></span> ${formatCoins(p.coins + p.bonus)} coin + ${p.item_days} gün ${esc(item.name)}</small>
+      </span>
+      <span class="package-price">${esc(p.price_label)}</span>
+    </button>`;
+}
 
 function transactionRows(transactions, unit = '') {
   if (!transactions.length) return '<p class="member-empty">Henüz hareket yok.</p>';
@@ -15,7 +34,9 @@ function transactionRows(transactions, unit = '') {
 }
 
 export async function renderWallet(root, { query }) {
-  const [me, packages] = await Promise.all([api.getMe(), api.listCoinPackages()]);
+  const [me, allPackages] = await Promise.all([api.getMe(), api.listCoinPackages()]);
+  const bundles = allPackages.filter((p) => p.item);
+  const packages = allPackages.filter((p) => !p.item);
   let tab = query.tab === 'income' ? 'income' : 'coins';
 
   root.innerHTML = `
@@ -35,7 +56,17 @@ export async function renderWallet(root, { query }) {
         <small>Coin bakiyen</small>
         <div class="balance-amount"><span class="coin coin-lg"></span><b id="balance">${formatCoins(me.coin_balance)}</b></div>
         <p>Coin ile hediye gönderebilir, özel çerçeve ve giriş efektleri alabilirsin.</p>
+        <div class="balance-links">
+          <a class="btn btn-sm btn-glass" href="#/store">${icon('crown', 14)} Mağaza</a>
+          <a class="btn btn-sm btn-glass" href="#/vip">👑 VIP</a>
+        </div>
       </section>
+
+      ${bundles.length ? `
+      <section class="section">
+        <div class="section-head"><h2>Hediye Paketleri</h2></div>
+        <div class="bundle-list">${bundles.map(bundleCard).join('')}</div>
+      </section>` : ''}
 
       <section class="section">
         <div class="section-head"><h2>Coin Paketleri</h2></div>
@@ -148,7 +179,14 @@ export async function renderWallet(root, { query }) {
       balanceEl.classList.remove('pop');
       void balanceEl.offsetWidth;
       balanceEl.classList.add('pop');
-      toast(`+${formatCoins(result.added)} coin eklendi`, 'success');
+      toast(result.item ? `+${formatCoins(result.added)} coin ve ${result.item.name} eklendi` : `+${formatCoins(result.added)} coin eklendi`, 'success');
+      if (result.item) {
+        const pack = allPackages.find((p) => p.id === Number(button.dataset.package));
+        if (pack?.is_one_time) {
+          pack.is_bought = true;
+          button.outerHTML = bundleCard(pack);
+        }
+      }
       panel.querySelector('#transactions').innerHTML = transactionRows(await api.listTransactions('coin'));
     } catch (error) {
       toast(error.message, 'error');

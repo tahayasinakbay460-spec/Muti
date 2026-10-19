@@ -10,6 +10,8 @@ import { renderRoom } from './screens/room.js';
 import { renderMessages, renderChat } from './screens/messages.js';
 import { renderProfile } from './screens/profile.js';
 import { renderWallet } from './screens/wallet.js';
+import { renderStore } from './screens/store.js';
+import { renderVip } from './screens/vip.js';
 import { renderNotifications } from './screens/notifications.js';
 import { renderSettings } from './screens/settings.js';
 import { openCreateRoomSheet } from './screens/create-room.js';
@@ -25,6 +27,8 @@ const routes = [
   { pattern: /^\/profile$/, render: renderProfile, tab: 'profile' },
   { pattern: /^\/profile\/(\d+)$/, render: renderProfile },
   { pattern: /^\/wallet$/, render: renderWallet, tab: 'wallet' },
+  { pattern: /^\/store$/, render: renderStore, tab: 'profile' },
+  { pattern: /^\/vip$/, render: renderVip, tab: 'profile' },
   { pattern: /^\/notifications$/, render: renderNotifications },
   { pattern: /^\/settings$/, render: renderSettings },
 ];

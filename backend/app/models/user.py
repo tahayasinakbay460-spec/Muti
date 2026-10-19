@@ -1,12 +1,13 @@
 """
 Kullanıcıyla ilgili tablolar: users, follows, refresh_tokens.
 """
-from datetime import datetime
+from datetime import date, datetime
 
-from sqlalchemy import BigInteger, Boolean, CheckConstraint, DateTime, ForeignKey, Integer, String
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, Date, DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base, BigIntPk, utcnow
+from app.core.timefmt import as_utc
 
 
 class User(Base):
@@ -38,7 +39,12 @@ class User(Base):
     avatar_url: Mapped[str | None] = mapped_column(String(500))
     cover_url: Mapped[str | None] = mapped_column(String(500))
     bio: Mapped[str] = mapped_column(String(300), default="")
+    # VIP üyelik: seviye (1-3) ve bitiş anı. Bitiş boşsa üyelik süresizdir (örnek verideki
+    # hesaplar). Süresi geçmiş üyeliğin seviyesi silinmez; `active_vip_level` 0 döner.
     vip_level: Mapped[int] = mapped_column(Integer, default=0)
+    vip_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # VIP günlük ödülünün en son alındığı gün (günde bir kez alınabilir).
+    vip_daily_claimed_on: Mapped[date | None] = mapped_column(Date)
     # Seviye, deneyim puanından (experience) hesaplanır; bkz. services/level_service.py.
     # Hediye gönderdikçe harcanan her coin 1 deneyim puanı kazandırır.
     level: Mapped[int] = mapped_column(Integer, default=1)
@@ -63,6 +69,12 @@ class User(Base):
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    def active_vip_level(self, now: datetime | None = None) -> int:
+        """Şu an geçerli VIP seviyesi: üyelik süresi dolduysa 0."""
+        if self.vip_level and self.vip_expires_at is not None and as_utc(self.vip_expires_at) <= (now or utcnow()):
+            return 0
+        return self.vip_level
 
 
 class Follow(Base):

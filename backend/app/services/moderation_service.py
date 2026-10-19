@@ -12,7 +12,7 @@ TEMEL KURAL: Bir işlem ancak kendinden ALT rütbedeki birine yapılabilir.
 Yönetici, oda sahibine ya da başka bir yöneticiye dokunamaz.
 Bütün yetki kontrolleri burada, sunucuda yapılır; istemcinin "ben yöneticiyim" demesine bakılmaz.
 """
-from sqlalchemy import delete, select
+from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import AppError, ConflictError, ForbiddenError, NotFoundError
@@ -22,8 +22,8 @@ from app.realtime import events
 from app.realtime.hub import room_hub
 from app.realtime.state import room_state
 from app.schemas.room import RoomMemberOut, RoomOut, RoomUpdateRequest
-from app.services import notification_service, room_service, user_service
-from app.services.room_service import ADMIN, HOST, LISTENER, ROLE_RANK, VIP
+from app.services import notification_service, room_service, treasure_service, user_service
+from app.services.room_service import ADMIN, HOST, LISTENER, ROLE_RANK
 from app.voice import voice_provider
 
 # Odadan atılan kişi bu kadar süre (saniye) odaya geri giremez.
@@ -294,4 +294,5 @@ async def close_room(db: AsyncSession, actor_id: int, room_id: int) -> None:
     await room_hub.publish(room.id, events.ROOM_CLOSED, {})
     await room_hub.disconnect_room(room.id, events.CLOSE_ROOM_NOT_FOUND)
     await room_state.drop_room(room.id)
+    treasure_service.drop_room(room.id)
     await voice_provider.close_room(room.id)

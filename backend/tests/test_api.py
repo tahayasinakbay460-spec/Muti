@@ -103,7 +103,7 @@ def test_purchase_adds_coins(client, guest):
     before = me(client, guest)["coin_balance"]
     bought = client.post(f"{API}/wallet/purchase", headers=guest, json={"package_id": 2})
     assert bought.status_code == 200
-    assert bought.json() == {"coin_balance": before + 1650, "added": 1650}   # 1500 + 150 bonus
+    assert bought.json() == {"coin_balance": before + 1650, "added": 1650, "item": None}   # 1500 + 150 bonus
 
 
 # ── Odalar ────────────────────────────────────────────────────────────────────
@@ -216,6 +216,16 @@ def receive_until(socket, event: str) -> dict:
         if message["event"] == event:
             return message["payload"]
     raise AssertionError(f"{event} gelmedi")
+
+
+def wait_until_registered(socket) -> None:
+    """
+    /ws/me bağlantısının sunucuda kaydedilmesini bekler. Bağlantı açılır açılmaz gönderilen
+    bildirim, sunucu kişiyi henüz kaydetmediyse kaybolur ve test sonsuza kadar bekler.
+    Sunucu bilinmeyen mesaja ancak kayıttan sonra cevap verir; o cevabı işaret olarak kullanıyoruz.
+    """
+    socket.send_text("hazır mısın")
+    receive_until(socket, "error")
 
 
 def test_room_socket_chat_dice_and_gift(client, guest):
@@ -433,6 +443,7 @@ def test_private_message_is_pushed_to_receiver(client, guest):
     token = receiver["Authorization"].removeprefix("Bearer ")
 
     with client.websocket_connect(f"/ws/me?token={token}") as socket:
+        wait_until_registered(socket)
         conversation_id = client.post(f"{API}/conversations", headers=sender, json={"user_id": receiver_id}).json()["id"]
         client.post(f"{API}/conversations/{conversation_id}/messages", headers=sender, json={"text": " Merhaba "})
 
@@ -500,7 +511,9 @@ def test_voice_join_info_and_signal_relay(client, guest):
     rooms = f"{API}/rooms/{room['id']}"
     listener, other = new_guest(client), new_guest(client)
     host_id, listener_id, other_id = room["host_id"], me(client, listener)["id"], me(client, other)["id"]
-    token = lambda headers: headers["Authorization"].removeprefix("Bearer ")
+
+    def token(headers: dict) -> str:
+        return headers["Authorization"].removeprefix("Bearer ")
 
     # Varsayılan sağlayıcı mesh: ICE sunucuları gelir; konuşma izni yalnızca koltuktakinde.
     info = client.get(f"{rooms}/voice", headers=host).json()
@@ -510,7 +523,11 @@ def test_voice_join_info_and_signal_relay(client, guest):
     with client.websocket_connect(f"/ws/rooms/{room['id']}?token={token(host)}") as host_socket, \
             client.websocket_connect(f"/ws/rooms/{room['id']}?token={token(listener)}") as listener_socket, \
             client.websocket_connect(f"/ws/rooms/{room['id']}?token={token(other)}") as other_socket:
-        receive_until(listener_socket, "room:listener_count")
+        # Bağlantının açılması odaya katılmak demek değil: sunucu kişiyi odaya ekledikten sonra
+        # son mesajları (chat:history) gönderir. Herkes katılmadan sinyal gönderilirse sunucu
+        # "odada değil" diye mesajı düşürür ve test sonsuza kadar bekler.
+        for socket in (host_socket, listener_socket, other_socket):
+            receive_until(socket, "chat:history")
 
         # Dinleyici → koltuktaki oda sahibi: iletilir, gönderen sunucu tarafından yazılır.
         offer = {"type": "offer", "sdp": "v=0 test"}

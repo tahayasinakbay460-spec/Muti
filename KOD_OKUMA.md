@@ -15,6 +15,8 @@ servisler yüzeysel, en son `realtime/hub.py`.
 **Açık kalanlar:** `user_service.load_users_out` / `present_users`,
 `schemas/room.py`.
 
+**WebSocket temeli (2026-10-19):** projeden bağımsız dersler `learning/websocket/` altında (echo → herkese yayın → event/payload). Sırada: `voice:signal` ve sohbet mesajının `room_socket.py` + `hub.py` içindeki yolu, sonra ses sunucuları.
+
 ---
 
 ## 1. `main.py` — `lifespan` ve uygulama açılışı

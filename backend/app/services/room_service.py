@@ -5,7 +5,7 @@ Bir odanın bilgisi iki yerden gelir ve burada birleştirilir:
   - kalıcı bilgiler (ad, sahip, kategori)      → veritabanı (models/room.py)
   - canlı bilgiler (koltuklar, dinleyici sayısı) → canlı durum deposu (realtime/state.py)
 """
-from sqlalchemy import delete, select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -140,8 +140,13 @@ async def list_rooms(
     if query.strip():
         # Kullanıcının yazdığı % ve _ işaretleri SQL'de "joker" anlamına gelir;
         # onları düz karakter sayılsın diye kaçırıyoruz.
-        escaped = query.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-        statement = statement.where(Room.title.ilike(f"%{escaped}%", escape="\\"))
+        text = query.strip()
+        escaped = text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        condition = Room.title.ilike(f"%{escaped}%", escape="\\")
+        # Rakamsa oda numarasıyla da ara: kullanıcılar birbirine oda ID'si söyleyerek davet eder.
+        if text.isdigit():
+            condition = or_(condition, Room.id == int(text))
+        statement = statement.where(condition)
     statement = statement.order_by(Room.id.desc()).limit(limit).offset(offset)
 
     rooms = await present_rooms(db, list(await db.scalars(statement)), viewer_id)
