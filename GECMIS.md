@@ -9,6 +9,8 @@ Projede yapılan işlerin kaydı.
 
 ## Şu an neredeyiz
 
+**2026-10-21 — Web yayınına hazırlık (A grubu, kod tarafı bitti):** Karar: önce yalnızca web, mobil sonra. Açık beta (coin ücretsiz, gerçek para yok), hosting Railway (GitHub'a push → CI → otomatik yayın), alan adı yok (Railway'in verdiği https adresi). Kod hazır; sırada kullanıcının Railway hesabı ve kurulum (adımlar aşağıdaki kayıtta). Yasal metin taslağı `frontend/legal.html` içindeki [köşeli parantez] yerleri kullanıcı dolduracak.
+
 **Aşama:** Web demo. Frontend ekranları hazır ve gerçek backend'e bağlı (`USE_MOCK = false`).
 
 **Çalışan:** giriş/kayıt/misafir, oda listesi, oda içi sohbet, koltuklar, zar ve rulet oyunları, kademeli hediye animasyonları, hediye gönderme, coin satın alma, özel mesajlar (anlık bildirimli), kullanıcı takibi, oda takibi, profil ve profil düzenleme, cüzdan, **gerçek ses (WebRTC, mesh)** ve konuşan koltukta halka, kişi arama, bildirim merkezi, ayarlar (şifre değiştirme, engellenenler, hesap silme), engelleme ve şikâyet, seviye sistemi, yayıncı geliri (elmas → coin), oda rolleri (oda sahibi, yönetici, VIP) ve tam moderasyon: dinleyici listesi, koltuk kilitleme, koltuktan indirme, koltuğa davet, başkasının mikrofonunu kapatma, sohbette süreli susturma, mesaj silme, odadan atma, oda ayarları, odayı kapatma.
@@ -101,6 +103,24 @@ Kodda "DEMO KISAYOLU" diye işaretlidir. Mobil/canlı aşamasında değiştirile
 ---
 
 # Kayıtlar
+
+## 2026-10-21 — Web yayınına hazırlık (A grubu)
+
+**Amaç:** Uygulamayı bugün web'e açık beta olarak çıkarmak; GitHub'a push edilince kendiliğinden güncellensin.
+
+**Ne yapıldı:**
+- *Tek adres:* backend `FRONTEND_DIR` doluysa sayfaları da sunar (`NoCacheStaticFiles`, `Cache-Control: no-cache` → eski/yeni JS karışması biter). `config.js` 5500 portu dışında aynı adresi kullanır, https'te `wss`.
+- *Docker + Railway:* `Dockerfile` (root olmayan kullanıcı, açılışta `alembic upgrade head`, `--proxy-headers`), `.dockerignore`, `railway.json` (healthcheck `/health`).
+- *Veritabanı:* Alembic (`backend/alembic.ini`, `migrations/`, ilk migration 27 tablo). Canlıda `create_all` yok. `postgresql://` adresi otomatik `postgresql+asyncpg://` olur. Elle id verilen satırlardan sonra PostgreSQL sayaçları ileri alınır (`database.sync_id_sequences`).
+- *Katalog:* hediye/mağaza/paket listesi örnek veriden ayrıldı (`services/catalog_service.py`), canlıda da yüklenir.
+- *Beta ayarları:* `FREE_COIN_PURCHASE` (ödeme almadan coin; fiyat yerine "Ücretsiz (beta)"), `ADMIN_USERNAME`/`ADMIN_PASSWORD` (ilk yönetici ortam değişkeninden), `ADMIN_CAN_READ_MESSAGES` (canlıda false: mesaj okuma uçları 403).
+- *Hız sınırı:* giriş/kayıt/misafir IP başına dakikada 10 (`core/ratelimit.py`, bellek içi — DEMO KISAYOLU, Redis'e taşınacak).
+- *Yasal:* `frontend/legal.html` kullanım koşulları + KVKK aydınlatma taslağı; giriş ekranı ve ayarlardan bağlantı. Demo parola ipucu yalnızca geliştirmede görünür.
+- *CI:* migration'lar modellerle uyumlu mu (`alembic check`), bütün testler bir de PostgreSQL 16 üzerinde. CI'da SECRET_KEY rastgele üretilir.
+
+**Doğrulama:** 96 test (SQLite) geçti, kapsam %94,5; PostgreSQL'de ilk denemede 95/96 (kalan hata testin kendisindeydi, düzeltildi). Canlı ayarlarla yerelde açıldı: sayfa/legal 200 + no-cache, `muti/demo1234` reddedildi, yönetici env'den oluştu, mesaj okuma 403, 11. denemede 429, katalog dolu, ücretsiz satın alma çalıştı. Tarayıcıda giriş ekranı ve cüzdan denendi, konsol hatası yok.
+
+**Açık kalanlar:** Railway kurulumu (kullanıcı hesabı gerekli); `legal.html` köşeli parantezler + hukukçu; veritabanı yedeği (Railway PostgreSQL yedekleri planına bağlı); TURN sunucusu (bazı mobil ağlarda ses bağlanmayabilir); canlıda ilk boş oda listesi (ilk odaları kurucu açacak); tek sunucu kopyası şart (oda durumu bellekte; Railway'de replika 1 kalmalı).
 
 ## 2026-10-19 — Gün özeti: konuşulanlar, kararlar, yarın nereden devam
 
