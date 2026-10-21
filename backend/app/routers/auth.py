@@ -4,27 +4,31 @@
 ROUTER NEDİR? İnternetten gelen isteği karşılayan en dış katman. Burada iş kuralı
 YAZILMAZ: router yalnızca isteği alır, ilgili servisi çağırır, sonucu döner.
 """
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Depends, status
 
+from app.core.ratelimit import limit_auth_attempts
 from app.core.deps import CurrentUser, DbSession
 from app.schemas.auth import ChangePasswordRequest, LoginRequest, RefreshRequest, RegisterRequest, TokenResponse
 from app.services import auth_service
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
+# Parola deneyen ve hesap açan uçlar hız sınırlı (bkz. core/ratelimit.py).
+_limited = [Depends(limit_auth_attempts)]
+
 #buradaki gelen veriyi fast api otomatik olarak mı alıyor bu veriyi request ten mi alıyor sor ? 
-@router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/register", dependencies=_limited, response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
 async def register(data: RegisterRequest, db: DbSession):
     """Yeni hesap açar ve doğrudan giriş yapmış olarak token döner."""
     return await auth_service.register(db, data)
 
 
-@router.post("/login", response_model=TokenResponse)
+@router.post("/login", dependencies=_limited, response_model=TokenResponse)
 async def login(data: LoginRequest, db: DbSession):
     return await auth_service.login(db, data)
 
 
-@router.post("/guest", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/guest", dependencies=_limited, response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
 async def login_as_guest(db: DbSession):
     """Kayıt olmadan misafir olarak devam et."""
     return await auth_service.login_as_guest(db)

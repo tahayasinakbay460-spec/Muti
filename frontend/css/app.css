@@ -455,6 +455,7 @@ small { font-size: 12px; color: var(--muted); }
 .segmented button.is-active { background: var(--surface-3); color: #fff; }
 .auth-card .btn-ghost { margin-top: 6px; }
 .auth-legal { margin-top: 8px; font-size: 11px; line-height: 1.5; color: var(--muted); text-align: center; }
+.auth-legal a { color: inherit; text-decoration: underline; }
 
 /* ─── ANA SAYFA ────────────────────────────────────────────────────────── */
 /* Üst sekmeler: beşi de tek satıra sığar, yalnızca seçili olan dolu görünür */

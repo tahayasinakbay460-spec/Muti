@@ -28,22 +28,21 @@ export async function renderSettings(root) {
 
     <h2 class="settings-title">Destek</h2>
     <div class="menu-list settings-list">
-      <button data-setting="soon">${icon('check', 20)} Kullanım koşulları</button>
-      <button data-setting="soon">${icon('lock', 20)} Gizlilik politikası</button>
+      <a href="legal.html#terms" target="_blank" rel="noopener">${icon('check', 20)} Kullanım koşulları</a>
+      <a href="legal.html#privacy" target="_blank" rel="noopener">${icon('lock', 20)} Gizlilik ve KVKK aydınlatma metni</a>
     </div>
 
     <div class="menu-list settings-list">
       <button data-setting="logout">${icon('logout', 20)} Çıkış yap</button>
       <button data-setting="delete" class="is-danger">${icon('close', 20)} Hesabı sil</button>
     </div>
-    <p class="settings-version">${esc(APP_NAME)} • Demo sürümü</p>`;
+    <p class="settings-version">${esc(APP_NAME)} • Beta sürümü</p>`;
 
   root.addEventListener('click', async (event) => {
     const setting = event.target.closest('[data-setting]')?.dataset.setting;
     if (setting === 'password') openPasswordSheet();
     else if (setting === 'blocked') openBlockedSheet();
     else if (setting === 'delete') openDeleteSheet(me);
-    else if (setting === 'soon') toast('Bu sayfa yakında eklenecek');
     else if (setting === 'logout') {
       await api.logout();
       location.hash = '#/auth';

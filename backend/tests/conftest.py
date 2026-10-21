@@ -15,10 +15,15 @@ import pytest
 
 # DİKKAT: Bu satırlar `app` import edilmeden ÖNCE çalışmalı; ayarlar import anında okunur.
 _test_dir = Path(tempfile.mkdtemp(prefix="muti_tests_"))
-os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{(_test_dir / 'test.db').as_posix()}"
+# TEST_DATABASE_URL verilirse (CI'daki PostgreSQL işi) testler o veritabanında koşar.
+os.environ["DATABASE_URL"] = (
+    os.environ.get("TEST_DATABASE_URL") or f"sqlite+aiosqlite:///{(_test_dir / 'test.db').as_posix()}"
+)
 os.environ["SECRET_KEY"] = "test-secret-key-that-is-long-enough-for-hs256"
 os.environ["ENVIRONMENT"] = "development"
 os.environ["DEMO_MODE"] = "true"
+# Testler saniyede onlarca kez giriş yapar; hız sınırı ayrı testte (test_launch.py) denenir.
+os.environ["AUTH_ATTEMPTS_PER_MINUTE"] = "100000"
 
 from fastapi.testclient import TestClient  # noqa: E402
 

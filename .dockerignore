@@ -1,0 +1,16 @@
+# Docker kutusuna girmeyecekler: sırlar, yerel veritabanı, sanal ortam, testler, notlar.
+**/.env
+**/*.db
+**/*.db.bak
+**/venv
+**/__pycache__
+**/.pytest_cache
+**/.coverage
+**/htmlcov
+**/logs
+backend/tests
+frontend/_shot.html
+.git
+.github
+learning
+*.md

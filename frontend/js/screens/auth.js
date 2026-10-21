@@ -1,6 +1,6 @@
 // Giriş / kayıt ekranı
 import { api } from '../api.js';
-import { APP_NAME } from '../config.js';
+import { APP_NAME, IS_DEV_SERVER } from '../config.js';
 import { toast, icon } from '../ui.js';
 
 export function renderAuth(root) {
@@ -39,8 +39,8 @@ export function renderAuth(root) {
         </label>
         <button class="btn btn-primary btn-block" type="submit" id="auth-submit">Giriş Yap</button>
         <button class="btn btn-ghost btn-block" type="button" id="guest-btn">${icon('user', 18)} Misafir olarak göz at</button>
-        <p class="auth-legal">Demo hesabı: <b>muti</b> / <b>demo1234</b></p>
-        <p class="auth-legal">Devam ederek Kullanım Koşulları'nı ve Gizlilik Politikası'nı kabul etmiş olursun. 18 yaş ve üzeri içindir.</p>
+        ${IS_DEV_SERVER ? '<p class="auth-legal">Demo hesabı: <b>muti</b> / <b>demo1234</b></p>' : ''}
+        <p class="auth-legal">Devam ederek <a href="legal.html#terms" target="_blank" rel="noopener">Kullanım Koşulları</a>'nı kabul etmiş ve <a href="legal.html#privacy" target="_blank" rel="noopener">Gizlilik ve KVKK Aydınlatma Metni</a>'ni okumuş olursun. 18 yaş ve üzeri içindir.</p>
       </form>
     </section>`;
 

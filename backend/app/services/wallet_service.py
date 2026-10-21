@@ -131,6 +131,9 @@ async def list_packages(db: AsyncSession, user_id: int) -> list[CoinPackageOut]:
         if package.item_id in items:
             out.item = StoreItemBrief.model_validate(items[package.item_id])
         out.is_bought = package.is_one_time and package.id in bought
+        if settings.free_coin_purchase and not settings.demo_mode:
+            # BETA KISAYOLU: ödeme alınmıyor; kullanıcı fiyat görüp para çekileceğini sanmasın.
+            out.price_label = "Ücretsiz (beta)"
         result.append(out)
     return result
 
@@ -142,9 +145,9 @@ async def purchase(db: AsyncSession, user_id: int, package_id: int, idempotency_
     DEMO KISAYOLU: Gerçek ödeme YOK, coin doğrudan eklenir. Canlıda akış şöyle olacak:
     mobil uygulama App Store / Google Play'den satın alır → makbuzu buraya yollar →
     biz makbuzu mağazanın sunucusunda doğrularız → ancak ondan sonra coin ekleriz.
-    Bu yüzden demo modu kapalıyken bu fonksiyon çalışmayı reddeder.
+    Bu yüzden demo modu ve açık beta (FREE_COIN_PURCHASE) kapalıyken bu fonksiyon çalışmayı reddeder.
     """
-    if not settings.demo_mode:
+    if not (settings.demo_mode or settings.free_coin_purchase):
         raise UnavailableError("Satın alma şu an kullanılamıyor.", code="purchases_unavailable")
 
     async def replay(previous: Transaction) -> PurchaseResult:

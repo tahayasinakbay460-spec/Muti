@@ -11,7 +11,7 @@ Kullanımı:
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # backend/ klasörünün tam yolu (bu dosya backend/app/core/config.py içinde)
@@ -60,6 +60,29 @@ class Settings(BaseSettings):
     # true ise: açılışta örnek veri yüklenir ve coin satın alma ödeme doğrulaması
     # olmadan çalışır. Canlıda false olmak ZORUNDA.
     demo_mode: bool = True
+
+    # ── Açık beta ─────────────────────────────────────────────────────────────
+    # BETA KISAYOLU: true ise coin paketleri ödeme alınmadan verilir ("beta, coinler ücretsiz").
+    # DEMO_MODE'dan ayrı tutuldu: canlıda örnek veri ve demo hesapları KAPALI, yalnızca bu açık.
+    # Gerçek ödeme gelince false yapılır.
+    free_coin_purchase: bool = False
+    # Canlıda ilk yönetici hesabı. Parola koda/repoya yazılmaz, yalnızca sunucudaki ortam
+    # değişkeninden (Railway → Variables) okunur. Hesap yoksa açılışta oluşturulur.
+    admin_username: str = ""
+    admin_password: str = ""
+    # Yöneticinin özel mesajları ve oda sohbet geçmişini okuyabilmesi. Gerçek kullanıcıların
+    # yazışmasını okumak KVKK açısından risklidir; canlıda kapalı tutulur.
+    admin_can_read_messages: bool = True
+
+    # ── Frontend'i sunma ──────────────────────────────────────────────────────
+    # Doluysa backend bu klasördeki web sayfalarını da kendisi sunar. Site ve API aynı
+    # adresten açılır: CORS ayarı gerekmez, https/wss kendiliğinden uyar.
+    frontend_dir: str = ""
+
+    # ── Hız sınırı (rate limit) ───────────────────────────────────────────────
+    # Aynı IP adresinden 1 dakikada en fazla bu kadar giriş/kayıt denemesi. Parola
+    # tahmin saldırısını ve sahte hesap yağmurunu yavaşlatır.
+    auth_attempts_per_minute: int = Field(default=10, ge=1)
 
     # ── Kayıt (log) ───────────────────────────────────────────────────────────
     # DEBUG | INFO | WARNING | ERROR. INFO: her istek ve güvenlik/para olayları yazılır.
@@ -112,6 +135,16 @@ class Settings(BaseSettings):
     # DEMO KISAYOLU: "21:05" gibi saat etiketlerini sunucu üretiyor (Türkiye = UTC+3).
     # Mobil uygulamada istemci `created_at` alanını kendi saat dilimine çevirmeli.
     display_utc_offset_hours: int = 3
+
+    @field_validator("database_url")
+    @classmethod
+    def _use_async_driver(cls, value: str) -> str:
+        # Railway gibi servisler adresi "postgresql://..." diye verir; SQLAlchemy'nin async
+        # sürümü sürücü adını ister ("postgresql+asyncpg://"). Elle düzeltmek gerekmesin.
+        for prefix in ("postgres://", "postgresql://"):
+            if value.startswith(prefix):
+                return "postgresql+asyncpg://" + value[len(prefix):]
+        return value
 
     @property
     def is_production(self) -> bool:

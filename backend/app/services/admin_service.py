@@ -342,8 +342,15 @@ async def list_transactions(
 # DEMO KISAYOLU: Yönetici bütün özel mesajları ve oda sohbetlerini okuyabiliyor (müşteri isteği).
 # Canlıda: yalnızca şikâyet edilen konuşmaya erişim ve gizlilik metninde açık bilgilendirme (KVKK,
 # mağaza kuralları). Her görüntüleme yine de denetim kaydına yazılır: hangi yönetici neyi okudu.
+# Canlıda `.env` ADMIN_CAN_READ_MESSAGES=false ile bu üç uç tamamen kapatılır.
+
+def _require_message_access() -> None:
+    if not settings.admin_can_read_messages:
+        raise ForbiddenError("Mesaj okuma bu sunucuda kapalı.", code="message_access_disabled")
+
 
 async def list_conversations(db: AsyncSession, user_id: int | None, before_id: int | None) -> list[AdminConversationOut]:
+    _require_message_access()
     statement = select(Conversation).order_by(Conversation.id.desc()).limit(50)
     if user_id:
         statement = statement.where(or_(Conversation.user_low_id == user_id, Conversation.user_high_id == user_id))
@@ -371,6 +378,7 @@ async def list_conversations(db: AsyncSession, user_id: int | None, before_id: i
 
 
 async def conversation_messages(db: AsyncSession, conversation_id: int) -> list[AdminMessageOut]:
+    _require_message_access()
     if await db.get(Conversation, conversation_id) is None:
         raise NotFoundError("Sohbet bulunamadı.")
     rows = list(await db.scalars(
@@ -383,6 +391,7 @@ async def conversation_messages(db: AsyncSession, conversation_id: int) -> list[
 
 
 async def room_messages(db: AsyncSession, room_id: int, before_id: int | None) -> list[AdminMessageOut]:
+    _require_message_access()
     if await db.get(Room, room_id) is None:
         raise NotFoundError("Oda bulunamadı.")
     statement = select(RoomMessage).where(RoomMessage.room_id == room_id).order_by(RoomMessage.id.desc()).limit(200)

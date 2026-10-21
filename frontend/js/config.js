@@ -5,10 +5,15 @@ export const APP_NAME = 'Muti';
 // true: backend olmadan, sahte (mock) veriyle çalışır.
 export const USE_MOCK = false;
 
-// Sayfa hangi adla açıldıysa (127.0.0.1 ya da localhost) backend'e de aynı adla gidilir
-const BACKEND_HOST = `${location.hostname || '127.0.0.1'}:8000`;
-export const API_BASE_URL = `http://${BACKEND_HOST}/api/v1`;
-export const WS_BASE_URL = `ws://${BACKEND_HOST}/ws`;
+// Geliştirmede sayfa 5500 portundan (python -m http.server), backend 8000'den açılır.
+// Canlıda backend sayfayı da kendisi sunar: API aynı adrestedir. Sayfa https ile
+// açıldıysa WebSocket de şifreli (wss) olur; tarayıcı karışık bağlantıya izin vermez.
+export const IS_DEV_SERVER = location.port === '5500' || location.protocol === 'file:';
+const BACKEND_ORIGIN = IS_DEV_SERVER
+  ? `http://${location.hostname || '127.0.0.1'}:8000`
+  : location.origin;
+export const API_BASE_URL = `${BACKEND_ORIGIN}/api/v1`;
+export const WS_BASE_URL = `${BACKEND_ORIGIN.replace(/^http/, 'ws')}/ws`;
 
 // Yeni kayıt olan kullanıcının henüz görseli yoktur; onun yerine bunlar gösterilir
 export const DEFAULT_AVATAR_URL = 'assets/avatars/m10.jpg';

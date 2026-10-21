@@ -17,10 +17,12 @@ KLASÖR HARİTASI — bir istek içeri girince şu yolu izler:
 """
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import uvicorn
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
 from app.core.database import Base, SessionLocal, engine
@@ -30,7 +32,7 @@ from app import models  # noqa: F401  (tablolar SQLAlchemy'ye tanıtılsın diye
 from app.demo import seed
 from app.realtime import room_socket, user_socket
 from app.realtime.state import room_state
-from app.services import admin_service
+from app.services import admin_service, auth_service, catalog_service
 from app.routers import (
     activities, admin, agency, auth, content, conversations, economy, engagement, rooms, social, store, users,
 )
@@ -49,6 +51,8 @@ async def lifespan(_app: FastAPI):
             raise RuntimeError("DEMO_MODE canlı ortamda açık olamaz.")
         if "*" in settings.cors_origins:
             raise RuntimeError("CORS_ORIGINS canlı ortamda '*' olamaz.")
+        # Canlıda tablolar burada oluşturulmaz: sunucu açılmadan önce `alembic upgrade head`
+        # çalışır (bkz. Dockerfile). Böylece şema değişince veriler silinmez.
     else:
         # DEMO KISAYOLU: Tabloları otomatik oluştur. Canlıda şema değişiklikleri
         # migration aracıyla (Alembic) kontrollü yapılacak.
@@ -60,6 +64,9 @@ async def lifespan(_app: FastAPI):
             await seed.seed_database(db)
         await seed.seed_live_state(room_state)
     async with SessionLocal() as db:
+        await catalog_service.ensure_starter_catalog(db)
+        await db.commit()
+        await auth_service.ensure_admin_account(db)
         await admin_service.load_bans(db)
 
     logger.info("Server started (environment=%s, demo_mode=%s)", settings.environment, settings.demo_mode)
@@ -103,6 +110,28 @@ app.include_router(user_socket.router)
 async def health() -> dict:
     """Sunucu ayakta mı? Yük dengeleyici (load balancer) bu adresi yoklar."""
     return {"status": "ok"}
+
+
+class NoCacheStaticFiles(StaticFiles):
+    """
+    Web sayfası dosyalarını sunar; tarayıcıya "her açılışta yeni sürüm var mı diye sor" der.
+
+    Neden? Build adımımız yok, dosya adları sürüm taşımıyor. Önbellek serbest kalırsa
+    yeni bir yayından sonra tarayıcı eski ve yeni JS dosyalarını karıştırıp boş sayfa
+    gösterebiliyor. "no-cache" dosyayı yine önbellekte tutar ama kullanmadan önce sunucuya
+    sorar; dosya değişmediyse sunucu kısa bir "304 değişmedi" cevabı döner (hızlı).
+    """
+
+    async def get_response(self, path, scope):
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = "no-cache"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        return response
+
+
+# En sonda bağlanır: /api ve /ws yolları önce eşleşsin, geri kalan her şey sayfa dosyasıdır.
+if settings.frontend_dir:
+    app.mount("/", NoCacheStaticFiles(directory=Path(settings.frontend_dir), html=True), name="frontend")
 
 
 if __name__ == "__main__":

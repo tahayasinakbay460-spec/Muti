@@ -110,6 +110,34 @@ async def login(db: AsyncSession, data: LoginRequest) -> TokenResponse:
     return await _issue_tokens(db, user)
 
 
+async def ensure_admin_account(db: AsyncSession) -> None:
+    """
+    Canlıda ilk yönetici hesabını açar. Kullanıcı adı ve parola ortam değişkeninden
+    (ADMIN_USERNAME / ADMIN_PASSWORD) gelir; ikisi de boşsa hiçbir şey yapılmaz.
+    Hesap zaten varsa parolasına dokunulmaz: parola panelden/ayarlardan değiştirildiyse
+    her yeniden başlatmada eski haline dönmesin.
+    """
+    if not (settings.admin_username and settings.admin_password):
+        return
+    username = settings.admin_username.lower()
+    user = await db.scalar(select(User).where(User.username == username))
+    if user is not None:
+        if not user.is_admin:
+            user.is_admin = True
+            await db.commit()
+            audit("admin_granted_from_env", target_user_id=user.id)
+        return
+    user = User(
+        username=username,
+        password_hash=await hash_password(settings.admin_password),
+        display_name=settings.admin_username,
+        is_admin=True,
+    )
+    db.add(user)
+    await db.commit()
+    audit("admin_created_from_env", new_user_id=user.id)
+
+
 async def login_as_guest(db: AsyncSession) -> TokenResponse:
     """Kayıt olmadan dolaşmak isteyenler için parolasız, geçici bir hesap açar."""
     suffix = secrets.token_hex(4)

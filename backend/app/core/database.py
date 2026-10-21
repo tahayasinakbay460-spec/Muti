@@ -12,7 +12,7 @@ kullanıcıların isteklerine bakar. Yüksek eşzamanlı kullanımda fark burada
 from collections.abc import AsyncIterator
 from datetime import datetime, timezone
 
-from sqlalchemy import BigInteger, Integer, MetaData, event
+from sqlalchemy import BigInteger, Integer, MetaData, event, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 
@@ -68,3 +68,23 @@ async def get_db() -> AsyncIterator[AsyncSession]:
     """
     async with SessionLocal() as session:
         yield session
+
+
+async def sync_id_sequences(db: AsyncSession) -> None:
+    """
+    PostgreSQL'de otomatik id sayaçlarını (sequence) tablodaki en büyük id'ye getirir.
+
+    Neden? Bir satıra id elle verilirse (ör. id=1 yönetici) sayaç bunu bilmez ve bir
+    sonraki yeni satıra yine 1 vermeye çalışır → "bu id zaten var" hatası. SQLite bu
+    sorunu yaşamaz (her zaman en büyük id + 1 verir), orada bir şey yapılmaz.
+    """
+    if db.bind.dialect.name != "postgresql":
+        return
+    for table in Base.metadata.sorted_tables:
+        column = table.columns.get("id")
+        if column is None or not column.primary_key or not isinstance(column.type, Integer):
+            continue
+        await db.execute(text(
+            f"SELECT setval(pg_get_serial_sequence('{table.name}', 'id'), "
+            f"COALESCE((SELECT MAX(id) FROM {table.name}), 0) + 1, false)"
+        ))

@@ -12,8 +12,10 @@ Yalnızca DEMO_MODE=true iken çalışır. İki parçadır:
 Bütün örnek hesapların parolası: demo1234   (ör. kullanıcı adı: muti)
 Sıfırdan başlamak için sunucuyu durdurup backend/app.db dosyasını silmek yeterli.
 
-Not: Burada satırlara elle id veriyoruz. PostgreSQL'e geçildiğinde bu, otomatik id
-sayaçlarını geride bırakır; seed sonrasında sayaçların (sequence) ileri alınması gerekir.
+Not: Burada satırlara elle id veriyoruz. PostgreSQL'de bu otomatik id sayaçlarını geride
+bırakır; o yüzden en sonda `sync_id_sequences` sayaçları ileri alır.
+
+Hediye, mağaza ve paket listesi örnek veri değildir: services/catalog_service.py.
 """
 import random
 from datetime import timedelta
@@ -21,13 +23,13 @@ from datetime import timedelta
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import utcnow
+from app.core.database import sync_id_sequences, utcnow
 from app.core.security import hash_password
 from app.models import (
-    Agency, AgencyMember, CoinPackage, Report, Conversation, Couple, Event, Family, FamilyMember, FamilyMessage, Follow, Gift, Message, Room,
+    Agency, AgencyMember, Report, Conversation, Couple, Event, Family, FamilyMember, FamilyMessage, Follow, Message, Room,
     RoomMessage, StoreItem, Transaction, User,
 )
-from app.services import store_service, vip_service
+from app.services import catalog_service, store_service, vip_service
 from app.realtime.state import InMemoryRoomStateStore, RoomStateStore
 
 DEMO_PASSWORD = "demo1234"
@@ -73,50 +75,6 @@ ROOMS = [
      [2007, 2013, None, None, None, None, None, None]),
     (111390, "Yeni Tanışanlar", "new_people", "city", True, 37, 2005, "Herkes kısaca kendini tanıtsın.",
      [2005, 2011, 2014, 2013, 2006, None, None, None]),
-]
-
-GIFTS = [
-    (1, "Gül", "🌹", 10), (2, "Kalp", "💖", 20), (3, "Kahve", "☕", 30), (4, "Mikrofon", "🎤", 50),
-    (5, "Pasta", "🎂", 99), (6, "Taç", "👑", 299), (7, "Spor Araba", "🏎️", 999), (8, "Yat", "🛥️", 2999),
-    (9, "Şato", "🏰", 5999), (10, "Roket", "🚀", 9999), (11, "Ejderha", "🐉", 19999), (12, "Gezegen", "🪐", 49999),
-]
-# Şanslı hediyeler: (id, ad, emoji, fiyat). Gönderen coin geri kazanabilir (bkz. gift_service).
-LUCKY_GIFTS = [(13, "Şanslı Yonca", "🍀", 10), (14, "Şans Kurabiyesi", "🥠", 50), (15, "Altın Zar", "🎲", 100)]
-
-# Mağaza eşyaları: (id, tür, ad, CSS sınıfı, emoji, 7 gün fiyatı, 30 gün fiyatı, gereken VIP seviyesi)
-# Çerçeve id'leri 1-8, giriş efektleri 101-, sohbet balonları 201-. VIP kademeleri bu id'leri
-# kullanır (bkz. services/vip_service.py VIP_TIERS).
-STORE_ITEMS = [
-    (1, "frame", "Klasik", "frame-classic", "", 300, 900, 0),
-    (2, "frame", "Neon", "frame-neon", "", 500, 1500, 0),
-    (3, "frame", "Altın", "frame-gold", "", 1000, 3000, 0),
-    (4, "frame", "Buz", "frame-ice", "", 500, 1500, 0),
-    (5, "frame", "Alev", "frame-fire", "", 800, 2400, 0),
-    (6, "frame", "Orman", "frame-forest", "", 500, 1500, 0),
-    (7, "frame", "Galaksi", "frame-galaxy", "", 1500, 4500, 0),
-    (8, "frame", "Kraliyet", "frame-royal", "", 2500, 7500, 2),
-    (101, "entry_effect", "Kıvılcım", "entry-spark", "✨", 500, 1500, 0),
-    (102, "entry_effect", "Spor Araba", "entry-car", "🏎️", 1200, 3600, 0),
-    (103, "entry_effect", "Roket", "entry-rocket", "🚀", 2000, 6000, 0),
-    (104, "entry_effect", "Taç", "entry-crown", "👑", 3000, 9000, 2),
-    (105, "entry_effect", "Ejderha", "entry-dragon", "🐉", 5000, 15000, 3),
-    (201, "chat_bubble", "Pembe", "bubble-pink", "💗", 300, 900, 0),
-    (202, "chat_bubble", "Okyanus", "bubble-ocean", "🌊", 300, 900, 0),
-    (203, "chat_bubble", "Altın", "bubble-gold", "⭐", 800, 2400, 0),
-    (204, "chat_bubble", "Neon", "bubble-neon", "💜", 1200, 3600, 1),
-]
-
-# (id, coins, bonus, price_label, is_popular, is_best_value)
-COIN_PACKAGES = [
-    (1, 600, 0, "₺29,99", False, False), (2, 1500, 150, "₺69,99", False, False),
-    (3, 3200, 480, "₺149,99", True, False), (4, 6800, 1360, "₺299,99", False, False),
-    (5, 14000, 3500, "₺599,99", False, False), (6, 36000, 10800, "₺1.499,99", False, True),
-]
-
-# Hediye paketleri: (id, başlık, coin, bonus, fiyat, eşya id, eşya gün, tek seferlik mi)
-GIFT_BUNDLES = [
-    (7, "Başlangıç Paketi", 600, 300, "₺19,99", 2, 7, True),
-    (8, "Kraliyet Paketi", 8000, 2000, "₺399,99", 103, 30, False),
 ]
 
 # Aileler: (id, ad, rozet, slogan, kurucu, [(üye, rol)]). Ana kullanıcı hiçbirinde değil:
@@ -212,20 +170,7 @@ async def seed_database(db: AsyncSession) -> None:
             id=rid, title=title, category=category, cover_url=f"assets/covers/{cover}.jpg",
             is_live=is_live, host_id=host_id, announcement=announcement, seat_count=len(seats),
         ))
-    for gid, name, emoji, price in GIFTS:
-        db.add(Gift(id=gid, name=name, emoji=emoji, price=price))
-    for gid, name, emoji, price in LUCKY_GIFTS:
-        db.add(Gift(id=gid, name=name, emoji=emoji, price=price, is_lucky=True))
-    for iid, kind, name, style, emoji, price_7d, price_30d, vip_required in STORE_ITEMS:
-        db.add(StoreItem(id=iid, kind=kind, name=name, style=style, emoji=emoji, price_7d=price_7d,
-                         price_30d=price_30d, vip_level_required=vip_required, sort_order=iid))
-    await db.flush()   # paketler eşyalara bağlı; eşyalar önce yazılsın
-    for pid, coins, bonus, price_label, popular, best in COIN_PACKAGES:
-        db.add(CoinPackage(id=pid, coins=coins, bonus=bonus, price_label=price_label, is_popular=popular, is_best_value=best))
-    for pid, title, coins, bonus, price_label, item_id, item_days, one_time in GIFT_BUNDLES:
-        db.add(CoinPackage(id=pid, title=title, coins=coins, bonus=bonus, price_label=price_label,
-                           item_id=item_id, item_days=item_days, is_one_time=one_time))
-    await db.flush()
+    await catalog_service.ensure_starter_catalog(db)
 
     # Kozmetikler: ana kullanıcı birkaç eşyaya sahip; VIP örnek kullanıcılar kademe eşyalarını takıyor.
     items = {item.id: item for item in await db.scalars(select(StoreItem))}
@@ -291,8 +236,8 @@ async def seed_database(db: AsyncSession) -> None:
 
     # Son 30 günün örnek satış ve hediye geçmişi (bugün hariç; bugünün hareketleri yukarıda)
     rng = random.Random(42)
-    packages = {pid: coins + bonus for pid, coins, bonus, *_ in COIN_PACKAGES}
-    gift_prices = [price for _gid, _name, _emoji, price in GIFTS]
+    packages = {pid: coins + bonus for pid, coins, bonus, *_ in catalog_service.COIN_PACKAGES}
+    gift_prices = [price for _gid, _name, _emoji, price in catalog_service.GIFTS]
     for days_ago in range(1, HISTORY_DAYS):
         day = now - timedelta(days=days_ago)
         # Hafta sonu daha hareketli
@@ -355,6 +300,7 @@ async def seed_database(db: AsyncSession) -> None:
             for from_me, text, minutes in messages
         ])
 
+    await sync_id_sequences(db)
     await db.commit()
 
 

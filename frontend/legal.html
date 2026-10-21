@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#0b0a14" />
+  <title>Muti – Kullanım Koşulları ve Gizlilik</title>
+  <!--
+    TASLAK: Yayından önce [köşeli parantez] içindeki yerler doldurulur ve metin bir hukukçuya
+    gösterilir. Uygulama yeni bir veri topladığında (ör. telefon numarası, fotoğraf) bu metin de güncellenir.
+  -->
+  <style>
+    :root { --bg: #0b0a14; --surface: #15131f; --text: #f4f3f8; --muted: #9b98ad; --line: rgba(255,255,255,.08); --accent: #b14bff; }
+    @media (prefers-color-scheme: light) {
+      :root { --bg: #f7f6fb; --surface: #ffffff; --text: #17151f; --muted: #5e5a70; --line: rgba(0,0,0,.08); --accent: #7a3df0; }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.65 system-ui, -apple-system, "Segoe UI", sans-serif; }
+    main { max-width: 720px; margin: 0 auto; padding: 24px 16px 64px; }
+    nav { display: flex; gap: 8px; flex-wrap: wrap; position: sticky; top: 0; padding: 12px 0; background: var(--bg); border-bottom: 1px solid var(--line); }
+    nav a { color: var(--text); text-decoration: none; padding: 6px 12px; border-radius: 999px; background: var(--surface); font-size: 14px; }
+    h1 { font-size: 26px; margin: 24px 0 4px; }
+    h2 { font-size: 18px; margin: 28px 0 6px; }
+    section { scroll-margin-top: 64px; }
+    p, li { color: var(--text); }
+    .muted { color: var(--muted); font-size: 13px; }
+    a { color: var(--accent); }
+    .box { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 16px; }
+  </style>
+</head>
+<body>
+<main>
+  <nav>
+    <a href="#terms">Kullanım Koşulları</a>
+    <a href="#privacy">Gizlilik ve KVKK</a>
+    <a href="index.html">Uygulamaya dön</a>
+  </nav>
+
+  <section id="terms">
+    <h1>Kullanım Koşulları</h1>
+    <p class="muted">Son güncelleme: 21 Ekim 2026 · Beta sürümü</p>
+
+    <h2>1. Hizmet</h2>
+    <p>Muti; sesli sohbet odaları, oda içi oyunlar ve sanal hediyeler sunan bir web uygulamasıdır. Hizmet şu an <b>beta (deneme) aşamasındadır</b>: özellikler değişebilir, kesintiler ve veri kayıpları yaşanabilir.</p>
+
+    <h2>2. Yaş sınırı</h2>
+    <p>Uygulama <b>18 yaş ve üzeri</b> kullanıcılar içindir. Kayıt olarak 18 yaşından büyük olduğunu beyan edersin.</p>
+
+    <h2>3. Sanal para (coin, elmas) ve hediyeler</h2>
+    <ul>
+      <li>Coin ve elmas yalnızca uygulama içinde kullanılan sanal birimlerdir; gerçek paraya çevrilemez, devredilemez, iade edilmez.</li>
+      <li>Beta süresince coin paketleri <b>ücretsizdir</b>, hiçbir ödeme alınmaz. Beta bitince bakiyeler sıfırlanabilir.</li>
+      <li>Şanslı hediye ve hazine sandığı rastgele sonuç verir; hiçbir kazanç garanti edilmez.</li>
+    </ul>
+
+    <h2>4. Davranış kuralları</h2>
+    <p>Şunlar yasaktır: hakaret, taciz, tehdit, nefret söylemi; müstehcen içerik; başkasının kişisel bilgisini paylaşmak; dolandırıcılık, spam, reklam; başkası adına hesap açmak; uygulamanın açıklarını kullanmak veya otomatik araçlarla kötüye kullanmak; yasa dışı her türlü içerik.</p>
+    <p>Kurallara uymayan hesapları uyarmadan susturabilir, odadan çıkarabilir, askıya alabilir veya kapatabiliriz. Uygunsuz davranışı uygulamadaki <b>Şikâyet et</b> düğmesiyle bildirebilirsin.</p>
+
+    <h2>5. Hesap</h2>
+    <p>Parolanı korumak senin sorumluluğundadır. Hesabını istediğin zaman <b>Ayarlar → Hesabı sil</b> ile silebilirsin.</p>
+
+    <h2>6. Sorumluluk</h2>
+    <p>Kullanıcıların odalarda ve mesajlarda paylaştıklarından kendileri sorumludur. Beta hizmeti "olduğu gibi" sunulur; kesinti veya veri kaybından doğan zararlar için yasal olarak izin verilen ölçüde sorumluluk kabul edilmez.</p>
+
+    <h2>7. İletişim</h2>
+    <p>[İletişim e-postası]</p>
+  </section>
+
+  <section id="privacy">
+    <h1>Gizlilik ve KVKK Aydınlatma Metni</h1>
+    <p class="muted">6698 sayılı Kişisel Verilerin Korunması Kanunu (KVKK) madde 10 uyarınca hazırlanmıştır. Son güncelleme: 21 Ekim 2026</p>
+
+    <h2>1. Veri sorumlusu</h2>
+    <div class="box">[Ad Soyad veya şirket unvanı]<br />[Adres]<br />[İletişim e-postası]</div>
+
+    <h2>2. Hangi verileri işliyoruz?</h2>
+    <ul>
+      <li><b>Hesap bilgileri:</b> kullanıcı adı, e-posta adresi, parolanın şifrelenmiş hali (parolanın kendisi saklanmaz).</li>
+      <li><b>Profil bilgileri:</b> görünen ad, yaş, şehir, biyografi, seçtiğin avatar ve kapak (bunları sen girersen).</li>
+      <li><b>İçerik:</b> özel mesajlar, oda sohbet mesajları, aile sohbeti, şikâyetler.</li>
+      <li><b>Uygulama içi hareketler:</b> coin/elmas hareketleri, gönderilen hediyeler, takip ettiğin kişiler ve odalar, oyun sonuçları.</li>
+      <li><b>Teknik kayıtlar:</b> IP adresi, giriş zamanları, hata ve güvenlik kayıtları.</li>
+      <li><b>Ses:</b> odadaki konuşmalar <b>kaydedilmez ve sunucularımızda saklanmaz</b>; ses doğrudan katılımcıların tarayıcıları arasında iletilir.</li>
+    </ul>
+
+    <h2>3. Neden işliyoruz ve hukuki sebep</h2>
+    <ul>
+      <li>Hesabını açmak, uygulamayı çalıştırmak, mesajlarını ve hediyelerini iletmek: <i>sözleşmenin kurulması ve ifası</i> (KVKK m.5/2-c).</li>
+      <li>Güvenlik, kötüye kullanımı ve dolandırıcılığı önlemek, şikâyetleri incelemek: <i>meşru menfaat</i> (m.5/2-f).</li>
+      <li>Yasal yükümlülükler (ör. 5651 sayılı Kanun kapsamında erişim kayıtları, resmî makam talepleri): <i>hukuki yükümlülük</i> (m.5/2-ç).</li>
+    </ul>
+    <p>Yöneticiler özel mesajlarını rutin olarak okumaz. Bir şikâyetin incelenmesi gibi zorunlu durumlarda yapılan her erişim kayıt altına alınır.</p>
+
+    <h2>4. Kimlere aktarıyoruz?</h2>
+    <p>Verilerin, uygulamanın çalıştığı barındırma (sunucu) hizmeti sağlayıcısında saklanır: [Sağlayıcı adı ve ülkesi, ör. Railway Corp., ABD]. Bu sağlayıcı yurt dışında olduğundan aktarım KVKK m.9'a uygun olarak yapılır. Verilerin satılmaz, reklam amacıyla paylaşılmaz. Kanunen yetkili kurumlara talep halinde aktarılabilir.</p>
+
+    <h2>5. Ne kadar saklıyoruz?</h2>
+    <p>Hesap ve içerik verileri hesabın açık olduğu sürece saklanır; hesabını silince silinir veya anonim hale getirilir. Yasal olarak saklanması gereken kayıtlar ilgili süre boyunca tutulur.</p>
+
+    <h2>6. Tarayıcında sakladıklarımız</h2>
+    <p>Oturumunun açık kalması için giriş anahtarı (token) tarayıcının yerel depolamasında tutulur. Reklam veya takip çerezi kullanılmaz.</p>
+
+    <h2>7. Hakların (KVKK m.11)</h2>
+    <p>Verilerinin işlenip işlenmediğini öğrenme, bilgi isteme, düzeltilmesini veya silinmesini isteme, aktarıldığı kişileri öğrenme, itiraz etme ve zararın giderilmesini isteme haklarına sahipsin. Başvurunu [İletişim e-postası] adresine yazabilirsin; en geç 30 gün içinde cevaplanır.</p>
+  </section>
+</main>
+</body>
+</html>

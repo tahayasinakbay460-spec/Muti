@@ -2,6 +2,10 @@ fastapi==0.148.0
 uvicorn[standard]==0.30.6
 sqlalchemy==2.0.32
 aiosqlite==0.22.1
+# PostgreSQL sürücüsü (canlı veritabanı)
+asyncpg==0.32.0
+# Veritabanı şema değişiklikleri (migration); bkz. migrations/env.py
+alembic==1.20.0
 pydantic[email]==2.13.4
 pydantic-settings==2.15.0
 PyJWT==2.15.1
