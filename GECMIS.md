@@ -9,6 +9,8 @@ Projede yapılan işlerin kaydı.
 
 ## Şu an neredeyiz
 
+**2026-10-21 akşam — Yayın beklemede, öğrenme aşaması:** Kullanıcı yayından önce projedeki kavramları tek tek öğrenmeye karar verdi (harita: `learning/README.md`). Railway kurulmadı; kullanıcı hazır olunca devam. Railway mı VPS mi sorusu açık (KVKK: Railway yurt dışında).
+
 **2026-10-21 — Web yayınına hazırlık (A grubu, kod tarafı bitti):** Karar: önce yalnızca web, mobil sonra. Açık beta (coin ücretsiz, gerçek para yok), hosting Railway (GitHub'a push → CI → otomatik yayın), alan adı yok (Railway'in verdiği https adresi). Kod hazır; sırada kullanıcının Railway hesabı ve kurulum (adımlar aşağıdaki kayıtta). Yasal metin taslağı `frontend/legal.html` içindeki [köşeli parantez] yerleri kullanıcı dolduracak.
 
 **Aşama:** Web demo. Frontend ekranları hazır ve gerçek backend'e bağlı (`USE_MOCK = false`).
