@@ -32,6 +32,10 @@ jobs:
           cache: pip
           cache-dependency-path: backend/requirements.txt
       - run: pip install -r requirements.txt
+      - name: Random SECRET_KEY
+        # Migration komutları ayarları okur, SECRET_KEY ister. Dosyaya sabit yazılırsa sır taraması
+        # (gitleaks) onu gerçek sır sanıyor; her çalışmada rastgele üretilir.
+        run: echo "SECRET_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
       - name: Lint
         # Kullanılmayan import, tanımsız ad gibi hataları yakalar. Sürüm sabit: yeni ruff
         # sürümü yeni kural getirip kod değişmeden CI'ı kırmasın.
@@ -43,7 +47,6 @@ jobs:
         # Boş veritabanına bütün migration'ları uygular, sonra modellerle karşılaştırır.
         # Model değişip `alembic revision --autogenerate` unutulduysa kırmızı olur.
         env:
-          SECRET_KEY: ci-secret-key-that-is-long-enough-for-hs256
           DATABASE_URL: sqlite+aiosqlite:///./ci_migrations.db
         run: alembic upgrade head && alembic check
 
@@ -73,9 +76,12 @@ jobs:
           cache: pip
           cache-dependency-path: backend/requirements.txt
       - run: pip install -r requirements.txt
+      - name: Random SECRET_KEY
+        # Migration komutları ayarları okur, SECRET_KEY ister. Dosyaya sabit yazılırsa sır taraması
+        # (gitleaks) onu gerçek sır sanıyor; her çalışmada rastgele üretilir.
+        run: echo "SECRET_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
       - name: Migrations on PostgreSQL
         env:
-          SECRET_KEY: ci-secret-key-that-is-long-enough-for-hs256
           DATABASE_URL: postgresql://muti:muti@localhost:5432/muti
         run: alembic upgrade head && alembic check && alembic downgrade base
       - name: Tests on PostgreSQL

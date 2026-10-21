@@ -2,8 +2,6 @@
 Canlıya çıkış ayarlarının testleri: hız sınırı, açık beta satın alma, yöneticinin
 ortam değişkeninden oluşturulması, mesaj okuma kapısı, sayfa dosyalarının önbellek başlığı.
 """
-import asyncio
-
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -60,7 +58,8 @@ def test_admin_account_is_created_from_env(client, monkeypatch):
             await auth_service.ensure_admin_account(db)
             await auth_service.ensure_admin_account(db)   # ikinci açılışta tekrar oluşturmaz
 
-    asyncio.run(run())
+    # Uygulamanın kendi olay döngüsünde çalıştır: veritabanı bağlantı havuzu o döngüye bağlı.
+    client.portal.call(run)
     login = client.post(f"{API}/auth/login", json={"username": "kurucu", "password": "cok-gizli-parola-123"})
     assert login.status_code == 200 and login.json()["user"]["is_admin"] is True
 

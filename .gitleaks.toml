@@ -9,3 +9,7 @@ paths = [
   '''backend/tests/''',
   '''backend/\.env\.example''',
 ]
+# 1aa3520'da CI dosyasına yazılmış sahte test anahtarı (sonraki commit'te kaldırıldı; gerçek sır değil).
+regexes = [
+  '''ci-secret-key-that-is-long-enough-for-hs256''',
+]
