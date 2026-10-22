@@ -9,6 +9,8 @@ Projede yapılan işlerin kaydı.
 
 ## Şu an neredeyiz
 
+**2026-10-22 — Karar: önce öğrenme, sonra yayın.** Kullanıcı bugün `learning/README.md` haritasındaki kavramları çalışacak. Sonraki adım: (1) ses için Agora sağlayıcısı (`app/voice/agora.py` + `js/voice/agora.js`, `.env` `VOICE_PROVIDER=agora`, `AGORA_APP_ID`, `AGORA_APP_CERTIFICATE`; mesh'in kalabalık oda ve TURN sorununu çözer, ücretli), (2) Railway yerine VPS (KVKK için Türkiye'de olabilir): alan adı + Ubuntu + Docker Compose (uygulama + PostgreSQL + Caddy ile otomatik https) + günlük yedek. Adımlar kullanıcıya her komut açıklanarak birlikte yapılacak.
+
 **2026-10-21 akşam — Yayın beklemede, öğrenme aşaması:** Kullanıcı yayından önce projedeki kavramları tek tek öğrenmeye karar verdi (harita: `learning/README.md`). Railway kurulmadı; kullanıcı hazır olunca devam. Railway mı VPS mi sorusu açık (KVKK: Railway yurt dışında).
 
 **2026-10-21 — Web yayınına hazırlık (A grubu, kod tarafı bitti):** Karar: önce yalnızca web, mobil sonra. Açık beta (coin ücretsiz, gerçek para yok), hosting Railway (GitHub'a push → CI → otomatik yayın), alan adı yok (Railway'in verdiği https adresi). Kod hazır; sırada kullanıcının Railway hesabı ve kurulum (adımlar aşağıdaki kayıtta). Yasal metin taslağı `frontend/legal.html` içindeki [köşeli parantez] yerleri kullanıcı dolduracak.
