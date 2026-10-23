@@ -9,7 +9,7 @@ Projede yapılan işlerin kaydı.
 
 ## Şu an neredeyiz
 
-**2026-10-23 — Agora ses sağlayıcısı yazıldı (kod + test bitti).** Sırada: kullanıcı console.agora.io'da proje açıp App ID ve App Certificate'ı `backend/.env`'e yazacak (`VOICE_PROVIDER=agora`), iki tarayıcıyla denenecek; sonra yayın (bugün için Railway önerildi, VPS sonra).
+**2026-10-23 — Agora ses sağlayıcısı çalışıyor.** Kullanıcı Agora hesabını açtı, `backend/.env`'e `VOICE_PROVIDER=agora` + App ID/Certificate yazdı; gerçek hesapla ses denendi, geliyor. Sırada: yayın (bugün için Railway önerildi, VPS sonra). Ağdaki başka bilgisayardan `http://192.168.x.x` ile mikrofon için Chrome `unsafely-treat-insecure-origin-as-secure` gerekir; yayında https olacak.
 
 **2026-10-22 — Karar: önce öğrenme, sonra yayın.** Kullanıcı bugün `learning/README.md` haritasındaki kavramları çalışacak. Sonraki adım: (1) ses için Agora sağlayıcısı (`app/voice/agora.py` + `js/voice/agora.js`, `.env` `VOICE_PROVIDER=agora`, `AGORA_APP_ID`, `AGORA_APP_CERTIFICATE`; mesh'in kalabalık oda ve TURN sorununu çözer, ücretli), (2) Railway yerine VPS (KVKK için Türkiye'de olabilir): alan adı + Ubuntu + Docker Compose (uygulama + PostgreSQL + Caddy ile otomatik https) + günlük yedek. Adımlar kullanıcıya her komut açıklanarak birlikte yapılacak.
 
@@ -121,7 +121,9 @@ Kodda "DEMO KISAYOLU" diye işaretlidir. Mobil/canlı aşamasında değiştirile
 
 **Doğrulama:** Token, Agora'nın resmî Python koduyla (AgoraIO/Tools) aynı girdilerde bayt bayt aynı çıktı. Test: imza, izinler, REST çağrısı (sahte HTTP). 97 test geçti, kapsam %94,6, ruff temiz.
 
-**Açık kalanlar:** Gerçek Agora hesabıyla tarayıcıda denenmedi (kullanıcı konsolda proje açıp App ID + Certificate verecek). Koltuktan inen kişinin token'ı süresi dolana (1 saat) kadar yayın izni taşır; sesi dinleyicilerde çalınmaz ama sunucu tarafında kesmek için kicking-rule `publish_audio` eklenebilir.
+**Sonradan:** Kullanıcı gerçek Agora hesabıyla denedi, ses çalışıyor.
+
+**Açık kalanlar:** Ücretsiz paket 10.000 dk/ay (herkesin süresi ayrı sayılır, dinleyici dahil); bitince ses durur, kart eklenmezse fatura çıkmaz. Misafirlerin sese bağlanması dakika tüketebilir, sınır düşünülecek. Koltuktan inen kişinin token'ı süresi dolana (1 saat) kadar yayın izni taşır; sesi dinleyicilerde çalınmaz ama sunucu tarafında kesmek için kicking-rule `publish_audio` eklenebilir.
 
 ---
 
