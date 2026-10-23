@@ -70,7 +70,7 @@ async def list_members(room_id: int, user_id: CurrentUserId, db: DbSession):
 async def get_voice_join(room_id: int, user_id: CurrentUserId, db: DbSession):
     """
     Odanın sesine bağlanma bilgisi. Cevabın biçimi sunucudaki ses sağlayıcısına göre
-    değişir (`provider`: "mesh" ya da "livekit"); istemci buna göre bağlanır.
+    değişir (`provider`: "mesh", "livekit" ya da "agora"); istemci buna göre bağlanır.
     """
     return await room_service.get_voice_join(db, user_id, room_id)
 

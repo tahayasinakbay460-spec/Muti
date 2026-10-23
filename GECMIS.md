@@ -9,6 +9,8 @@ Projede yapılan işlerin kaydı.
 
 ## Şu an neredeyiz
 
+**2026-10-23 — Agora ses sağlayıcısı yazıldı (kod + test bitti).** Sırada: kullanıcı console.agora.io'da proje açıp App ID ve App Certificate'ı `backend/.env`'e yazacak (`VOICE_PROVIDER=agora`), iki tarayıcıyla denenecek; sonra yayın (bugün için Railway önerildi, VPS sonra).
+
 **2026-10-22 — Karar: önce öğrenme, sonra yayın.** Kullanıcı bugün `learning/README.md` haritasındaki kavramları çalışacak. Sonraki adım: (1) ses için Agora sağlayıcısı (`app/voice/agora.py` + `js/voice/agora.js`, `.env` `VOICE_PROVIDER=agora`, `AGORA_APP_ID`, `AGORA_APP_CERTIFICATE`; mesh'in kalabalık oda ve TURN sorununu çözer, ücretli), (2) Railway yerine VPS (KVKK için Türkiye'de olabilir): alan adı + Ubuntu + Docker Compose (uygulama + PostgreSQL + Caddy ile otomatik https) + günlük yedek. Adımlar kullanıcıya her komut açıklanarak birlikte yapılacak.
 
 **2026-10-21 akşam — Yayın beklemede, öğrenme aşaması:** Kullanıcı yayından önce projedeki kavramları tek tek öğrenmeye karar verdi (harita: `learning/README.md`). Railway kurulmadı; kullanıcı hazır olunca devam. Railway mı VPS mi sorusu açık (KVKK: Railway yurt dışında).
@@ -74,7 +76,7 @@ Bu bir demo yayını, mağaza yayını değil. Gerçek ses, gerçek ödeme ve ke
 | Eksik | Not |
 |---|---|
 | TURN sunucusu | Ses mesh ile çalışıyor; sıkı ağlarda (bazı mobil operatörler, şirket ağları) doğrudan bağlantı kurulamazsa TURN gerekir. coturn kurulup `VOICE_TURN_URLS` / `VOICE_TURN_SECRET` doldurulacak |
-| Kalabalık oda sesi | Mesh ~30 kişiye kadar. Daha kalabalık odalar için `VOICE_PROVIDER=livekit` hazır ama canlı LiveKit sunucusuyla denenmedi |
+| Kalabalık oda sesi | Mesh ~30 kişiye kadar. Kalabalık odalar için `VOICE_PROVIDER=agora` (önerilen, gerçek hesapla henüz denenmedi) ya da `livekit` hazır |
 | Elmasların gerçek paraya çekimi | Ödeme altyapısı ve kimlik doğrulama (KYC) gerekir; `WITHDRAWALS_ENABLED=false` |
 | Kullanım koşulları / gizlilik politikası sayfaları | Ayarlarda "yakında" diyor; mağaza yayını için zorunlu |
 | Uygulama kapalıyken bildirim (push) | Anlık bildirim yalnızca uygulama açıkken (/ws/me bağlıyken) çalışır; mobilde APNs/FCM gerekir |
@@ -107,6 +109,21 @@ Kodda "DEMO KISAYOLU" diye işaretlidir. Mobil/canlı aşamasında değiştirile
 ---
 
 # Kayıtlar
+
+## 2026-10-23 — Agora ses sağlayıcısı
+
+**Amaç:** Mesh'in iki sorununu (kalabalık odada konuşmacının interneti yetmiyor, sıkı ağlarda TURN olmadan ses bağlanmıyor) sunucu kurmadan çözmek. Kullanıcıya Docker ve mesh/SFU farkı anlatıldı.
+
+**Ne yapıldı:**
+- `backend/app/voice/agora.py`: `AgoraVoiceProvider`. Token (AccessToken2, "007") kendi kodumuzla üretiliyor; yeni paket yok. Konuşma izni yalnızca koltukta ve mikrofonu engelsiz olana. Atılan kişi / kapanan oda Agora REST API'siyle (kicking-rule) sesten de çıkarılır; bunun için `AGORA_CUSTOMER_ID/SECRET` gerekir, boşsa atlanır.
+- `frontend/js/voice/agora.js`: Agora Web SDK 4.24.8 (jsdelivr). "live" kipi: koltuğa oturunca yeni token + host, kalkınca audience. Koltukta olmayan/susturulanın sesi dinleyici tarafında çalınmaz (mesh ile aynı kural).
+- Ayarlar: `VOICE_PROVIDER=agora`, `AGORA_APP_ID`, `AGORA_APP_CERTIFICATE` (+ isteğe bağlı customer id/secret). `VoiceJoinInfo`'ya `app_id`, `channel` alanları eklendi.
+
+**Doğrulama:** Token, Agora'nın resmî Python koduyla (AgoraIO/Tools) aynı girdilerde bayt bayt aynı çıktı. Test: imza, izinler, REST çağrısı (sahte HTTP). 97 test geçti, kapsam %94,6, ruff temiz.
+
+**Açık kalanlar:** Gerçek Agora hesabıyla tarayıcıda denenmedi (kullanıcı konsolda proje açıp App ID + Certificate verecek). Koltuktan inen kişinin token'ı süresi dolana (1 saat) kadar yayın izni taşır; sesi dinleyicilerde çalınmaz ama sunucu tarafında kesmek için kicking-rule `publish_audio` eklenebilir.
+
+---
 
 ## 2026-10-21 — Web yayınına hazırlık (A grubu)
 

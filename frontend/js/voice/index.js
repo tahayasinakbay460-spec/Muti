@@ -15,6 +15,7 @@ import { USE_MOCK } from '../config.js';
 const CLIENTS = {
   mesh: () => import('./mesh.js'),
   livekit: () => import('./livekit.js'),
+  agora: () => import('./agora.js'),
 };
 
 export async function joinVoice({ room, me, channel, onSpeaking, onError }) {

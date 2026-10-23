@@ -15,6 +15,12 @@ def _build() -> VoiceProvider:
     if settings.voice_provider == "livekit":
         from app.voice.livekit import LiveKitVoiceProvider
         return LiveKitVoiceProvider(settings.livekit_url, settings.livekit_api_key, settings.livekit_api_secret)
+    if settings.voice_provider == "agora":
+        from app.voice.agora import AgoraVoiceProvider
+        return AgoraVoiceProvider(
+            settings.agora_app_id, settings.agora_app_certificate,
+            settings.agora_customer_id, settings.agora_customer_secret,
+        )
     from app.voice.mesh import MeshVoiceProvider
     return MeshVoiceProvider()
 

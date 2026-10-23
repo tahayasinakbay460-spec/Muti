@@ -116,7 +116,8 @@ class Settings(BaseSettings):
     # ── Sesli görüşme (WebRTC) ────────────────────────────────────────────────
     # "mesh":    tarayıcılar birbirine doğrudan bağlanır, ek sunucu gerekmez (küçük odalar).
     # "livekit": açık kaynak medya sunucusu (SFU); kalabalık odalar için. Bkz. app/voice/.
-    voice_provider: Literal["mesh", "livekit"] = "mesh"
+    # "agora":   ücretli bulut SFU; sunucu kurmadan kalabalık oda ve sıkı ağlar.
+    voice_provider: Literal["mesh", "livekit", "agora"] = "mesh"
     # STUN: tarayıcının dışarıdan nasıl göründüğünü öğrenmesi için. Varsayılan Google'ın
     # ücretsiz sunucusu; kendi coturn sunucumuz kurulunca onun adresi yazılır.
     voice_stun_urls: list[str] = ["stun:stun.l.google.com:19302"]
@@ -130,6 +131,13 @@ class Settings(BaseSettings):
     livekit_url: str = ""
     livekit_api_key: str = ""
     livekit_api_secret: str = ""
+    # Yalnızca VOICE_PROVIDER=agora iken: Agora konsolu → proje → App ID ve App Certificate.
+    # Certificate gizlidir (token'ları imzalar); App ID tarayıcıya gider, gizli değildir.
+    agora_app_id: str = ""
+    agora_app_certificate: str = ""
+    # İsteğe bağlı: atılan kişiyi sesten de anında çıkarmak için (konsol → RESTful API).
+    agora_customer_id: str = ""
+    agora_customer_secret: str = ""
 
     # ── Görüntüleme ───────────────────────────────────────────────────────────
     # DEMO KISAYOLU: "21:05" gibi saat etiketlerini sunucu üretiyor (Türkiye = UTC+3).

@@ -8,7 +8,8 @@ Gerçek zamanlı ses (WebRTC) için farklı yollar var:
   - livekit → açık kaynak bir medya sunucusu (SFU). Herkes sesini bir kez SFU'ya gönderir,
               SFU dağıtır. Yüzlerce dinleyicili odalar için gerekir. Kendi sunucumuza
               kurulabilir ya da LiveKit Cloud gibi bir hizmetten alınabilir.
-İleride başka bir sağlayıcıya (mediasoup, Janus, Agora...) geçmek isteyebiliriz. Kodun
+  - agora   → ücretli bulut SFU; sunucu kurmadan kalabalık oda ve sıkı ağlar için.
+İleride başka bir sağlayıcıya (mediasoup, Janus...) geçmek isteyebiliriz. Kodun
 geri kalanı yalnızca bu sözleşmeyi bilir; sağlayıcı değiştirmek = yeni bir sınıf yazıp
 `.env` içindeki VOICE_PROVIDER'ı değiştirmek. Oda, koltuk ve yetki kuralları hep bizde kalır.
 
@@ -37,12 +38,14 @@ class IceServer(BaseModel):
 
 class VoiceJoinInfo(BaseModel):
     """GET /rooms/{id}/voice cevabı. Alanların hangileri dolu olduğu sağlayıcıya göre değişir."""
-    provider: str                      # "mesh" | "livekit" | ...
+    provider: str                      # "mesh" | "livekit" | "agora"
     # Bu kişi şu an konuşabilir mi (koltukta ve mikrofonu engelli değil)?
     can_publish: bool
     ice_servers: list[IceServer] = []  # mesh: tarayıcının kullanacağı STUN/TURN listesi
     url: str | None = None             # SFU: bağlanılacak adres (wss://...)
     token: str | None = None           # SFU: kısa ömürlü giriş anahtarı
+    app_id: str | None = None          # agora: projenin herkese açık kimliği (gizli değil)
+    channel: str | None = None         # agora: odanın ses kanalı adı
 
 
 class VoiceProvider(ABC):

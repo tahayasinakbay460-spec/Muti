@@ -574,3 +574,67 @@ def test_turn_credentials_and_livekit_token():
     assert claims["video"] == {
         "room": "room-7", "roomJoin": True, "canPublish": False, "canSubscribe": True, "canPublishData": False,
     }
+
+
+def test_agora_token_and_kick():
+    import asyncio
+    import base64
+    import hashlib
+    import hmac
+    import json
+    import struct
+    import zlib
+
+    import httpx
+    import pytest
+
+    from app.voice.agora import AgoraVoiceProvider, build_rtc_token
+
+    app_id, certificate = "a" * 32, "c" * 32
+    with pytest.raises(RuntimeError):
+        AgoraVoiceProvider(app_id, "")
+
+    # Token'ı çözüp Agora'nın kontrol ettiği şeyleri kendimiz doğrularız:
+    # imza certificate ile atılmış mı, doğru kanal/kullanıcı, konuşma izni yalnızca koltuktakinde.
+    def privileges_of(token: str) -> dict[int, int]:
+        assert token.startswith("007")
+        raw = zlib.decompress(base64.b64decode(token[3:]))
+        signature, signing_info = raw[2:34], raw[34:]
+        issued_at, ttl, salt = struct.unpack("<III", signing_info[34:46])
+        key = hmac.new(struct.pack("<I", issued_at), certificate.encode(), hashlib.sha256).digest()
+        key = hmac.new(struct.pack("<I", salt), key, hashlib.sha256).digest()
+        assert signature == hmac.new(key, signing_info, hashlib.sha256).digest()
+        assert signing_info[2:34] == app_id.encode() and ttl == 3600
+        service = signing_info[48:]                 # hizmet sayısından sonrası
+        count = struct.unpack("<H", service[2:4])[0]
+        pairs = [struct.unpack("<HI", service[4 + i * 6: 10 + i * 6]) for i in range(count)]
+        assert service[4 + count * 6:].endswith(b"\x06\x00room-7\x02\x0042")
+        return dict(pairs)
+
+    assert privileges_of(build_rtc_token(app_id, certificate, "room-7", 42, False)) == {1: 3600}
+    assert privileges_of(build_rtc_token(app_id, certificate, "room-7", 42, True)) == {1: 3600, 2: 3600}
+
+    info = asyncio.run(AgoraVoiceProvider(app_id, certificate).join_info(7, 42, "Ayşe", can_publish=True))
+    assert (info.provider, info.app_id, info.channel) == ("agora", app_id, "room-7")
+    assert privileges_of(info.token) == {1: 3600, 2: 3600}
+
+    # Atma: Customer ID girilmişse Agora REST API'si çağrılır; Agora hata verse de oda işlemi bozulmaz.
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append((request.headers["authorization"], json.loads(request.content)))
+        return httpx.Response(200 if len(calls) == 1 else 500)
+
+    provider = AgoraVoiceProvider(app_id, certificate, "musteri", "gizli", transport=httpx.MockTransport(handler))
+    asyncio.run(provider.remove_participant(7, 42))
+    asyncio.run(provider.close_room(7))
+    assert calls[0][0] == "Basic " + base64.b64encode(b"musteri:gizli").decode()
+    assert calls[0][1] == {"appid": app_id, "cname": "room-7", "time": 60, "privileges": ["join_channel"], "uid": 42}
+    assert "uid" not in calls[1][1]                 # oda kapanınca kanaldaki herkes
+
+    def unreachable(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("yok")
+
+    asyncio.run(AgoraVoiceProvider(app_id, certificate, "m", "g", transport=httpx.MockTransport(unreachable)).close_room(7))
+    # Customer ID yoksa hiç çağrı yapılmaz
+    asyncio.run(AgoraVoiceProvider(app_id, certificate).remove_participant(7, 42))
