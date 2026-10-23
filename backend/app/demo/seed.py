@@ -136,8 +136,11 @@ TOP_GIFTERS = [(2001, 184500), (2012, 126300), (2015, 98750), (2003, 61200), (20
 GIFT_TARGETS = {2001: (2015, 104211), 2012: (2003, 102938), 2015: (2001, 104211), 2003: (2012, 102938), 2010: (2005, 107340)}
 
 
-async def seed_database(db: AsyncSession) -> None:
-    """Veritabanı boşsa örnek veriyi ekler. Doluysa hiçbir şey yapmaz."""
+async def seed_database(db: AsyncSession, with_admin: bool = True) -> None:
+    """
+    Veritabanı boşsa örnek veriyi ekler. Doluysa hiçbir şey yapmaz.
+    with_admin=False: vitrin yayını; parolası demo1234 olan yönetici hesabı eklenmez.
+    """
     if await db.scalar(select(func.count(User.id))):
         return
 
@@ -159,10 +162,11 @@ async def seed_database(db: AsyncSession) -> None:
             coin_balance=12450 if uid == MAIN_USER_ID else 5000,
             created_at=now - timedelta(days=joined_days),
         ))
-    db.add(User(
-        id=ADMIN_USER_ID, username="admin", email="admin@demo.local", password_hash=password_hash,
-        display_name="Muti Yönetim", is_admin=True, is_verified=True, created_at=now - timedelta(days=500),
-    ))
+    if with_admin:
+        db.add(User(
+            id=ADMIN_USER_ID, username="admin", email="admin@demo.local", password_hash=password_hash,
+            display_name="Muti Yönetim", is_admin=True, is_verified=True, created_at=now - timedelta(days=500),
+        ))
     await db.flush()   # kullanıcılar önce yazılsın; aşağıdaki satırlar onlara bağlı
 
     for rid, title, category, cover, is_live, _listeners, host_id, announcement, seats in ROOMS:

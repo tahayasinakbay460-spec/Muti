@@ -22,6 +22,8 @@ os.environ["DATABASE_URL"] = (
 os.environ["SECRET_KEY"] = "test-secret-key-that-is-long-enough-for-hs256"
 os.environ["ENVIRONMENT"] = "development"
 os.environ["DEMO_MODE"] = "true"
+# Geliştiricinin kendi .env ayarı (ör. VOICE_PROVIDER=agora) testleri değiştirmesin
+os.environ["VOICE_PROVIDER"] = "mesh"
 # Testler saniyede onlarca kez giriş yapar; hız sınırı ayrı testte (test_launch.py) denenir.
 os.environ["AUTH_ATTEMPTS_PER_MINUTE"] = "100000"
 

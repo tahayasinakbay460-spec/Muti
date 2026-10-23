@@ -1,6 +1,6 @@
 // Giriş / kayıt ekranı
 import { api } from '../api.js';
-import { APP_NAME, IS_DEV_SERVER } from '../config.js';
+import { APP_NAME } from '../config.js';
 import { toast, icon } from '../ui.js';
 
 export function renderAuth(root) {
@@ -39,12 +39,19 @@ export function renderAuth(root) {
         </label>
         <button class="btn btn-primary btn-block" type="submit" id="auth-submit">Giriş Yap</button>
         <button class="btn btn-ghost btn-block" type="button" id="guest-btn">${icon('user', 18)} Misafir olarak göz at</button>
-        ${IS_DEV_SERVER ? '<p class="auth-legal">Demo hesabı: <b>muti</b> / <b>demo1234</b></p>' : ''}
+        <p class="auth-legal" id="demo-login" hidden></p>
         <p class="auth-legal">Devam ederek <a href="legal.html#terms" target="_blank" rel="noopener">Kullanım Koşulları</a>'nı kabul etmiş ve <a href="legal.html#privacy" target="_blank" rel="noopener">Gizlilik ve KVKK Aydınlatma Metni</a>'ni okumuş olursun. 18 yaş ve üzeri içindir.</p>
       </form>
     </section>`;
 
   const form = root.querySelector('#auth-form');
+  // Örnek veri yüklü yayında (demo/vitrin) denemek isteyene hazır hesap gösterilir
+  api.getAppInfo().then(({ demo_login: demo }) => {
+    if (!demo) return;
+    const hint = root.querySelector('#demo-login');
+    hint.innerHTML = `Demo hesabı: <b>${demo.username}</b> / <b>${demo.password}</b>`;
+    hint.hidden = false;
+  }).catch(() => {});
   const submitBtn = root.querySelector('#auth-submit');
   const emailField = root.querySelector('#email-field');
 

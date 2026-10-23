@@ -59,9 +59,11 @@ async def lifespan(_app: FastAPI):
         async with engine.begin() as connection:
             await connection.run_sync(Base.metadata.create_all)
 
-    if settings.demo_mode:
+    if settings.demo_mode or settings.showcase_data:
         async with SessionLocal() as db:
-            await seed.seed_database(db)
+            # Vitrinde demo yönetici hesabı (parolası herkesçe bilinen) oluşturulmaz
+            await seed.seed_database(db, with_admin=settings.demo_mode)
+    if settings.demo_mode:
         await seed.seed_live_state(room_state)
     async with SessionLocal() as db:
         await catalog_service.ensure_starter_catalog(db)
@@ -69,7 +71,10 @@ async def lifespan(_app: FastAPI):
         await auth_service.ensure_admin_account(db)
         await admin_service.load_bans(db)
 
-    logger.info("Server started (environment=%s, demo_mode=%s)", settings.environment, settings.demo_mode)
+    logger.info(
+        "Server started (environment=%s, demo_mode=%s, showcase_data=%s)",
+        settings.environment, settings.demo_mode, settings.showcase_data,
+    )
     yield
     logger.info("Server stopping")
     await engine.dispose()   # veritabanı bağlantılarını düzgünce kapat

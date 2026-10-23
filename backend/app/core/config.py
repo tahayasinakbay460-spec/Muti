@@ -66,6 +66,11 @@ class Settings(BaseSettings):
     # DEMO_MODE'dan ayrı tutuldu: canlıda örnek veri ve demo hesapları KAPALI, yalnızca bu açık.
     # Gerçek ödeme gelince false yapılır.
     free_coin_purchase: bool = False
+    # VİTRİN (gösterim) yayını: canlıda da örnek odalar ve kullanıcılar yüklenir; örnek hesaplara
+    # herkes demo1234 ile girebilir, giriş ekranında yazar. Demo yönetici hesabı YÜKLENMEZ
+    # (yönetici yalnızca ADMIN_USERNAME/ADMIN_PASSWORD). Koltuklar boş başlar (sahte kalabalık yok).
+    # Gerçek kullanıcılara açılırken false yapılır.
+    showcase_data: bool = False
     # Canlıda ilk yönetici hesabı. Parola koda/repoya yazılmaz, yalnızca sunucudaki ortam
     # değişkeninden (Railway → Variables) okunur. Hesap yoksa açılışta oluşturulur.
     admin_username: str = ""

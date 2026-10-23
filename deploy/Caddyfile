@@ -1,0 +1,7 @@
+# Caddy: sitenin kapısı. Let's Encrypt'ten ücretsiz https sertifikasını kendisi alır ve
+# süresi dolmadan kendisi yeniler. http ile gelenleri https'e yönlendirir.
+# WebSocket (/ws/...) bağlantılarını da ayrıca ayar gerekmeden uygulamaya iletir.
+{$DOMAIN} {
+	encode zstd gzip
+	reverse_proxy app:8000
+}

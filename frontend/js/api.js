@@ -359,6 +359,10 @@ const mockApi = {
     return db.banners;
   },
 
+  async getAppInfo() {
+    return { demo_login: { username: 'muti', password: 'demo1234' } };
+  },
+
   async listRooms({ category, query } = {}) {
     await delay();
     let list = db.rooms;
@@ -994,6 +998,8 @@ const httpApi = {
   toggleRoomFollow: (id) => request(`/rooms/${id}/follow`, { method: 'POST' }),
   listFollowedRooms: () => request('/rooms/followed'),
   listBanners: () => request('/banners'),
+  // Giriş yapmadan okunur: örnek veri yüklüyse giriş ekranında demo hesabı gösterilir
+  getAppInfo: () => request('/app-info'),
   listRooms: ({ category = '', query = '' } = {}) => request(`/rooms?category=${encodeURIComponent(category)}&query=${encodeURIComponent(query)}`),
   getRoom: (id) => request(`/rooms/${id}`),
   createRoom: (payload) => request('/rooms', { method: 'POST', body: payload }),

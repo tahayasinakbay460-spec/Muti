@@ -638,3 +638,16 @@ def test_agora_token_and_kick():
     asyncio.run(AgoraVoiceProvider(app_id, certificate, "m", "g", transport=httpx.MockTransport(unreachable)).close_room(7))
     # Customer ID yoksa hiç çağrı yapılmaz
     asyncio.run(AgoraVoiceProvider(app_id, certificate).remove_participant(7, 42))
+
+
+def test_app_info_shows_demo_login_only_with_sample_data(client, monkeypatch):
+    from app.core.config import settings
+
+    # Testler örnek veriyle (DEMO_MODE) çalışır: giriş ekranı hazır hesabı gösterir
+    assert client.get(f"{API}/app-info").json() == {"demo_login": {"username": "muti", "password": "demo1234"}}
+    monkeypatch.setattr(settings, "demo_mode", False)
+    monkeypatch.setattr(settings, "showcase_data", True)
+    assert client.get(f"{API}/app-info").json()["demo_login"]["username"] == "muti"
+    # Gerçek yayında (örnek veri yok) hiçbir hesap bilgisi verilmez
+    monkeypatch.setattr(settings, "showcase_data", False)
+    assert client.get(f"{API}/app-info").json() == {"demo_login": None}

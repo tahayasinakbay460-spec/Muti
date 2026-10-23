@@ -9,6 +9,8 @@ Projede yapılan işlerin kaydı.
 
 ## Şu an neredeyiz
 
+**2026-10-23 akşam — Yayın: VPS + sslip.io.** Railway kesintide (yeni hesap kapalı). Kod hazır: vitrin modu (`SHOWCASE_DATA`), `deploy/` (compose + Caddy + yedek). Sırada: kullanıcı VPS kiralayacak, adımlar birlikte (Docker kur → repo çek → `deploy/.env` → `docker compose up -d --build`).
+
 **2026-10-23 — Agora ses sağlayıcısı çalışıyor.** Kullanıcı Agora hesabını açtı, `backend/.env`'e `VOICE_PROVIDER=agora` + App ID/Certificate yazdı; gerçek hesapla ses denendi, geliyor. Sırada: yayın (bugün için Railway önerildi, VPS sonra). Ağdaki başka bilgisayardan `http://192.168.x.x` ile mikrofon için Chrome `unsafely-treat-insecure-origin-as-secure` gerekir; yayında https olacak.
 
 **2026-10-22 — Karar: önce öğrenme, sonra yayın.** Kullanıcı bugün `learning/README.md` haritasındaki kavramları çalışacak. Sonraki adım: (1) ses için Agora sağlayıcısı (`app/voice/agora.py` + `js/voice/agora.js`, `.env` `VOICE_PROVIDER=agora`, `AGORA_APP_ID`, `AGORA_APP_CERTIFICATE`; mesh'in kalabalık oda ve TURN sorununu çözer, ücretli), (2) Railway yerine VPS (KVKK için Türkiye'de olabilir): alan adı + Ubuntu + Docker Compose (uygulama + PostgreSQL + Caddy ile otomatik https) + günlük yedek. Adımlar kullanıcıya her komut açıklanarak birlikte yapılacak.
@@ -109,6 +111,22 @@ Kodda "DEMO KISAYOLU" diye işaretlidir. Mobil/canlı aşamasında değiştirile
 ---
 
 # Kayıtlar
+
+## 2026-10-23 — Yayın öncesi kontrol, vitrin modu, VPS dosyaları
+
+**Amaç:** Müşteriye gösterilecek (gösterimlik) web yayınından önce eksikleri kapatmak. Railway bugün kesintide ve yeni hesap açmayı durdurdu → VPS'e geçiliyor; https için ücretsiz `sslip.io` adresi (kullanıcı kararı).
+
+**Ne yapıldı:**
+- *Vitrin modu* (`SHOWCASE_DATA=true`): canlıda da örnek odalar/kullanıcılar yüklenir, örnek hesaplara `demo1234` ile girilir (kullanıcı kararı). Demo yönetici hesabı yüklenmez (`seed_database(with_admin=False)`), yönetici yalnızca `ADMIN_USERNAME/PASSWORD`. Koltuklar boş, sahte dinleyici yok.
+- `GET /api/v1/app-info` (girişsiz): örnek veri yüklüyse `demo_login` döner; giriş ekranı ipucunu buna göre gösterir (eskiden yalnızca 5500 portunda).
+- `deploy/`: `docker-compose.yml` (app + PostgreSQL 16 + Caddy 2.8; veri `db_data` diskinde), `Caddyfile` (otomatik https), `server.env.example`, `backup.sh` (günlük pg_dump, 14 gün).
+- Testler artık geliştiricinin `.env`'indeki `VOICE_PROVIDER`'dan etkilenmiyor (conftest).
+
+**Doğrulama:** 98 test geçti, kapsam %94,6, ruff temiz. Canlı ayarlarla (production + vitrin, ayrı geçici veritabanı, alembic) açıldı: 8 oda, 0 koltukta kişi, `muti/demo1234` 200, `admin/demo1234` 401, env yöneticisi 200; tarayıcıda giriş ekranında ipucu görünüyor. Docker bu bilgisayarda yok: compose dosyası yalnızca YAML olarak doğrulandı, ilk gerçek deneme VPS'te.
+
+**Açık kalanlar:** VPS seçimi ve kurulumu; `legal.html` köşeli parantezler (sağlayıcı satırı hâlâ Railway); misafirlerin Agora dakikası harcaması (arka planda bekleyen sekmeyi sesten düşürme önerildi); güncelleme anında bellekteki oda durumu sıfırlanır.
+
+---
 
 ## 2026-10-23 — Agora ses sağlayıcısı
 

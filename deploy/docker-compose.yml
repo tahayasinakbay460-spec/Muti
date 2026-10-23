@@ -1,0 +1,63 @@
+# VPS kurulumu: üç kutu (container) birlikte çalışır. Sunucuda bu klasörde:
+#   docker compose up -d --build     → kur ve arka planda başlat (güncellemede de aynı komut)
+#   docker compose logs -f app       → uygulamanın kayıtlarını izle
+#
+#   İnternet ──https──► caddy (80/443) ──► app (8000, dışarıya kapalı) ──► db (PostgreSQL)
+#
+# Ayarlar ve sırlar bu klasördeki .env dosyasından okunur (örnek: server.env.example).
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://muti:${POSTGRES_PASSWORD}@db:5432/muti
+    depends_on:
+      db:
+        condition: service_healthy
+    # Oda durumu bellekte (Redis yok): bu servis TEK kopya çalışmalı, ölçeklenmez.
+    logging: &logs
+      driver: json-file
+      options: { max-size: "20m", max-file: "5" }   # kayıtlar diski doldurmasın
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: muti
+      POSTGRES_DB: muti
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    # Veri kutunun dışında, adlı bir diskte (volume) durur: güncellemede ve yeniden
+    # kurulumda silinmez. `docker compose down -v` YAZMA: -v bu diski siler.
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U muti -d muti"]
+      interval: 5s
+      retries: 10
+    logging: *logs
+
+  caddy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Alınan https sertifikaları burada saklanır; her açılışta yeniden istenmesin
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+    logging: *logs
+
+volumes:
+  db_data:
+  caddy_data:
+  caddy_config:
