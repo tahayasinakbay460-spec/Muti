@@ -9,6 +9,8 @@ Projede yapılan işlerin kaydı.
 
 ## Şu an neredeyiz
 
+**2026-10-23 gece — CANLIDA: https://mutishow.tech** (Hostinger VPS 187.126.11.90, Docker Compose: app + PostgreSQL + Caddy, vitrin modu, ses Agora). Güncelleme: push → sunucuda `cd /root/Muti && git pull && cd deploy && docker compose up -d --build`. Kalan: yönetici hesabı, otomatik yenilemeleri kapatmak, legal.html.
+
 **2026-10-23 akşam — Yayın: VPS + sslip.io.** Railway kesintide (yeni hesap kapalı). Kod hazır: vitrin modu (`SHOWCASE_DATA`), `deploy/` (compose + Caddy + yedek). Sırada: kullanıcı VPS kiralayacak, adımlar birlikte (Docker kur → repo çek → `deploy/.env` → `docker compose up -d --build`).
 
 **2026-10-23 — Agora ses sağlayıcısı çalışıyor.** Kullanıcı Agora hesabını açtı, `backend/.env`'e `VOICE_PROVIDER=agora` + App ID/Certificate yazdı; gerçek hesapla ses denendi, geliyor. Sırada: yayın (bugün için Railway önerildi, VPS sonra). Ağdaki başka bilgisayardan `http://192.168.x.x` ile mikrofon için Chrome `unsafely-treat-insecure-origin-as-secure` gerekir; yayında https olacak.
@@ -111,6 +113,24 @@ Kodda "DEMO KISAYOLU" diye işaretlidir. Mobil/canlı aşamasında değiştirile
 ---
 
 # Kayıtlar
+
+## 2026-10-23 gece — Canlıda: https://mutishow.tech
+
+**Amaç:** Gösterim (vitrin) yayınını açmak.
+
+**Ne yapıldı:**
+- Sunucu: Hostinger VPS KVM 1 (Almanya, 1 aylık, Ubuntu 24.04 + Docker şablonu, 4 GB RAM), IP `187.126.11.90`, ad `srv2090964.hstgr.cloud`. Alan adı `mutishow.tech` (Hostinger, 1 yıl ücretsiz). DNS: `@` A → 187.126.11.90 (TTL 300), `www` CNAME → mutishow.tech.
+- Kullanıcının SSH anahtarı: `C:/Users/HYPER/.ssh/id_ed25519` (sunucuya root olarak anahtarla giriş). Repo public yapıldı (geçmiş tarandı: .env/anahtar yok; yalnızca eski, kullanılmayan bir SECRET_KEY `backend/core/auth.py` ilk sürümlerinde).
+- Sunucuda: kod `/root/Muti`, ayarlar `/root/Muti/deploy/.env` (chmod 600; veritabanı parolası ve SECRET_KEY sunucuda üretildi, Agora bilgileri yerel .env'den kopyalandı), ufw yalnızca 22/80/443. `docker compose up -d --build` → app + PostgreSQL + Caddy. Caddyfile'a www → ana adres yönlendirmesi eklendi.
+- Yedek: cron her gün 04:00 UTC (07:00 TR) `deploy/backup.sh` → `deploy/backups/`, 14 gün. İlk yedek alındı.
+
+**Doğrulama:** Let's Encrypt sertifikası alındı (mutishow.tech + www). `https://mutishow.tech` 200, `www` 301 ve `http` 308 ile ana adrese. `app-info` vitrin hesabını veriyor. Tarayıcıda misafir girişi → oda açıldı, WebSocket çalışıyor, Agora SDK yüklendi ve Agora sunucularına bağlandı, sayfa güvenli bağlam (mikrofon açılabilir), konsolda hata yok. Demo hesabıyla giriş ve konuşma kullanıcı tarafından denenecek.
+
+**Güncelleme nasıl:** bilgisayarda commit + `git push` → sunucuda `cd /root/Muti && git pull && cd deploy && docker compose up -d --build`. Güncelleme anında bellekteki oda durumu sıfırlanır.
+
+**Açık kalanlar:** Yönetici hesabı (`ADMIN_USERNAME/PASSWORD` sunucu .env'de boş; kullanıcı dolduracak, sonra `docker compose up -d`). Hostinger'da VPS (2. ay 810,99 TL) ve alan adı (2.988,99 TL/yıl) otomatik yenilemesi kapatılmalı. `legal.html` köşeli parantezler (sağlayıcı satırı: Hostinger, Almanya). Yedekler aynı sunucuda (sunucu giderse yedek de gider; ara sıra bilgisayara indirilmeli).
+
+---
 
 ## 2026-10-23 — Yayın öncesi kontrol, vitrin modu, VPS dosyaları
 
