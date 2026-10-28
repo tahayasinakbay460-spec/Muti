@@ -1,7 +1,8 @@
 """
 Uygulama geneli yönetim paneli: özet sayılar, şikâyet inceleme, kullanıcı ban, bakiye düzeltme,
-oda kapatma. Buradaki her işlem yalnızca `is_admin` kullanıcılara açıktır (bkz. core/deps.py
-CurrentAdmin) ve her biri denetim kaydına (audit) yazılır: "hangi yönetici, kime, ne yaptı".
+oda kapatma. Kim neyi yapabilir, rolüne göre router'da kontrol edilir (bkz. core/permissions.py,
+core/deps.py Staff). Değiştiren her işlem iki yere yazılır: denetim kaydı (audit, log dosyası) ve
+panelde görünen personel işlem kaydı (staff_service.record): "hangi personel, kime, ne yaptı".
 
 BAN ANINDA ETKİLİ OLMALI: Hesap kapanır, bütün refresh token'lar iptal edilir, açık WebSocket
 bağlantıları kesilir. Elindeki access token'ın süresi (15 dk) dolmamış olsa bile bir sonraki
@@ -27,13 +28,13 @@ from app.realtime.hub import room_hub, user_hub
 from app.realtime.state import room_state
 from app.schemas.admin import (
     AdminConversationOut, AdminMessageOut, AdminReportOut, AdminRoomOut, AdminStats, AdminTransactionOut, AdminUserOut,
-    BalanceAdjustResult, BroadcastResult, CatalogGiftOut, CatalogGiftUpdate, CatalogPackageOut, CatalogPackageUpdate,
+    AgencyOut, BalanceAdjustResult, BroadcastResult, CatalogGiftOut, CatalogGiftUpdate, CatalogPackageOut, CatalogPackageUpdate,
     DailyPoint, FinanceSummary, TopUser,
 )
 from app.schemas.economy import TransactionOut
 from app.services import (
-    auth_service, leaderboard_service, moderation_service, notification_service, store_service, user_service,
-    vip_service, wallet_service,
+    agency_service, auth_service, leaderboard_service, moderation_service, notification_service, staff_service,
+    store_service, user_service, vip_service, wallet_service,
 )
 
 _banned_ids: set[int] = set()
@@ -133,6 +134,8 @@ async def resolve_report(db: AsyncSession, admin_id: int, report_id: int, action
     await db.commit()
     audit("report_resolved", report_id=report_id, action=action, target_type=target_type,
           target_id=target_id, closed_reports=closed.rowcount)
+    await staff_service.record(db, admin_id, "report_resolved", "report", report_id,
+                               f"{action} · {target_type} #{target_id}" + (f" · {note}" if note else ""))
 
 
 # ── Kullanıcılar ──────────────────────────────────────────────────────────────
@@ -153,7 +156,7 @@ async def _admin_user_out(db: AsyncSession, user: User, with_transactions: bool)
         ]
     return AdminUserOut(
         user=await user_service.present_user(db, user, viewer_id=None), email=user.email,
-        is_active=user.is_active, is_admin=user.is_admin, coin_balance=user.coin_balance,
+        is_active=user.is_active, staff_role=user.staff_role, coin_balance=user.coin_balance,
         diamond_balance=user.diamond_balance, reports_against=reports, recent_transactions=transactions,
     )
 
@@ -197,8 +200,10 @@ async def get_user_detail(db: AsyncSession, user_id: int) -> AdminUserOut:
 
 async def ban_user(db: AsyncSession, admin_id: int, user_id: int, reason: str) -> AdminUserOut:
     user = await _get_any_user(db, user_id)
-    if user.id == admin_id or user.is_admin:
-        raise ForbiddenError("Yönetici hesapları banlanamaz.", code="cannot_ban_admin")
+    if user.id == admin_id or user.staff_role:
+        # Personeli önce ekipten çıkarmak gerekir (yalnızca yönetici yapabilir); böylece bir
+        # moderatör başka bir personeli ya da yöneticiyi banlayarak devre dışı bırakamaz.
+        raise ForbiddenError("Yönetim ekibindeki biri banlanamaz; önce rolünü kaldır.", code="cannot_ban_staff")
     if not user.is_active:
         raise ConflictError("Bu kullanıcı zaten banlı.", code="already_banned")
     user.is_active = False
@@ -208,10 +213,11 @@ async def ban_user(db: AsyncSession, admin_id: int, user_id: int, reason: str) -
     await room_hub.disconnect_user_everywhere(user.id, events.CLOSE_UNAUTHORIZED)
     await user_hub.disconnect(user.id, events.CLOSE_UNAUTHORIZED)
     audit("user_banned", target_id=user.id, reason=reason)
+    await staff_service.record(db, admin_id, "user_banned", "user", user.id, reason)
     return await _admin_user_out(db, user, with_transactions=True)
 
 
-async def unban_user(db: AsyncSession, user_id: int) -> AdminUserOut:
+async def unban_user(db: AsyncSession, admin_id: int, user_id: int) -> AdminUserOut:
     user = await _get_any_user(db, user_id)
     if user.is_active:
         raise ConflictError("Bu kullanıcı banlı değil.", code="not_banned")
@@ -219,11 +225,12 @@ async def unban_user(db: AsyncSession, user_id: int) -> AdminUserOut:
     await db.commit()
     _banned_ids.discard(user.id)
     audit("user_unbanned", target_id=user.id)
+    await staff_service.record(db, admin_id, "user_unbanned", "user", user.id)
     return await _admin_user_out(db, user, with_transactions=True)
 
 
 async def adjust_balance(
-    db: AsyncSession, user_id: int, currency: str, amount: int, reason: str,
+    db: AsyncSession, admin_id: int, user_id: int, currency: str, amount: int, reason: str,
 ) -> BalanceAdjustResult:
     """Yönetici bakiye düzeltmesi. Bakiye de diğer her para hareketi gibi change_balance ile değişir."""
     user = await _get_any_user(db, user_id)
@@ -237,6 +244,7 @@ async def adjust_balance(
         await db.rollback()
         raise
     audit("balance_adjusted", target_id=user.id, currency=currency, amount=amount, reason=reason)
+    await staff_service.record(db, admin_id, "balance_adjusted", "user", user.id, f"{amount:+} {currency} · {reason}")
     return BalanceAdjustResult(currency=currency, balance=balance)
 
 
@@ -254,12 +262,13 @@ async def list_rooms(db: AsyncSession) -> list[AdminRoomOut]:
     return sorted(out, key=lambda r: -r.listener_count)
 
 
-async def close_room(db: AsyncSession, room_id: int, reason: str) -> None:
+async def close_room(db: AsyncSession, admin_id: int, room_id: int, reason: str) -> None:
     room = await db.get(Room, room_id)
     if room is None or not room.is_active:
         raise NotFoundError("Oda bulunamadı.")
     await moderation_service.shut_down_room(db, room)
     audit("room_closed_by_admin", room_id=room_id, reason=reason)
+    await staff_service.record(db, admin_id, "room_closed", "room", room_id, room.title)
 
 
 # ── Finans (masaüstü panel) ───────────────────────────────────────────────────
@@ -377,7 +386,7 @@ async def list_conversations(db: AsyncSession, user_id: int | None, before_id: i
     return sorted(out, key=lambda c: c.last_message_at.timestamp() if c.last_message_at else 0, reverse=True)
 
 
-async def conversation_messages(db: AsyncSession, conversation_id: int) -> list[AdminMessageOut]:
+async def conversation_messages(db: AsyncSession, admin_id: int, conversation_id: int) -> list[AdminMessageOut]:
     _require_message_access()
     if await db.get(Conversation, conversation_id) is None:
         raise NotFoundError("Sohbet bulunamadı.")
@@ -386,11 +395,13 @@ async def conversation_messages(db: AsyncSession, conversation_id: int) -> list[
     ))
     users = await user_service.load_users_out(db, {row.sender_id for row in rows}, viewer_id=None)
     audit("admin_viewed_conversation", conversation_id=conversation_id, messages=len(rows))
+    # Özel yazışma okumak hassas: kimin kimi okuduğu panelde de görünsün.
+    await staff_service.record(db, admin_id, "conversation_viewed", "conversation", conversation_id)
     return [AdminMessageOut(id=r.id, sender=users.get(r.sender_id), text=r.text, created_at=as_utc(r.created_at))
             for r in reversed(rows)]
 
 
-async def room_messages(db: AsyncSession, room_id: int, before_id: int | None) -> list[AdminMessageOut]:
+async def room_messages(db: AsyncSession, admin_id: int, room_id: int, before_id: int | None) -> list[AdminMessageOut]:
     _require_message_access()
     if await db.get(Room, room_id) is None:
         raise NotFoundError("Oda bulunamadı.")
@@ -400,6 +411,7 @@ async def room_messages(db: AsyncSession, room_id: int, before_id: int | None) -
     rows = list(await db.scalars(statement))
     users = await user_service.load_users_out(db, {row.user_id for row in rows}, viewer_id=None)
     audit("admin_viewed_room_chat", room_id=room_id, messages=len(rows))
+    await staff_service.record(db, admin_id, "room_chat_viewed", "room", room_id)
     return [
         AdminMessageOut(id=r.id, sender=users.get(r.user_id), text=r.text, created_at=as_utc(r.created_at),
                         deleted_at=as_utc(r.deleted_at) if r.deleted_at else None)
@@ -417,7 +429,7 @@ async def list_catalog_gifts(db: AsyncSession) -> list[CatalogGiftOut]:
     return [_gift_out(g) for g in await db.scalars(select(Gift).order_by(Gift.price, Gift.id))]
 
 
-async def update_gift(db: AsyncSession, gift_id: int, data: CatalogGiftUpdate) -> CatalogGiftOut:
+async def update_gift(db: AsyncSession, admin_id: int, gift_id: int, data: CatalogGiftUpdate) -> CatalogGiftOut:
     gift = await db.get(Gift, gift_id)
     if gift is None:
         raise NotFoundError("Hediye bulunamadı.")
@@ -426,6 +438,7 @@ async def update_gift(db: AsyncSession, gift_id: int, data: CatalogGiftUpdate) -
         setattr(gift, field_name, value)
     await db.commit()
     audit("gift_updated", gift_id=gift_id, changes=changes)
+    await staff_service.record(db, admin_id, "gift_updated", "gift", gift_id, f"{gift.name}: {changes}")
     return _gift_out(gift)
 
 
@@ -438,7 +451,7 @@ async def list_catalog_packages(db: AsyncSession) -> list[CatalogPackageOut]:
     return [_package_out(p) for p in await db.scalars(select(CoinPackage).order_by(CoinPackage.id))]
 
 
-async def update_package(db: AsyncSession, package_id: int, data: CatalogPackageUpdate) -> CatalogPackageOut:
+async def update_package(db: AsyncSession, admin_id: int, package_id: int, data: CatalogPackageUpdate) -> CatalogPackageOut:
     package = await db.get(CoinPackage, package_id)
     if package is None:
         raise NotFoundError("Paket bulunamadı.")
@@ -447,12 +460,13 @@ async def update_package(db: AsyncSession, package_id: int, data: CatalogPackage
         setattr(package, field_name, value)
     await db.commit()
     audit("package_updated", package_id=package_id, changes=changes)
+    await staff_service.record(db, admin_id, "package_updated", "package", package_id, str(changes))
     return _package_out(package)
 
 
 # ── VIP verme ve duyuru ───────────────────────────────────────────────────────
 
-async def grant_vip(db: AsyncSession, user_id: int, level: int, days: int) -> AdminUserOut:
+async def grant_vip(db: AsyncSession, admin_id: int, user_id: int, level: int, days: int) -> AdminUserOut:
     """Ücretsiz VIP verir (ör. kampanya, telafi). Üyelik eşyaları da verilir; para hareketi yok."""
     user = await _get_any_user(db, user_id)
     now = utcnow()
@@ -464,18 +478,28 @@ async def grant_vip(db: AsyncSession, user_id: int, level: int, days: int) -> Ad
         await store_service.grant_item(db, user.id, item, until=expires_at)
     await db.commit()
     audit("vip_granted", target_id=user.id, vip_level=level, days=days)
+    await staff_service.record(db, admin_id, "vip_granted", "user", user.id, f"VIP {level} · {days} gün")
     await notification_service.notify(db, user.id, "vip_granted", f"👑 Sana {days} günlük VIP {level} hediye edildi!")
     return await _admin_user_out(db, user, with_transactions=True)
 
 
-async def broadcast(db: AsyncSession, text: str) -> BroadcastResult:
+async def broadcast(db: AsyncSession, admin_id: int, text: str) -> BroadcastResult:
     """
     Bütün aktif kullanıcılara sistem bildirimi gönderir (uygulamadaysa anında görür).
     DEMO KISAYOLU: Kişi kişi döngü. Binlerce kullanıcıda arka plan kuyruğu ve uygulama
     kapalıyken push bildirim gerekir.
     """
-    user_ids = list(await db.scalars(select(User.id).where(User.is_active, User.is_admin.is_(False))))
+    user_ids = list(await db.scalars(select(User.id).where(User.is_active, User.staff_role.is_(None))))
     for user_id in user_ids:
         await notification_service.notify(db, user_id, "system", f"📢 {text}")
     audit("broadcast_sent", recipients=len(user_ids), text=text)
+    await staff_service.record(db, admin_id, "broadcast_sent", "all", None, f"{len(user_ids)} kişi · {text}")
     return BroadcastResult(sent=len(user_ids))
+
+
+# ── Ajans kurma ───────────────────────────────────────────────────────────────
+
+async def create_agency(db: AsyncSession, admin_id: int, name: str, owner_id: int, commission_percent: int) -> AgencyOut:
+    agency = await agency_service.create_agency(db, name, owner_id, commission_percent)
+    await staff_service.record(db, admin_id, "agency_created", "agency", agency.id, f"{name} · sahibi #{owner_id}")
+    return agency

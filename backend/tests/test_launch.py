@@ -61,7 +61,7 @@ def test_admin_account_is_created_from_env(client, monkeypatch):
     # Uygulamanın kendi olay döngüsünde çalıştır: veritabanı bağlantı havuzu o döngüye bağlı.
     client.portal.call(run)
     login = client.post(f"{API}/auth/login", json={"username": "kurucu", "password": "cok-gizli-parola-123"})
-    assert login.status_code == 200 and login.json()["user"]["is_admin"] is True
+    assert login.status_code == 200 and login.json()["user"]["staff_role"] == "admin"
 
 
 def test_admin_message_reading_can_be_disabled(client, admin, monkeypatch):  # noqa: F811

@@ -1,24 +1,38 @@
 // Masaüstü yönetim paneli. Uygulamanın veri katmanını (api.js) kullanır: aynı giriş, aynı token.
-// Yetki kontrolü sunucuda (/api/v1/admin/... yalnızca yöneticilere açık); bu sayfa yalnızca gösterir.
-import { api } from '../api.js';
+// Panele girerken şifre ayrıca sorulur (panel oturumu, 15 dk hareketsizlikte kilitlenir).
+// Menü personelin rolüne göre çizilir; asıl yetki kontrolü sunucuda (backend core/permissions.py).
+import { api, setStaffAuthHandler } from '../api.js';
 import { esc, formatCoins, formatCount } from '../ui.js';
-import { DEFAULT_AVATAR_URL } from '../config.js';
+import { APP_URL, DEFAULT_AVATAR_URL } from '../config.js';
 import { REASONS } from '../screens/report.js';
 
 const appEl = document.getElementById('admin-app');
 
+// perm: sayfayı görmek için gereken yetki (backend core/permissions.py ile aynı adlar)
 const PAGES = [
-  { id: 'overview', label: 'Genel Bakış', icon: '📊' },
-  { id: 'finance', label: 'Finans', icon: '💰' },
-  { id: 'transactions', label: 'Para Hareketleri', icon: '🧾' },
-  { id: 'users', label: 'Kullanıcılar', icon: '👥' },
-  { id: 'messages', label: 'Mesajlar', icon: '💬' },
-  { id: 'rooms', label: 'Odalar', icon: '🎙️' },
-  { id: 'reports', label: 'Şikâyetler', icon: '🚩' },
-  { id: 'catalog', label: 'Hediye & Paketler', icon: '🎁' },
-  { id: 'agencies', label: 'Ajanslar', icon: '🏢' },
-  { id: 'broadcast', label: 'Duyuru', icon: '📢' },
+  { id: 'overview', label: 'Genel Bakış', icon: '📊', perm: 'dashboard.view' },
+  { id: 'finance', label: 'Finans', icon: '💰', perm: 'finance.view' },
+  { id: 'transactions', label: 'Para Hareketleri', icon: '🧾', perm: 'finance.view' },
+  { id: 'users', label: 'Kullanıcılar', icon: '👥', perm: 'users.view' },
+  { id: 'messages', label: 'Mesajlar', icon: '💬', perm: 'messages.read' },
+  { id: 'rooms', label: 'Odalar', icon: '🎙️', perm: 'rooms.manage' },
+  { id: 'reports', label: 'Şikâyetler', icon: '🚩', perm: 'reports.manage' },
+  { id: 'catalog', label: 'Hediye & Paketler', icon: '🎁', perm: 'catalog.manage' },
+  { id: 'agencies', label: 'Ajanslar', icon: '🏢', perm: 'agencies.manage' },
+  { id: 'broadcast', label: 'Duyuru', icon: '📢', perm: 'broadcast.send' },
+  { id: 'staff', label: 'Ekip', icon: '🛡️', perm: 'staff.manage' },
+  { id: 'activity', label: 'İşlem Kaydı', icon: '📜', perm: 'staff.audit' },
 ];
+
+const ROLE_LABELS = { admin: 'Yönetici', moderator: 'Moderatör', finance: 'Finans' };
+// Personel işlem kaydındaki işlem adlarının Türkçesi
+const STAFF_ACTION_LABELS = {
+  user_banned: 'Kullanıcı banlandı', user_unbanned: 'Ban kaldırıldı', balance_adjusted: 'Bakiye düzeltildi',
+  vip_granted: 'VIP verildi', report_resolved: 'Şikâyet karara bağlandı', room_closed: 'Oda kapatıldı',
+  conversation_viewed: 'Özel sohbet okundu', room_chat_viewed: 'Oda sohbeti okundu', gift_updated: 'Hediye düzenlendi',
+  package_updated: 'Paket düzenlendi', broadcast_sent: 'Duyuru gönderildi', agency_created: 'Ajans kuruldu',
+  staff_role_changed: 'Personel rolü değişti',
+};
 
 // Para defterindeki işlem türlerinin Türkçe adları
 const TX_LABELS = {
@@ -90,26 +104,33 @@ function chart(points, { barColors, lineColor }) {
   return `<svg class="chart" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none">${grid}${bars}${line}${labels}</svg>`;
 }
 
+const roleTag = (role) => (role ? ` <span class="tag tag-purple">${esc(ROLE_LABELS[role] || role)}</span>` : '');
+
 const dayLabel = (iso) => new Date(`${iso}T12:00:00`).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit' });
 
 // ─── Sayfalar ──────────────────────────────────────────────────────────────────
 
 async function overviewPage(main) {
-  const [stats, finance] = await Promise.all([api.adminStats(), api.adminFinance(14)]);
-  const today = finance.days[finance.days.length - 1];
+  const [stats, finance] = await Promise.all([api.adminStats(), can('finance.view') ? api.adminFinance(14) : null]);
+  const today = finance?.days[finance.days.length - 1];
   const kpis = [
     ['👥', 'Toplam kullanıcı', formatCount(stats.users_total), `bugün +${stats.users_today}`],
     ['🟢', 'Şu an çevrimiçi', formatCount(stats.online_now), ''],
     ['🎙️', 'Açık oda', formatCount(stats.rooms_active), ''],
     ['🪙', 'Bugün satılan coin', formatCoins(stats.coins_sold_today), 'demo: gerçek ödeme yok'],
     ['🎁', 'Bugün hediye (coin)', formatCoins(stats.gift_coins_today), ''],
-    ['👑', 'Bugün VIP (coin)', formatCoins(today.vip_coins), ''],
+    ...(today ? [['👑', 'Bugün VIP (coin)', formatCoins(today.vip_coins), '']] : []),
     ['🚩', 'Açık şikâyet', formatCount(stats.open_reports), '', stats.open_reports > 0],
     ['⛔', 'Banlı hesap', formatCount(stats.banned_users), ''],
   ];
   main.innerHTML = `
     <div class="grid grid-kpi">${kpis.map(([icon, label, value, hint, alert]) => `
       <div class="card kpi ${alert ? 'is-alert' : ''}"><span>${icon} ${label}</span><b>${value}</b>${hint ? `<small>${hint}</small>` : ''}</div>`).join('')}</div>
+    ${finance ? financeOverview(finance) : ''}`;
+}
+
+function financeOverview(finance) {
+  return `
     <div class="grid grid-2" style="margin-top:16px">
       <div class="card">
         <h2>Son 14 gün <small>coin</small></h2>
@@ -225,7 +246,7 @@ async function usersPage(main) {
     main.querySelector('#user-body').innerHTML = users.map((u) => `
       <tr class="is-clickable" data-open-user="${u.user.id}">
         <td>${userCell(u.user)}</td>
-        <td>${u.is_active ? '<span class="tag tag-green">Aktif</span>' : '<span class="tag tag-red">Banlı</span>'}${u.is_admin ? ' <span class="tag tag-purple">Yönetici</span>' : ''}</td>
+        <td>${u.is_active ? '<span class="tag tag-green">Aktif</span>' : '<span class="tag tag-red">Banlı</span>'}${roleTag(u.staff_role)}</td>
         <td class="num">${formatCoins(u.coin_balance)}</td><td class="num">${formatCoins(u.diamond_balance)}</td>
         <td>Lv.${u.user.level}</td><td>${u.user.vip_level ? `<span class="tag tag-gold">VIP ${u.user.vip_level}</span>` : '—'}</td>
         <td>${u.user.family ? `${esc(u.user.family.badge)} ${esc(u.user.family.name)}` : '—'}</td>
@@ -254,12 +275,13 @@ async function openUserDrawer(userId) {
   backdrop.addEventListener('click', closeDrawer);
 
   async function render() {
-    const [d, conversations] = await Promise.all([api.adminUser(userId), api.adminConversations(userId)]);
+    const [d, conversations] = await Promise.all([api.adminUser(userId), can('messages.read') ? api.adminConversations(userId) : null]);
+    const canBan = can('users.ban') && !d.staff_role;
     drawer.innerHTML = `
       <div class="drawer-head">
         ${avatar(d.user, 'avatar-lg')}
         <span><h2>${esc(d.user.display_name)}</h2><small>@${esc(d.user.username)} · ID ${d.user.id}${d.email ? ` · ${esc(d.email)}` : ''}</small>
-        <span>${d.is_active ? '<span class="tag tag-green">Aktif</span>' : '<span class="tag tag-red">Banlı</span>'} ${d.user.vip_level ? `<span class="tag tag-gold">VIP ${d.user.vip_level}</span>` : ''} <span class="tag">Lv.${d.user.level}</span></span></span>
+        <span>${d.is_active ? '<span class="tag tag-green">Aktif</span>' : '<span class="tag tag-red">Banlı</span>'}${roleTag(d.staff_role)} ${d.user.vip_level ? `<span class="tag tag-gold">VIP ${d.user.vip_level}</span>` : ''} <span class="tag">Lv.${d.user.level}</span></span></span>
         <button class="btn btn-sm" data-close-drawer>✕</button>
       </div>
       <div class="balances">
@@ -269,32 +291,32 @@ async function openUserDrawer(userId) {
       </div>
       <div class="card"><h2>İşlemler</h2>
         <div class="form-row">
-          ${d.is_admin ? '' : `<button class="btn ${d.is_active ? 'btn-danger' : 'btn-primary'}" data-user-act="${d.is_active ? 'ban' : 'unban'}">${d.is_active ? 'Banla' : 'Banı kaldır'}</button>`}
-          <a class="btn" href="index.html#/profile/${d.user.id}" target="_blank" rel="noopener">Uygulamada aç</a>
-          <button class="btn" data-goto-tx="${d.user.id}">Bütün para hareketleri</button>
+          ${canBan ? `<button class="btn ${d.is_active ? 'btn-danger' : 'btn-primary'}" data-user-act="${d.is_active ? 'ban' : 'unban'}">${d.is_active ? 'Banla' : 'Banı kaldır'}</button>` : ''}
+          <a class="btn" href="${APP_URL}/#/profile/${d.user.id}" target="_blank" rel="noopener">Uygulamada aç</a>
+          ${can('finance.view') ? `<button class="btn" data-goto-tx="${d.user.id}">Bütün para hareketleri</button>` : ''}
         </div>
-        ${d.is_admin ? '' : '<input class="input" id="ban-reason" placeholder="Ban gerekçesi (zorunlu)" style="margin-top:8px;width:100%" />'}
+        ${canBan && d.is_active ? '<input class="input" id="ban-reason" placeholder="Ban gerekçesi (zorunlu)" style="margin-top:8px;width:100%" />' : ''}
       </div>
-      <form class="card" id="adjust-form"><h2>Bakiye düzeltme <small>deftere yazılır</small></h2>
+      ${can('users.balance') ? `<form class="card" id="adjust-form"><h2>Bakiye düzeltme <small>deftere yazılır</small></h2>
         <div class="form-row">
           <select class="input" name="currency" style="flex:none"><option value="coin">Coin</option><option value="diamond">Elmas</option></select>
           <input class="input" name="amount" type="number" placeholder="+500 ekle / -500 düş" required />
         </div>
         <div class="form-row" style="margin-top:8px"><input class="input" name="reason" minlength="3" maxlength="200" placeholder="Gerekçe" required /><button class="btn btn-primary">Uygula</button></div>
-      </form>
-      <form class="card" id="vip-form"><h2>VIP ver <small>ücretsiz, eşyalarıyla</small></h2>
+      </form>` : ''}
+      ${can('users.vip') ? `<form class="card" id="vip-form"><h2>VIP ver <small>ücretsiz, eşyalarıyla</small></h2>
         <div class="form-row">
           <select class="input" name="level"><option value="1">VIP 1 · Gümüş</option><option value="2">VIP 2 · Altın</option><option value="3">VIP 3 · Elmas</option></select>
           <input class="input" name="days" type="number" min="1" max="365" value="30" />
           <button class="btn btn-primary">Ver</button>
         </div>
-      </form>
-      <div class="card"><h2>Özel sohbetleri <small>${conversations.length}</small></h2>
+      </form>` : ''}
+      ${conversations ? `<div class="card"><h2>Özel sohbetleri <small>${conversations.length}</small></h2>
         ${conversations.map((c) => {
           const other = c.users.find((u) => u.id !== d.user.id) || c.users[0];
           return `<button class="conv" data-open-conv="${c.id}">${avatar(other)}<span><b>${esc(other?.display_name || '—')}</b><small>${esc(c.last_message_text || '')}</small></span><small style="margin-left:auto">${c.message_count} mesaj</small></button>`;
         }).join('') || '<p class="empty">Sohbet yok</p>'}
-      </div>
+      </div>` : ''}
       <div class="card"><h2>Son hareketler</h2><table><tbody>${d.recent_transactions.map((t) => `
         <tr><td>${esc(t.label)}<br /><small>${dateTime(t.created_at)}</small></td><td class="num">${signed(t.amount)} ${t.currency === 'coin' ? '🪙' : '💎'}</td></tr>`).join('') || '<tr><td class="empty">Hareket yok</td></tr>'}</tbody></table></div>`;
   }
@@ -409,8 +431,8 @@ async function roomsPage(main) {
         <tbody>${rooms.map((r) => `
           <tr><td><b>${esc(r.title)}</b><br /><small>ID ${r.id}</small></td><td>${userCell(r.host)}</td><td class="num">${r.listener_count}</td>
           <td>${r.is_live ? '<span class="tag tag-red">CANLI</span>' : '<span class="tag">Açık</span>'}</td><td><small>${dateTime(r.created_at)}</small></td>
-          <td class="num"><button class="btn btn-sm" data-room-log="${r.id}" data-title="${esc(r.title)}">Sohbet geçmişi</button>
-            <a class="btn btn-sm" href="index.html#/room/${r.id}" target="_blank" rel="noopener">Odaya git</a>
+          <td class="num">${can('messages.read') ? `<button class="btn btn-sm" data-room-log="${r.id}" data-title="${esc(r.title)}">Sohbet geçmişi</button>` : ''}
+            <a class="btn btn-sm" href="${APP_URL}/#/room/${r.id}" target="_blank" rel="noopener">Odaya git</a>
             <button class="btn btn-sm btn-danger" data-close-room="${r.id}">Kapat</button></td></tr>`).join('') || '<tr><td colspan="6" class="empty">Açık oda yok</td></tr>'}</tbody>
       </table></div>
       <div class="card" id="room-log" style="margin-top:16px" hidden></div>`;
@@ -582,28 +604,123 @@ async function broadcastPage(main) {
   });
 }
 
+// Ekip: panel rolü verme / değiştirme / kaldırma (yalnızca yönetici)
+async function staffPage(main) {
+  const roleOptions = (selected) => Object.entries(ROLE_LABELS)
+    .map(([id, label]) => `<option value="${id}" ${id === selected ? 'selected' : ''}>${label}</option>`).join('');
+  async function render() {
+    const staff = await api.adminStaff();
+    main.innerHTML = `
+      <div class="grid grid-2">
+        <div class="card table-wrap"><h2>Yönetim ekibi <small>${staff.length} kişi</small></h2><table>
+          <thead><tr><th>Kişi</th><th>Rol</th><th></th></tr></thead>
+          <tbody>${staff.map((m) => (m.user.id === me.id
+            ? `<tr><td>${userCell(m.user)}</td><td>${roleTag(m.role)} <small>(sen)</small></td><td></td></tr>`
+            : `<tr data-staff="${m.user.id}"><td>${userCell(m.user)}</td>
+                <td><select class="input" data-role>${roleOptions(m.role)}</select></td>
+                <td class="num"><button class="btn btn-sm" data-save-role>Kaydet</button> <button class="btn btn-sm btn-danger" data-remove-role>Ekipten çıkar</button></td></tr>`)).join('')}</tbody>
+        </table></div>
+        <form class="card" id="staff-form"><h2>Ekibe ekle</h2>
+          <div class="grid" style="gap:10px">
+            <input class="input" name="user_id" type="number" placeholder="Kullanıcı ID'si" required />
+            <select class="input" name="role">${roleOptions('moderator')}</select>
+            <button class="btn btn-primary">Rol ver</button>
+          </div>
+          <p style="margin-top:12px;color:var(--muted);font-size:12px;line-height:1.6">
+            <b>Yönetici:</b> her şey. <b>Moderatör:</b> şikâyet, ban, oda, mesaj; paraya dokunamaz.
+            <b>Finans:</b> gelir raporları, para hareketleri, bakiye düzeltme; kimseyi banlayamaz.
+            Kişi panele kendi şifresiyle girer; rolü alınınca açık paneli bir sonraki işlemde kapanır.</p>
+        </form>
+      </div>`;
+  }
+  main.onclick = async (event) => {
+    const row = event.target.closest('[data-staff]');
+    const save = event.target.closest('[data-save-role]');
+    const remove = event.target.closest('[data-remove-role]');
+    if (!row || (!save && !remove)) return;
+    if (remove && !confirmTap(remove)) return;
+    try {
+      await api.adminSetStaffRole(Number(row.dataset.staff), remove ? null : row.querySelector('[data-role]').value);
+      toast(remove ? 'Ekipten çıkarıldı' : 'Rol güncellendi', 'success');
+      await render();
+    } catch (error) {
+      toast(error.message, 'error');
+    }
+  };
+  main.onsubmit = async (event) => {
+    event.preventDefault();
+    const form = event.target;
+    try {
+      await api.adminSetStaffRole(Number(form.elements.user_id.value), form.elements.role.value);
+      toast('Rol verildi', 'success');
+      await render();
+    } catch (error) {
+      toast(error.message, 'error');
+    }
+  };
+  await render();
+}
+
+// İşlem kaydı: hangi personel, ne zaman, kime, ne yaptı
+async function activityPage(main) {
+  let rows = [];
+  let actorId = '';
+  main.innerHTML = `
+    <div class="toolbar">
+      <input class="input" id="actor" type="number" placeholder="Personel ID ile süz" />
+      <button class="btn" id="actor-apply">Süz</button>
+    </div>
+    <div class="card table-wrap"><table>
+      <thead><tr><th>Zaman</th><th>Personel</th><th>İşlem</th><th>Hedef</th><th>Ayrıntı</th></tr></thead>
+      <tbody id="activity-body"></tbody></table>
+      <div class="more"><button class="btn btn-sm" id="activity-more">Daha eski</button></div>
+    </div>`;
+  const target = (r) => (r.target_type === 'user'
+    ? `<button class="btn btn-sm" data-open-user="${r.target_id}">👤 #${r.target_id}</button>`
+    : r.target_type === 'all' ? 'Herkes' : `${esc(r.target_type)} #${r.target_id ?? '—'}`);
+  async function load(append = false) {
+    const page = await api.adminStaffActions({ actorId, beforeId: append ? rows[rows.length - 1]?.id : '' });
+    rows = append ? rows.concat(page) : page;
+    main.querySelector('#activity-more').hidden = page.length < 50;
+    main.querySelector('#activity-body').innerHTML = rows.map((r) => `
+      <tr><td><small>${dateTime(r.created_at)}</small></td><td>${userCell(r.actor)}</td>
+      <td><span class="tag">${esc(STAFF_ACTION_LABELS[r.action] || r.action)}</span></td><td>${target(r)}</td>
+      <td>${esc(r.detail)}</td></tr>`).join('') || '<tr><td colspan="5" class="empty">Kayıt yok</td></tr>';
+  }
+  main.querySelector('#actor-apply').addEventListener('click', () => { actorId = main.querySelector('#actor').value; load(); });
+  main.querySelector('#activity-more').addEventListener('click', () => load(true));
+  await load();
+}
+
 const RENDERERS = {
   overview: overviewPage, finance: financePage, transactions: transactionsPage, users: usersPage, messages: messagesPage,
   rooms: roomsPage, reports: reportsPage, catalog: catalogPage, agencies: agenciesPage, broadcast: broadcastPage,
+  staff: staffPage, activity: activityPage,
 };
 
-// ─── Çerçeve: menü, sayfa değiştirme, giriş ─────────────────────────────────────
+// ─── Çerçeve: oturum, menü, sayfa değiştirme, giriş ────────────────────────────
 let me = null;
+let session = null;   // { role, permissions, idle_minutes } — panel oturumu
+
+const can = (permission) => Boolean(session?.permissions.includes(permission));
+const visiblePages = () => PAGES.filter((p) => can(p.perm));
 
 function shell() {
   appEl.innerHTML = `
     <nav class="sidebar">
       <div class="brand"><i>M</i> Muti Yönetim</div>
-      ${PAGES.map((p) => `<button class="nav-item" data-page="${p.id}">${p.icon} ${p.label}${p.id === 'reports' ? '<b id="report-badge" hidden></b>' : ''}</button>`).join('')}
+      ${visiblePages().map((p) => `<button class="nav-item" data-page="${p.id}">${p.icon} ${p.label}${p.id === 'reports' ? '<b id="report-badge" hidden></b>' : ''}</button>`).join('')}
       <div class="sidebar-foot">
-        <span>${avatar(me)} ${esc(me.display_name)}</span>
-        <a href="index.html" target="_blank" rel="noopener">Uygulamayı aç ↗</a>
+        <span>${avatar(me)} ${esc(me.display_name)}${roleTag(session.role)}</span>
+        <a href="${APP_URL}/" target="_blank" rel="noopener">Uygulamayı aç ↗</a>
+        <button class="nav-item" data-lock>🔒 Paneli kilitle</button>
         <button class="nav-item" data-logout>Çıkış yap</button>
       </div>
     </nav>
     <main class="main"><div class="topline"><h1 id="page-title"></h1><span class="spacer"></span></div><div id="page"></div></main>`;
   appEl.querySelector('.sidebar').addEventListener('click', async (event) => {
     if (event.target.closest('[data-logout]')) { await api.logout(); return location.reload(); }
+    if (event.target.closest('[data-lock]')) { api.adminEndSession(); return askPassword('staff_session_required'); }
     const item = event.target.closest('[data-page]');
     if (item) navigate(item.dataset.page);
   });
@@ -615,21 +732,24 @@ function shell() {
 }
 
 async function refreshBadges() {
+  const badge = document.getElementById('report-badge');
+  if (!badge) return;
   try {
     const stats = await api.adminStats();
-    const badge = document.getElementById('report-badge');
     badge.textContent = stats.open_reports;
     badge.hidden = !stats.open_reports;
   } catch { /* rozet olmasa da panel çalışır */ }
 }
 
 async function navigate(pageId, options = {}) {
-  const page = PAGES.find((p) => p.id === pageId) || PAGES[0];
+  const pages = visiblePages();
+  const page = pages.find((p) => p.id === pageId) || pages[0];
   history.replaceState(null, '', `#${page.id}`);
   appEl.querySelectorAll('[data-page]').forEach((b) => b.classList.toggle('is-active', b.dataset.page === page.id));
   document.getElementById('page-title').textContent = page.label;
   const main = document.getElementById('page');
   main.onclick = null;
+  main.onsubmit = null;
   main.innerHTML = '<p class="empty">Yükleniyor...</p>';
   try {
     await RENDERERS[page.id](main, options);
@@ -638,11 +758,80 @@ async function navigate(pageId, options = {}) {
   }
 }
 
+// ─── Şifre: kilit ekranı ve "şifreni yeniden gir" penceresi ──────────────────────
+// Sunucu "panel oturumu kapandı" (staff_session_required) ya da "bu işlem için şifre gerekli"
+// (staff_reauth_required) dediğinde api.js burayı çağırır; şifre doğrulanınca istek tekrarlanır.
+// Aynı anda birkaç istek takılırsa hepsi aynı pencereyi bekler.
+let passwordPrompt = null;
+
+function askPassword(code) {
+  passwordPrompt ||= new Promise((resolve, reject) => {
+    const reauth = code === 'staff_reauth_required';
+    const overlay = document.createElement('div');
+    overlay.className = `login lock ${reauth ? 'is-modal' : ''}`;
+    overlay.innerHTML = `
+      <form>
+        <h1>${reauth ? '🔐 Şifreni onayla' : session ? '🔒 Panel kilitlendi' : '🔒 Muti Yönetim'}</h1>
+        <p>${reauth
+          ? 'Bu işlem kritik. Devam etmek için şifreni yeniden gir.'
+          : session
+            ? `${esc(me.display_name)}, ${session.idle_minutes} dakika işlem yapılmadığı için panel kilitlendi. Devam etmek için şifreni gir.`
+            : `${esc(me.display_name)}, panele girmek için şifreni yeniden gir.`}</p>
+        <input class="input" name="password" type="password" placeholder="Şifre" autocomplete="current-password" required />
+        <div class="form-row">
+          ${reauth ? '<button type="button" class="btn" data-cancel>Vazgeç</button>' : '<button type="button" class="btn" data-logout>Çıkış yap</button>'}
+          <button class="btn btn-primary">${reauth ? 'Onayla' : 'Kilidi aç'}</button>
+        </div>
+      </form>`;
+    document.body.appendChild(overlay);
+    // Kilitte açık kullanıcı paneli de kapanır; şifre onayında açık kalır ki işlemin sonucu görünsün.
+    if (!reauth) closeDrawer();
+    const input = overlay.querySelector('input');
+    input.focus();
+    const finish = () => { overlay.remove(); passwordPrompt = null; };
+    overlay.addEventListener('click', async (event) => {
+      if (event.target.closest('[data-cancel]')) {
+        finish();
+        reject(Object.assign(new Error('İşlem iptal edildi.'), { code: 'cancelled' }));
+      } else if (event.target.closest('[data-logout]')) {
+        await api.logout();
+        location.reload();
+      }
+    });
+    overlay.querySelector('form').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      try {
+        session = await api.adminStartSession(input.value);
+        finish();
+        restartIdleTimer();
+        resolve();
+      } catch (error) {
+        input.value = '';
+        toast(error.message, 'error');
+      }
+    });
+  });
+  return passwordPrompt;
+}
+
+// Ekran 15 dk boyunca hiç sunucuya istek atmadıysa sunucu oturumu zaten kapatmıştır. Bir
+// sonraki tıklamayı beklemeden ekranı kilitle: masada açık kalan panelde veri görünmesin.
+let idleTimer = null;
+function restartIdleTimer() {
+  clearTimeout(idleTimer);
+  if (!session) return;
+  idleTimer = setTimeout(() => {
+    api.adminEndSession();
+    askPassword('staff_session_required').then(() => navigate(location.hash.slice(1)));
+  }, session.idle_minutes * 60 * 1000);
+}
+window.addEventListener('staff-session-renewed', restartIdleTimer);
+
 function loginScreen(message = '') {
   appEl.innerHTML = `
     <div class="login"><form id="login-form">
       <h1>Muti Yönetim</h1>
-      <p>${message || 'Yönetici hesabınla giriş yap.'}</p>
+      <p>${message || 'Yönetim ekibi hesabınla giriş yap.'}</p>
       <input class="input" name="username" placeholder="Kullanıcı adı" autocomplete="username" required />
       <input class="input" name="password" type="password" placeholder="Şifre" autocomplete="current-password" required />
       <button class="btn btn-primary">Giriş yap</button>
@@ -650,7 +839,11 @@ function loginScreen(message = '') {
   appEl.querySelector('#login-form').addEventListener('submit', async (event) => {
     event.preventDefault();
     try {
-      await api.login({ username: event.target.elements.username.value, password: event.target.elements.password.value });
+      const password = event.target.elements.password.value;
+      await api.login({ username: event.target.elements.username.value, password });
+      // Aynı şifreyle panel oturumu da hemen açılır: girişte şifre iki kez sorulmasın.
+      const user = await api.getMe();
+      if (user.staff_role) session = await api.adminStartSession(password);
       start();
     } catch (error) {
       toast(error.message, 'error');
@@ -665,8 +858,17 @@ async function start() {
   } catch {
     return loginScreen();
   }
-  if (!me.is_admin) return loginScreen('Bu hesap yönetici değil. Yönetici hesabıyla giriş yap.');
+  if (!me.staff_role) return loginScreen('Bu hesap yönetim ekibinde değil. Ekip hesabıyla giriş yap.');
+  setStaffAuthHandler(askPassword);
+  // Sekmede açık bir panel oturumu varsa devam et; yoksa (ya da süresi dolduysa) şifre sorulur.
+  if (!session) {
+    try {
+      session = api.hasStaffSession() ? await api.adminSession() : null;
+    } catch { /* aşağıda şifre sorulur */ }
+    if (!session) await askPassword('staff_session_required');
+  }
   shell();
+  restartIdleTimer();
   refreshBadges();
   navigate(location.hash.slice(1) || 'overview');
 }

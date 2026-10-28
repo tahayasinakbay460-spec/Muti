@@ -15,13 +15,40 @@ const BACKEND_ORIGIN = IS_DEV_SERVER
 export const API_BASE_URL = `${BACKEND_ORIGIN}/api/v1`;
 export const WS_BASE_URL = `${BACKEND_ORIGIN.replace(/^http/, 'ws')}/ws`;
 
+// Yönetim paneli uygulamadan AYRI bir adreste açılır (güvenlik: panelin tek kapısı, ileride IP kısıtı).
+// Oturumların karışmaması buna bağlı değil; o iş aşağıdaki STORAGE_KEYS'te.
+//   Canlıda:       uygulama https://mutishow.tech, panel https://admin.mutishow.tech (bkz. deploy/Caddyfile)
+//   Geliştirmede:  uygulama http://127.0.0.1:5500, panel http://localhost:5500 (tarayıcı bunları da ayrı sayar)
+function siteOrigins() {
+  if (IS_DEV_SERVER) {
+    const port = location.port ? `:${location.port}` : '';
+    // Telefondan (192.168.x.x) ya da dosyadan açıldıysa ayrı adres yok; panel aynı adreste kalır.
+    if (!['127.0.0.1', 'localhost'].includes(location.hostname)) return { app: location.origin, panel: location.origin };
+    return { app: `http://127.0.0.1${port}`, panel: `http://localhost${port}` };
+  }
+  const host = location.hostname.replace(/^(admin|www)\./, '');
+  return { app: `${location.protocol}//${host}`, panel: `${location.protocol}//admin.${host}` };
+}
+const SITE = siteOrigins();
+export const APP_URL = SITE.app;                 // uygulamanın kökü (sonunda / yok)
+export const ADMIN_URL = `${SITE.panel}/admin.html`;
+
 // Yeni kayıt olan kullanıcının henüz görseli yoktur; onun yerine bunlar gösterilir
 export const DEFAULT_AVATAR_URL = 'assets/avatars/m10.jpg';
 export const DEFAULT_COVER_URL = 'assets/covers/sky.jpg';
 
+// Yönetim paneli girişini uygulamanınkinden AYRI anahtarlarda saklar. Tarayıcı localStorage'ı adrese
+// göre ayırır; panel ile uygulama aynı adresten açılırsa (ör. 127.0.0.1:5500/admin.html) ortak
+// anahtarda uygulamaya giren kişi paneldekinin üstüne yazılıyordu. Ayrı anahtarla adres ne olursa
+// olsun iki oturum birbirini bozmaz.
+const IS_ADMIN_PAGE = location.pathname.endsWith('/admin.html');
+const TOKEN_PREFIX = IS_ADMIN_PAGE ? 'muti_panel_' : 'muti_';
+
 export const STORAGE_KEYS = {
-  accessToken: 'muti_access_token',
-  refreshToken: 'muti_refresh_token',
+  accessToken: `${TOKEN_PREFIX}access_token`,
+  refreshToken: `${TOKEN_PREFIX}refresh_token`,
+  // Yönetim paneli oturumu: sessionStorage'da (sekme kapanınca silinir), bkz. api.js
+  staffToken: 'muti_staff_token',
   mockState: 'muti_mock_state',
 };
 

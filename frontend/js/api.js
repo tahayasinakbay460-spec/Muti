@@ -812,7 +812,8 @@ const mockApi = {
   async setAgencyTarget() { throw new ApiError('mock_only', 'Mock modunda ajans yok.'); },
   async removeAgencyMember() { throw new ApiError('mock_only', 'Mock modunda ajans yok.'); },
   ...Object.fromEntries(['adminStats', 'adminReports', 'adminResolveReport', 'adminUsers', 'adminUser', 'adminBan', 'adminUnban',
-    'adminAdjustBalance', 'adminRooms', 'adminCloseRoom', 'adminAgencies', 'adminCreateAgency']
+    'adminAdjustBalance', 'adminRooms', 'adminCloseRoom', 'adminAgencies', 'adminCreateAgency', 'adminStartSession',
+    'adminSession', 'adminStaff', 'adminSetStaffRole', 'adminStaffActions', 'hasStaffSession', 'adminEndSession']
     .map((name) => [name, async () => { throw new ApiError('admin_only', 'Yönetim paneli mock modunda yok.'); }])),
 
   // Hazine sandığı: mock'ta hep dolum aşamasında (gerçek dolum ve açılma backend'de)
@@ -883,8 +884,27 @@ function clearTokens() {
   localStorage.removeItem(STORAGE_KEYS.refreshToken);
 }
 
+// Yönetim paneli oturumu (bkz. backend core/security.py "Panel oturumu"). Uygulamanın
+// oturumundan ayrı ve kısa: sekmeye özel sessionStorage'da durur, sekme kapanınca silinir.
+// Sunucu her panel cevabında süresi uzatılmış yenisini X-Staff-Token başlığıyla gönderir.
+const staffStorage = {
+  get: () => { try { return sessionStorage.getItem(STORAGE_KEYS.staffToken); } catch { return null; } },
+  set: (token) => {
+    try { sessionStorage.setItem(STORAGE_KEYS.staffToken, token); } catch { /* bu sekmede saklanamadı */ }
+    // Panel, hareketsizlik sayacını buna göre sıfırlar (bkz. admin/main.js restartIdleTimer)
+    window.dispatchEvent(new Event('staff-session-renewed'));
+  },
+  clear: () => { try { sessionStorage.removeItem(STORAGE_KEYS.staffToken); } catch { /* yok */ } },
+};
+
+// Panel "şifreni yeniden gir" dediğinde ne yapılacağını panel sayfası söyler (setStaffAuthHandler).
+let staffAuthHandler = null;
+export function setStaffAuthHandler(handler) { staffAuthHandler = handler; }
+
 async function send(path, { method = 'GET', body, headers = {} } = {}) {
   const token = localStorage.getItem(STORAGE_KEYS.accessToken);
+  const isAdmin = path.startsWith('/admin/');
+  const staffToken = isAdmin ? staffStorage.get() : null;
   let response;
   try {
     response = await fetch(API_BASE_URL + path, {
@@ -892,6 +912,7 @@ async function send(path, { method = 'GET', body, headers = {} } = {}) {
       headers: {
         'Content-Type': 'application/json',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(staffToken ? { 'X-Staff-Token': staffToken } : {}),
         ...headers,
       },
       body: body ? JSON.stringify(body) : undefined,
@@ -899,6 +920,8 @@ async function send(path, { method = 'GET', body, headers = {} } = {}) {
   } catch {
     throw new ApiError('network_error', 'Sunucuya ulaşılamıyor. Backend çalışıyor mu?');
   }
+  const renewedStaffToken = isAdmin && response.headers.get('X-Staff-Token');
+  if (renewedStaffToken) staffStorage.set(renewedStaffToken);
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     const error = new ApiError(data.code || 'request_failed', data.detail || 'İstek başarısız oldu.');
@@ -931,11 +954,21 @@ export function refreshSession() {
   return refreshPromise;
 }
 
+const STAFF_AUTH_CODES = ['staff_session_required', 'staff_reauth_required'];
+
 async function request(path, options) {
   try {
     return await send(path, options);
   } catch (error) {
     if (error.status !== 401) throw error;
+    // Panel oturumu kapandı ya da kritik işlem şifre istiyor: access token'ı yenilemek
+    // işe yaramaz. Panel şifreyi sorar, yeni panel oturumu açılır, istek bir kez tekrarlanır.
+    if (STAFF_AUTH_CODES.includes(error.code)) {
+      if (!staffAuthHandler) throw error;
+      await staffAuthHandler(error.code);
+      return send(path, options);
+    }
+    if (error.code?.startsWith('staff_')) throw error;
     await refreshSession();
     return send(path, options);
   }
@@ -967,6 +1000,7 @@ const httpApi = {
   async logout() {
     const refreshToken = localStorage.getItem(STORAGE_KEYS.refreshToken);
     clearTokens();
+    staffStorage.clear();
     // Sunucudaki oturumu da kapat; ulaşılamazsa bile bu cihazdan çıkış yapılmış olur
     if (refreshToken) await send('/auth/logout', { method: 'POST', body: { refresh_token: refreshToken } }).catch(() => {});
   },
@@ -1069,6 +1103,18 @@ const httpApi = {
   leaveKaraoke: (roomId) => request(`/rooms/${roomId}/karaoke/queue`, { method: 'DELETE' }),
   nextSinger: (roomId) => request(`/rooms/${roomId}/karaoke/next`, { method: 'POST' }),
   // ── Yönetim paneli (yalnızca yöneticiler) ve ajans ──
+  // Panel oturumu: şifreyle açılır; kritik işlemden önce de aynı çağrıyla tazelenir
+  async adminStartSession(password) {
+    const session = await request('/admin/session', { method: 'POST', body: { password } });
+    staffStorage.set(session.staff_token);
+    return session;
+  },
+  hasStaffSession: () => Boolean(staffStorage.get()),
+  adminEndSession: () => staffStorage.clear(),
+  adminSession: () => request('/admin/session'),
+  adminStaff: () => request('/admin/staff'),
+  adminSetStaffRole: (id, role) => request(`/admin/staff/${id}`, { method: 'PUT', body: { role } }),
+  adminStaffActions: ({ actorId = '', beforeId = '' } = {}) => request(`/admin/staff/actions?limit=50${actorId ? `&actor_id=${actorId}` : ''}${beforeId ? `&before_id=${beforeId}` : ''}`),
   adminStats: () => request('/admin/stats'),
   adminReports: (status = 'open') => request(`/admin/reports?status=${status}`),
   adminResolveReport: (id, action, note = '') => request(`/admin/reports/${id}/resolve`, { method: 'POST', body: { action, note } }),

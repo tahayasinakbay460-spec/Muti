@@ -40,6 +40,15 @@ class Settings(BaseSettings):
     access_token_minutes: int = 15
     # Refresh token uzun ömürlüdür: mobil kullanıcı her gün yeniden giriş yapmasın diye.
     refresh_token_days: int = 30
+    # Yönetim paneli oturumu (bkz. core/security.py "Panel oturumu"). Uygulama oturumundan
+    # ayrıdır ve daha sıkıdır: panelde bir kişinin hesabı bütün kullanıcılara dokunabilir.
+    # Bu kadar dakika hiç istek gelmezse panel kilitlenir, şifre yeniden sorulur.
+    staff_idle_minutes: int = Field(default=15, ge=1)
+    # Ban, bakiye, rol verme gibi kritik işlemler için şifrenin en fazla bu kadar dakika önce
+    # girilmiş olması gerekir; daha eskiyse şifre yeniden sorulur.
+    staff_reauth_minutes: int = Field(default=5, ge=1)
+    # Panel hiç boş kalmasa bile en fazla bu kadar saat sonra şifre yeniden sorulur (bir vardiya).
+    staff_session_max_hours: int = Field(default=12, ge=1)
 
     # ── Veritabanı ────────────────────────────────────────────────────────────
     # DEMO KISAYOLU: SQLite. Canlıda "postgresql+asyncpg://..." olacak.

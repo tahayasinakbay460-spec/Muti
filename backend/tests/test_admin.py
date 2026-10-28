@@ -8,20 +8,28 @@ from tests.test_api import me, new_guest
 from tests.test_social import register
 
 
+def staff_headers(client, username: str) -> dict:
+    """Personel hesabıyla giriş yapar ve panel oturumunu açar (şifre ikinci kez sorulur)."""
+    response = client.post(f"{API}/auth/login", json={"username": username, "password": "demo1234"})
+    assert response.status_code == 200, response.text
+    headers = auth_headers(response.json())
+    session = client.post(f"{API}/admin/session", headers=headers, json={"password": "demo1234"})
+    assert session.status_code == 200, session.text
+    return {**headers, "X-Staff-Token": session.json()["staff_token"]}
+
+
 @pytest.fixture
 def admin(client) -> dict:
-    response = client.post(f"{API}/auth/login", json={"username": "admin", "password": "demo1234"})
-    assert response.status_code == 200, response.text
-    return auth_headers(response.json())
+    return staff_headers(client, "admin")
 
 
 def test_admin_endpoints_are_admin_only(client, admin, guest):
     for path in ("/admin/stats", "/admin/reports", "/admin/users", "/admin/rooms", "/admin/agencies"):
         denied = client.get(f"{API}{path}", headers=guest)
-        assert denied.status_code == 403 and denied.json()["code"] == "admin_only"
+        assert denied.status_code == 403 and denied.json()["code"] == "staff_only"
     stats = client.get(f"{API}/admin/stats", headers=admin).json()
     assert stats["users_total"] > 10 and stats["open_reports"] >= 3 and stats["rooms_active"] >= 6
-    assert me(client, admin)["is_admin"] is True and me(client, guest)["is_admin"] is False
+    assert me(client, admin)["staff_role"] == "admin" and me(client, guest)["staff_role"] is None
 
 
 def test_ban_is_immediate_and_reversible(client, admin):
@@ -50,7 +58,7 @@ def test_ban_is_immediate_and_reversible(client, admin):
     assert client.post(f"{API}/auth/login", json=login).status_code == 200
 
     admin_id = me(client, admin)["id"]
-    assert client.post(f"{API}/admin/users/{admin_id}/ban", headers=admin, json={"reason": "deneme"}).json()["code"] == "cannot_ban_admin"
+    assert client.post(f"{API}/admin/users/{admin_id}/ban", headers=admin, json={"reason": "deneme"}).json()["code"] == "cannot_ban_staff"
 
 
 def test_reports_are_resolved_together(client, admin):

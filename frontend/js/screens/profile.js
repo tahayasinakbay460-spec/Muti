@@ -1,6 +1,6 @@
 // Profil: kapak, istatistikler ve sekmeler (Duvar, Eşyalar, Oyun & Ödüller, Hakkında)
 import { api } from '../api.js';
-import { DEFAULT_COVER_URL } from '../config.js';
+import { ADMIN_URL, DEFAULT_COVER_URL } from '../config.js';
 import { esc, icon, avatarImg, formatCount, joinParts, vipBadge, levelBadge, toast, openSheet } from '../ui.js';
 import { openEditProfileSheet } from './edit-profile.js';
 import { openReportSheet } from './report.js';
@@ -219,7 +219,7 @@ export async function renderProfile(root, { params }) {
              <a href="#/store" data-close>${icon('crown', 20)} Mağaza</a>
              <a href="#/vip" data-close>👑 VIP</a>
              <a href="#/agency" data-close>🏢 Ajans</a>
-             ${user.is_admin ? `<a href="admin.html" target="_blank" rel="noopener" data-close>🛡️ Yönetim Paneli (masaüstü)</a>` : ''}
+             ${user.staff_role ? `<a href="${ADMIN_URL}" target="_blank" rel="noopener" data-close>🛡️ Yönetim Paneli (masaüstü)</a>` : ''}
              <a href="#/settings" data-close>${icon('edit', 20)} Ayarlar</a>
              <button data-menu="logout" class="is-danger">${icon('logout', 20)} Çıkış yap</button>`
           : `${!user.cp_partner_id && !me.cp_partner_id ? `<button data-menu="propose">💍 CP teklif et</button>` : ''}

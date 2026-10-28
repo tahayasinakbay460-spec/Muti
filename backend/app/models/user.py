@@ -28,7 +28,9 @@ class User(Base):
     # Parolanın kendisi ASLA saklanmaz, yalnızca bcrypt hash'i.
     password_hash: Mapped[str | None] = mapped_column(String(255))
     is_guest: Mapped[bool] = mapped_column(Boolean, default=False)
-    is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Yönetim paneli rolü: "admin" | "moderator" | "finance"; boşsa panele giremez.
+    # Rollerin yetkileri core/permissions.py içinde.
+    staff_role: Mapped[str | None] = mapped_column(String(20), index=True)
     # false yapılırsa kullanıcı engellenmiş (banlı) demektir.
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 

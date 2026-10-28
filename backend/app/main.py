@@ -92,8 +92,9 @@ app.add_middleware(
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
-    # Tarayıcıdaki kod hata ekranında istek numarasını gösterebilsin.
-    expose_headers=["X-Request-ID"],
+    # Tarayıcıdaki kod hata ekranında istek numarasını gösterebilsin; yönetim paneli de her
+    # cevapta süresi uzatılmış panel token'ını okuyabilsin (bkz. core/security.py "Panel oturumu").
+    expose_headers=["X-Request-ID", "X-Staff-Token"],
 )
 # Her isteği kaydeder (core/logs.py). CORS'tan sonra eklendiği için dışta kalır: CORS'un
 # reddettiği istekler de kayda geçer.

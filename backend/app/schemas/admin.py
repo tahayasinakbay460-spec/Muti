@@ -6,6 +6,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.core.permissions import StaffRole
 from app.schemas.economy import TransactionOut
 from app.schemas.user import UserOut
 
@@ -54,7 +55,7 @@ class AdminUserOut(BaseModel):
     user: UserOut
     email: str | None
     is_active: bool
-    is_admin: bool
+    staff_role: str | None    # yönetim paneli rolü; personel banlanamaz
     coin_balance: int
     diamond_balance: int
     reports_against: int      # bu kişi hakkında açılmış şikâyet sayısı
@@ -244,3 +245,40 @@ class BroadcastRequest(BaseModel):
 
 class BroadcastResult(BaseModel):
     sent: int
+
+
+# ── Panel oturumu ve personel ─────────────────────────────────────────────────
+
+class StaffSessionRequest(BaseModel):
+    """Panele girerken (ve kritik işlemden önce) şifre yeniden sorulur."""
+    password: str = Field(min_length=1, max_length=128)
+
+
+class StaffSessionOut(BaseModel):
+    staff_token: str          # sonraki panel isteklerinde X-Staff-Token başlığıyla gönderilir
+    expires_in: int           # saniye; her panel isteğinde yeniden uzar
+    role: str
+    role_label: str
+    permissions: list[str]    # panel menüsü bunlara göre çizilir (asıl kontrol sunucuda)
+    idle_minutes: int
+
+
+class StaffMemberOut(BaseModel):
+    user: UserOut
+    role: str
+    role_label: str
+
+
+class StaffRoleUpdate(BaseModel):
+    # None: panel erişimini kaldır
+    role: StaffRole | None
+
+
+class StaffActionOut(BaseModel):
+    id: int
+    actor: UserOut | None
+    action: str
+    target_type: str
+    target_id: int | None
+    detail: str
+    created_at: datetime

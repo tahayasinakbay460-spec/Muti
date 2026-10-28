@@ -9,19 +9,24 @@ yazarsan, FastAPI o değeri senin yerine hazırlar:
   DbSession      → bu isteğe özel veritabanı oturumu
   CurrentUserId  → token'dan okunan kullanıcı id'si (veritabanına GİTMEZ, çok hızlı)
   CurrentUser    → veritabanından yüklenmiş kullanıcı satırı (banlı mı diye de bakar)
+  Staff("yetki") → yönetim paneli personeli; panel oturumu açık ve o yetkisi var
 
 Token yoksa ya da geçersizse endpoint hiç çalışmaz, istemciye 401 döner.
 """
+import time
+from dataclasses import dataclass
 from typing import Annotated
 
-from fastapi import Depends
+from fastapi import Depends, Header, Response
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.config import settings
 from app.core.errors import ForbiddenError, UnauthorizedError
 from app.core.logs import user_id_var
-from app.core.security import decode_access_token
+from app.core.permissions import permissions_of
+from app.core.security import create_staff_token, decode_access_token, decode_staff_token
 from app.models import User
 from app.realtime.state import room_state
 from app.services import admin_service
@@ -63,11 +68,62 @@ async def get_current_user(user_id: CurrentUserId, db: DbSession) -> User:
 CurrentUser = Annotated[User, Depends(get_current_user)]
 
 
-async def get_current_admin(user: CurrentUser) -> User:
-    """Yönetim paneli uçları için: uygulama yöneticisi değilse 403."""
-    if not user.is_admin:
-        raise ForbiddenError("Bu sayfa yalnızca yöneticilere açık.", code="admin_only")
-    return user
+@dataclass(frozen=True)
+class StaffContext:
+    """Panel isteğini yapan personel: kim, rolü, yetkileri, şifresini en son ne zaman girdi."""
+    user: User
+    role: str
+    permissions: frozenset[str]
+    auth_time: int   # şifrenin girildiği an (Unix zamanı, saniye)
+
+    def can(self, permission: str) -> bool:
+        return permission in self.permissions
 
 
-CurrentAdmin = Annotated[User, Depends(get_current_admin)]
+async def get_current_staff(
+    user: CurrentUser,
+    response: Response,
+    x_staff_token: Annotated[str | None, Header()] = None,
+) -> StaffContext:
+    """
+    Panel uçlarının ortak kapısı:
+      1. Hesabın bir panel rolü olmalı (yoksa 403).
+      2. Panel token'ı (`X-Staff-Token`) geçerli olmalı (yoksa 401 staff_session_required →
+         panel şifreyi yeniden sorar).
+      3. Her başarılı istekte token'ın süresi uzatılır ve cevapla geri gönderilir.
+    """
+    if not user.staff_role:
+        raise ForbiddenError("Bu sayfa yalnızca yönetim ekibine açık.", code="staff_only")
+    if not x_staff_token:
+        raise UnauthorizedError("Panel için şifreni gir.", code="staff_session_required")
+    auth_time = decode_staff_token(x_staff_token, user.id)
+    renewed, _ = create_staff_token(user.id, auth_time)
+    response.headers["X-Staff-Token"] = renewed
+    return StaffContext(user=user, role=user.staff_role, permissions=permissions_of(user.staff_role), auth_time=auth_time)
+
+
+CurrentStaff = Annotated[StaffContext, Depends(get_current_staff)]
+
+
+def require_recent_auth(staff: StaffContext) -> None:
+    """Kritik işlemden önce: şifre son birkaç dakikada girilmemişse yeniden sorulsun."""
+    if time.time() - staff.auth_time > settings.staff_reauth_minutes * 60:
+        raise UnauthorizedError("Bu işlem için şifreni yeniden gir.", code="staff_reauth_required")
+
+
+def Staff(permission: str, recent_auth: bool = False):  # noqa: N802 (tip gibi kullanılıyor)
+    """
+    Router'da parametre tipi olarak yazılır:
+
+        async def ban_user(staff: Staff("users.ban", recent_auth=True), ...)
+
+    Personelin bu yetkisi yoksa 403; `recent_auth=True` ise şifre de taze olmalı.
+    """
+    async def dependency(staff: CurrentStaff) -> StaffContext:
+        if not staff.can(permission):
+            raise ForbiddenError("Rolünün bu işleme yetkisi yok.", code="permission_denied")
+        if recent_auth:
+            require_recent_auth(staff)
+        return staff
+
+    return Annotated[StaffContext, Depends(dependency)]

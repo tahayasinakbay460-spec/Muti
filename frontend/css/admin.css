@@ -163,3 +163,9 @@ textarea.input { height: 90px; padding: 10px 12px; resize: vertical; width: 100%
   .inbox { height: auto; }
   .main { padding: 16px; }
 }
+
+/* Panel kilidi ve "şifreni yeniden gir" penceresi. Kilitte arka plan tamamen kapanır:
+   masada açık kalan ekranda kullanıcı verisi görünmesin. */
+.lock { position: fixed; inset: 0; z-index: 60; background: var(--bg); }
+.lock.is-modal { background: rgba(11, 10, 20, 0.82); backdrop-filter: blur(6px); }
+.lock form .form-row { justify-content: flex-end; }

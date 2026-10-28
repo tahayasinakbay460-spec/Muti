@@ -94,8 +94,13 @@ FAMILY_MESSAGES = [
 # CP: (kullanıcı, kullanıcı, durum, teklif eden). Ada'nın ana kullanıcıya bekleyen teklifi var.
 COUPLES = [(2002, 2003, "active", 2002), (2005, MAIN_USER_ID, "pending", 2005)]
 
-# Yönetim paneli için demo yönetici hesabı (kullanıcı adı: admin, parola: demo1234).
+# Yönetim paneli için demo personel hesapları (parola: demo1234). Her rolü denemek için birer hesap.
 ADMIN_USER_ID = 1
+STAFF_ACCOUNTS = [   # (id, kullanıcı adı, görünen ad, rol)
+    (ADMIN_USER_ID, "admin", "Muti Yönetim", "admin"),
+    (2, "moderator", "Muti Moderatör", "moderator"),
+    (3, "finance", "Muti Finans", "finance"),
+]
 # Ajans: (id, ad, sahibi, komisyon %, [(yayıncı, durum, aylık elmas hedefi)]). Ana kullanıcıya davet bekliyor.
 AGENCIES = [
     (1, "Yıldız Ajans", 2012, 15, [(2001, "active", 200_000), (2003, "active", 100_000), (MAIN_USER_ID, "invited", 0)]),
@@ -139,7 +144,7 @@ GIFT_TARGETS = {2001: (2015, 104211), 2012: (2003, 102938), 2015: (2001, 104211)
 async def seed_database(db: AsyncSession, with_admin: bool = True) -> None:
     """
     Veritabanı boşsa örnek veriyi ekler. Doluysa hiçbir şey yapmaz.
-    with_admin=False: vitrin yayını; parolası demo1234 olan yönetici hesabı eklenmez.
+    with_admin=False: vitrin yayını; parolası demo1234 olan personel hesapları (admin, moderator, finance) eklenmez.
     """
     if await db.scalar(select(func.count(User.id))):
         return
@@ -163,10 +168,11 @@ async def seed_database(db: AsyncSession, with_admin: bool = True) -> None:
             created_at=now - timedelta(days=joined_days),
         ))
     if with_admin:
-        db.add(User(
-            id=ADMIN_USER_ID, username="admin", email="admin@demo.local", password_hash=password_hash,
-            display_name="Muti Yönetim", is_admin=True, is_verified=True, created_at=now - timedelta(days=500),
-        ))
+        for uid, username, name, role in STAFF_ACCOUNTS:
+            db.add(User(
+                id=uid, username=username, email=f"{username}@demo.local", password_hash=password_hash,
+                display_name=name, staff_role=role, is_verified=True, created_at=now - timedelta(days=500),
+            ))
     await db.flush()   # kullanıcılar önce yazılsın; aşağıdaki satırlar onlara bağlı
 
     for rid, title, category, cover, is_live, _listeners, host_id, announcement, seats in ROOMS:

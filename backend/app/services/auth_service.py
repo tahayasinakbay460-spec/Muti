@@ -122,8 +122,8 @@ async def ensure_admin_account(db: AsyncSession) -> None:
     username = settings.admin_username.lower()
     user = await db.scalar(select(User).where(User.username == username))
     if user is not None:
-        if not user.is_admin:
-            user.is_admin = True
+        if user.staff_role != "admin":
+            user.staff_role = "admin"
             await db.commit()
             audit("admin_granted_from_env", target_user_id=user.id)
         return
@@ -131,7 +131,7 @@ async def ensure_admin_account(db: AsyncSession) -> None:
         username=username,
         password_hash=await hash_password(settings.admin_password),
         display_name=settings.admin_username,
-        is_admin=True,
+        staff_role="admin",
     )
     db.add(user)
     await db.commit()

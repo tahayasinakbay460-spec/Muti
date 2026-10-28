@@ -3,6 +3,19 @@
 # WebSocket (/ws/...) bağlantılarını da ayrıca ayar gerekmeden uygulamaya iletir.
 {$DOMAIN} {
 	encode zstd gzip
+	# Yönetim paneli bu adreste KAPALI: panelin tek kapısı admin.{$DOMAIN}. Panel API'si de
+	# kapatılır; yoksa paneli atlayıp aynı istekler ana adresten atılabilirdi.
+	@panel path /admin.html /api/v1/admin /api/v1/admin/*
+	respond @panel 404
+	reverse_proxy app:8000
+}
+
+# Yönetim paneli. Aynı uygulamayı sunar; tarayıcı ayrı site saydığı için uygulamadaki oturumla
+# karışmaz. Sertifikayı Caddy alır; DNS'te "admin" için A kaydı sunucunun IP'sini göstermeli.
+# İleride ofis IP'si belli olunca buraya yalnızca o IP'ye izin veren kural eklenecek.
+admin.{$DOMAIN} {
+	encode zstd gzip
+	redir / /admin.html
 	reverse_proxy app:8000
 }
 
