@@ -275,7 +275,11 @@ async function openUserDrawer(userId) {
   backdrop.addEventListener('click', closeDrawer);
 
   async function render() {
-    const [d, conversations] = await Promise.all([api.adminUser(userId), can('messages.read') ? api.adminConversations(userId) : null]);
+    // Mesaj okuma sunucuda kapalı olabilir (ADMIN_CAN_READ_MESSAGES=false): o zaman sohbet bölümü
+    // gösterilmez, panelin geri kalanı yine açılır.
+    const [d, conversations] = await Promise.all([
+      api.adminUser(userId), can('messages.read') ? api.adminConversations(userId).catch(() => null) : null,
+    ]);
     const canBan = can('users.ban') && !d.staff_role;
     drawer.innerHTML = `
       <div class="drawer-head">
@@ -363,7 +367,12 @@ async function openUserDrawer(userId) {
       toast(error.code === 'insufficient_balance' ? 'Bakiye bu kadar düşmeye yetmiyor.' : error.message, 'error');
     }
   });
-  await render();
+  try {
+    await render();
+  } catch (error) {
+    // "Yükleniyor..." yazısında takılı kalmasın; hatayı göster
+    drawer.innerHTML = `<button class="btn btn-sm" data-close-drawer>✕</button><p class="empty">${esc(error.message)}</p>`;
+  }
 }
 
 function closeDrawer() {
