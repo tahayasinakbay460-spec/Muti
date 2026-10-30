@@ -143,6 +143,8 @@ class WebSocketChannel extends BaseChannel {
     this.socket = socket;
 
     socket.addEventListener('open', () => {
+      if (this.hasConnected) this.emit('connection:reopened', {});
+      this.hasConnected = true;
       this.attempts = 0;
       // Bağlantı açılmadan önce gönderilmek istenenleri şimdi yolla
       this.queue.splice(0).forEach((data) => socket.send(data));

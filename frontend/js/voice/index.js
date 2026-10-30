@@ -37,7 +37,18 @@ export async function joinVoice({ room, me, channel, onSpeaking, onError }) {
     // Konuşma izni token'a yazılan sağlayıcılarda izin değişince yeni bilgi almak için
     refreshInfo: () => api.getVoiceJoin(room.id),
   });
-  await client.start();
+  // Ses hataları yalnızca tarayıcıda görünür; sunucu kaydına düşsün diye bildiriyoruz.
+  // Bildirim başarısız olursa kullanıcıyı etkilemesin.
+  client.report = (event, detail = '') => {
+    api.reportVoiceEvent({ room_id: room.id, provider: info.provider, event, detail: String(detail).slice(0, 300) })
+      .catch(() => {});
+  };
+  try {
+    await client.start();
+  } catch (error) {
+    client.report('join_failed', `${error.code || ''} ${error.message}`);
+    throw error;
+  }
   return client;
 }
 

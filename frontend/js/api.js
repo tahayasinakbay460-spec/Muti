@@ -422,6 +422,8 @@ const mockApi = {
     return expandRoom(room);
   },
 
+  async reportVoiceEvent() {},
+
   async toggleMute(roomId) {
     await delay(60);
     const room = db.rooms.find((r) => r.id === Number(roomId));
@@ -1045,6 +1047,7 @@ const httpApi = {
   listRoomMembers: (roomId) => request(`/rooms/${roomId}/members`),
   // Sesli görüşmeye bağlanma bilgisi; biçimi sunucudaki ses sağlayıcısına göre değişir (bkz. js/voice/)
   getVoiceJoin: (roomId) => request(`/rooms/${roomId}/voice`),
+  reportVoiceEvent: (report) => request('/diagnostics/voice', { method: 'POST', body: report }),
   // role: 'admin' | 'vip' | 'listener' (özel rolü geri al)
   setRoomRole: (roomId, userId, role) => request(`/rooms/${roomId}/roles/${userId}`, { method: 'PUT', body: { role } }),
   setSeatLock: (roomId, seatIndex, locked) => request(`/rooms/${roomId}/seats/${seatIndex}/lock`, { method: locked ? 'PUT' : 'DELETE' }),

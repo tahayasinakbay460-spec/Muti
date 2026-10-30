@@ -34,7 +34,8 @@ from app.realtime import room_socket, user_socket
 from app.realtime.state import room_state
 from app.services import admin_service, auth_service, catalog_service
 from app.routers import (
-    activities, admin, agency, auth, content, conversations, economy, engagement, rooms, social, store, users,
+    activities, admin, agency, auth, content, conversations, diagnostics, economy, engagement, rooms, social, store,
+    users,
 )
 
 
@@ -103,7 +104,10 @@ app.add_middleware(RequestLogMiddleware)
 # Bütün HTTP uçları /api/v1 altında. İleride uyumsuz bir değişiklik gerekirse /api/v2
 # açılır; eski mobil uygulama sürümleri /api/v1 ile çalışmaya devam eder.
 api_v1 = APIRouter(prefix="/api/v1")
-for module in (auth, users, rooms, activities, economy, store, engagement, agency, admin, conversations, social, content):
+for module in (
+    auth, users, rooms, activities, economy, store, engagement, agency, admin, conversations, social, content,
+    diagnostics,
+):
     api_v1.include_router(module.router)
 app.include_router(api_v1)
 

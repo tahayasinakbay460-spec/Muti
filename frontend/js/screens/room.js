@@ -35,8 +35,13 @@ const CHAT_MUTE_OPTIONS = [
   { minutes: 1440, label: '24 saat' },
 ];
 
+// Oda ekranı ile app.js arasındaki bağlantı. Oda başka sayfaya geçince kapanmaz; gerçekten
+// çıkmak için exit çağrılır (app.js doldurur). getRoom arka plan düğmesine güncel odayı verir.
+export const roomSession = { exit: () => {}, getRoom: () => null };
+
 export async function renderRoom(root, { params }) {
   let [room, me, gifts] = await Promise.all([api.getRoom(params[0]), api.getMe(), api.listGifts()]);
+  roomSession.getRoom = () => room;
   let speakingIndexes = [];
   // Zar atıp sonucunu bekliyorsak, sonuç gelince çağrılacak fonksiyon
   let pendingDiceRoll = null;
@@ -69,7 +74,8 @@ export async function renderRoom(root, { params }) {
     <div class="room">
       <img class="room-bg" src="${esc(room.cover_url)}" alt="" />
       <header class="room-header">
-        <button class="icon-btn icon-btn-glass" data-action="leave" aria-label="Odadan çık">${icon('chevron-down', 22)}</button>
+        <button class="icon-btn icon-btn-glass" data-action="minimize" aria-label="Küçült">${icon('chevron-down', 22)}</button>
+        <button class="icon-btn icon-btn-glass" data-action="leave" aria-label="Odadan çık">${icon('logout', 20)}</button>
         <img class="room-thumb" src="${esc(room.cover_url)}" alt="" />
         <div class="room-title">
           <h1 id="room-name">${esc(room.title)}</h1>
@@ -951,7 +957,7 @@ export async function renderRoom(root, { params }) {
       if (!item) return;
       sheet.close();
       const { menu } = item.dataset;
-      if (menu === 'leave') location.hash = '#/home';
+      if (menu === 'leave') roomSession.exit();
       else if (menu === 'announcement') toast(room.announcement);
       else if (menu === 'members') openMembersSheet();
       else if (menu === 'settings') openRoomSettingsSheet();
@@ -991,7 +997,8 @@ export async function renderRoom(root, { params }) {
     if (!button) return;
     const { action } = button.dataset;
 
-    if (action === 'leave') location.hash = '#/home';
+    if (action === 'leave') roomSession.exit();
+    else if (action === 'minimize') location.hash = '#/home';
     else if (action === 'more') openMoreSheet();
     else if (action === 'gift') openGiftSheet();
     else if (action === 'game') openGameSheet();
@@ -1096,6 +1103,7 @@ export async function renderRoom(root, { params }) {
       root.querySelector('#audience-more').textContent = `+${Math.max(0, listener_count - audience.length)}`;
     })
     .on('room:user_left', ({ user_id: userId }) => voice?.removePeer(userId))
+    .on('connection:reopened', () => voice?.report('socket_reconnected'))
     // Yalnızca mock: gerçek backend'de konuşanları js/voice/ hesaplar
     .on('room:speaking', ({ seat_indexes: seatIndexes }) => setSpeaking(seatIndexes));
 
@@ -1105,7 +1113,7 @@ export async function renderRoom(root, { params }) {
     if (kicked) return;
     kicked = true;
     toast('Bu odadan çıkarıldın.', 'error');
-    location.hash = '#/home';
+    roomSession.exit();
   }
 
   // Oda sahibi odayı kapattı (ya da kapatan biziz)
@@ -1114,7 +1122,7 @@ export async function renderRoom(root, { params }) {
     if (closed) return;
     closed = true;
     toast('Oda kapatıldı.');
-    location.hash = '#/home';
+    roomSession.exit();
   }
 
   activities = mountRoomActivities({ root, getRoom: () => room, me, channel, isModerator, addSystemLine });

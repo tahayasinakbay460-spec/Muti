@@ -13,6 +13,7 @@ import { SpeakingDetector } from './speaking.js';
 // Agora'nın resmî tarayıcı kütüphanesi; yüklenince window.AgoraRTC olarak gelir.
 const AGORA_SDK_URL = 'https://cdn.jsdelivr.net/npm/agora-rtc-sdk-ng@4.24.8/AgoraRTC_N-production.js';
 let sdkLoading = null;
+const SEAT_SYNC_GRACE_MS = 3000;
 
 function loadSdk() {
   sdkLoading ||= new Promise((resolve, reject) => {
@@ -54,6 +55,7 @@ class AgoraVoiceClient {
     this.AgoraRTC = AgoraRTC;
     // Tarayıcı sesi kullanıcı sayfaya dokunmadan çalmazsa ilk dokunuşta yeniden dene
     AgoraRTC.onAutoplayFailed = () => {
+      this.report('autoplay_blocked');
       document.addEventListener('pointerdown', () => {
         this.remote.forEach((_, userId) => this.applyRemoteMute(userId, true));
         this.detector.resume();
@@ -63,11 +65,26 @@ class AgoraVoiceClient {
     this.client = AgoraRTC.createClient({ mode: 'live', codec: 'vp8' });
     this.client.on('user-published', async (user, mediaType) => {
       if (mediaType !== 'audio' || this.closed) return;
-      await this.client.subscribe(user, 'audio');
+      try {
+        await this.client.subscribe(user, 'audio');
+      } catch (error) {
+        this.report('subscribe_failed', `uid=${user.uid} ${error.code || ''} ${error.message}`);
+        return;
+      }
       this.remote.set(user.uid, user);
       this.detector.add(user.uid, new MediaStream([user.audioTrack.getMediaStreamTrack()]));
       this.applyRemoteMute(user.uid);
+      // Koltuk haberi sesten biraz geç gelebilir; bu süreden sonra hâlâ yoksa koltuk listemiz eski
+      setTimeout(() => {
+        if (!this.closed && this.remote.has(user.uid) && !this.seatOf(user.uid)) {
+          this.report('speaker_not_seated', `uid=${user.uid}`);
+        }
+      }, SEAT_SYNC_GRACE_MS);
     });
+    this.client.on('connection-state-change', (current, previous, reason) => {
+      if (!this.closed) this.report('connection_changed', `${previous}->${current} ${reason || ''}`);
+    });
+    this.client.on('token-privilege-did-expire', () => this.report('token_expired'));
     const forget = (user) => {
       this.remote.delete(user.uid);
       this.detector.remove(user.uid);
@@ -104,6 +121,7 @@ class AgoraVoiceClient {
   enqueueSeat() {
     this.queue = this.queue.then(() => this.applySeat()).catch((error) => {
       console.warn('[voice] seat change failed', error);
+      this.report('mic_failed', `seat_change ${error.code || ''} ${error.message}`);
       this.onError('Mikrofon açılamadı.');
     });
   }
@@ -116,11 +134,15 @@ class AgoraVoiceClient {
     if (wantsMic && !this.localTrack) {
       // Odaya dinleyici olarak girdiysek token'da konuşma izni yok: yenisini iste
       if (!this.canPublish) await this.renewToken();
-      if (!this.canPublish) return;
+      if (!this.canPublish) {
+        this.report('mic_denied_by_server');
+        return;
+      }
       await this.client.setClientRole('host');
       try {
         this.localTrack = await this.AgoraRTC.createMicrophoneAudioTrack({ AEC: true, ANS: true, AGC: true });
-      } catch {
+      } catch (error) {
+        this.report('mic_failed', `create_track ${error.code || ''} ${error.message}`);
         await this.client.setClientRole('audience');
         this.onError('Mikrofona izin verilmedi. Konuşmak için tarayıcı ayarlarından izin ver.');
         return;

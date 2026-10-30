@@ -1,12 +1,12 @@
 // Uygulama girişi: hash tabanlı yönlendirme ve alt sekme çubuğu.
 import { api } from './api.js';
-import { icon, closeAllSheets, toast } from './ui.js';
+import { esc, icon, closeAllSheets, toast } from './ui.js';
 import { startInbox, stopInbox, refreshUnread, paintUnreadBadge } from './inbox.js';
 import { renderAuth } from './screens/auth.js';
 import { renderHome } from './screens/home.js';
 import { renderExplore } from './screens/explore.js';
 import { renderFollowing } from './screens/following.js';
-import { renderRoom } from './screens/room.js';
+import { renderRoom, roomSession } from './screens/room.js';
 import { renderMessages, renderChat } from './screens/messages.js';
 import { renderProfile } from './screens/profile.js';
 import { renderWallet } from './screens/wallet.js';
@@ -55,8 +55,48 @@ const TABS = [
 
 const screenEl = document.getElementById('screen');
 const tabbarEl = document.getElementById('tabbar');
+const roomBubbleEl = document.getElementById('room-bubble');
 let cleanup = null;
 let renderToken = 0;
+// Açık oda: { id, view, cleanup }. Başka sayfaya geçince kapanmaz, görünmez olup arka planda
+// çalışmaya devam eder (ses ve bağlantı açık kalır). Yalnızca closeRoom kapatır.
+let activeRoom = null;
+
+const isRoomParked = () => Boolean(activeRoom?.view.classList.contains('is-parked'));
+
+function closeRoom() {
+  if (!activeRoom) return;
+  const { view, cleanup: closeConnections } = activeRoom;
+  activeRoom = null;
+  closeConnections();
+  view.remove();
+  renderRoomBubble();
+}
+
+// Arka plandaki odaya dönmeyi sağlayan sağ alttaki yuvarlak düğme
+function renderRoomBubble() {
+  const isVisible = isRoomParked();
+  roomBubbleEl.hidden = !isVisible;
+  if (!isVisible) return;
+  const room = roomSession.getRoom();
+  roomBubbleEl.innerHTML = `
+    <a class="room-bubble-open" href="#/room/${activeRoom.id}" aria-label="${esc(room.title)} odasına dön">
+      <img src="${esc(room.cover_url)}" alt="" />
+    </a>
+    <button class="room-bubble-close" data-action="close-room" aria-label="Odadan çık">${icon('close', 14)}</button>`;
+}
+
+roomBubbleEl.addEventListener('click', (event) => {
+  if (event.target.closest('[data-action="close-room"]')) closeRoom();
+});
+
+// Oda ekranı "çık" dediğinde, atıldığında ya da oda kapandığında buraya gelir.
+// Kullanıcı başka sayfadaysa (oda arka plandaysa) o sayfadan koparılmaz.
+roomSession.exit = () => {
+  const wasParked = isRoomParked();
+  closeRoom();
+  if (!wasParked) location.hash = '#/home';
+};
 
 function renderTabbar(activeTab) {
   tabbarEl.hidden = !activeTab;
@@ -104,22 +144,40 @@ async function handleRoute() {
   // Önceki ekranın zamanlayıcı/bağlantılarını kapat
   if (cleanup) cleanup();
   cleanup = null;
+  const roomId = route.render === renderRoom ? match[1] : null;
+  // Aynı anda tek oda: çıkış yapınca ya da başka odaya girince açık oda gerçekten kapanır
+  if (route.isPublic || (roomId && roomId !== activeRoom?.id)) closeRoom();
   closeAllSheets();
   const token = ++renderToken;
 
   renderTabbar(route.tab);
   screenEl.className = `screen ${route.tab ? 'has-tabbar' : ''} ${route.isFixed ? 'is-fixed' : ''}`;
   screenEl.scrollTop = 0;
+  // Arka plandaki oda sayfadan sökülmez; sökülse YouTube oynatıcısı baştan yüklenirdi
+  [...screenEl.children].forEach((child) => {
+    if (child !== activeRoom?.view) child.remove();
+  });
+
+  // Arka plandaki odaya dönüş: bağlantılar açık, yeniden çizmeye gerek yok
+  if (roomId && activeRoom) {
+    activeRoom.view.classList.remove('is-parked');
+    renderRoomBubble();
+    return;
+  }
+  activeRoom?.view.classList.add('is-parked');
+  renderRoomBubble();
+
   // Her ekran yeni bir kapsayıcıya çizilir; böylece eski ekranın event dinleyicileri birikmez
   const view = document.createElement('div');
   view.className = 'view';
   view.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
-  screenEl.replaceChildren(view);
+  screenEl.append(view);
 
   try {
     const result = await route.render(view, { params: match.slice(1), query });
     // Kullanıcı render bitmeden başka sayfaya geçtiyse geç gelen cleanup'ı hemen çalıştır
     if (token !== renderToken) result?.();
+    else if (roomId) activeRoom = { id: roomId, view, cleanup: result };
     else cleanup = result || null;
   } catch (error) {
     console.error(error);
