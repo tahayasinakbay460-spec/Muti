@@ -22,6 +22,12 @@ def test_voice_event_is_written_to_server_log(client, guest, caplog):
     assert fields["user_agent"] == "test-browser"
 
 
+def test_mic_flow_events_are_accepted(client, guest):
+    for event in ("mic_published", "mic_flowing", "mic_silent"):
+        body = {**REPORT, "event": event}
+        assert client.post("/api/v1/diagnostics/voice", json=body, headers=guest).status_code == 204
+
+
 def test_voice_event_requires_login(client):
     assert client.post("/api/v1/diagnostics/voice", json=REPORT).status_code == 401
 

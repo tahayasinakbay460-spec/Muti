@@ -14,6 +14,7 @@ import { SpeakingDetector } from './speaking.js';
 const AGORA_SDK_URL = 'https://cdn.jsdelivr.net/npm/agora-rtc-sdk-ng@4.24.8/AgoraRTC_N-production.js';
 let sdkLoading = null;
 const SEAT_SYNC_GRACE_MS = 3000;
+const MIC_FLOW_CHECK_MS = 3000;
 
 function loadSdk() {
   sdkLoading ||= new Promise((resolve, reject) => {
@@ -150,12 +151,26 @@ class AgoraVoiceClient {
       // İzin penceresi açıkken koltuktan kalkmış ya da odadan çıkmış olabiliriz
       if (this.closed || !this.seatOf(this.me.id)) return this.releaseMic();
       await this.client.publish(this.localTrack);
+      this.report('mic_published');
+      this.reportMicFlow();
       this.detector.add(this.me.id, new MediaStream([this.localTrack.getMediaStreamTrack()]));
     } else if (!wantsMic && this.localTrack) {
       await this.releaseMic();
     }
     // Mikrofonu kapatmak = sesi göndermeyi durdurmak (yayın ve bağlantı açık kalır)
     if (this.localTrack) await this.localTrack.setMuted(Boolean(seat.is_muted));
+  }
+
+  // Yalnızca kayıt: mikrofon gerçekten Agora'ya ses gönderiyor mu? Kapalı mikrofon ölçülmez.
+  reportMicFlow() {
+    setTimeout(() => {
+      const track = this.localTrack;
+      if (this.closed || !track || track.muted) return;
+      const { sendBytes, sendBitrate } = this.client.getLocalAudioStats();
+      const { readyState, muted } = track.getMediaStreamTrack();
+      this.report(sendBytes > 0 ? 'mic_flowing' : 'mic_silent',
+        `bytes=${sendBytes} bitrate=${sendBitrate} state=${readyState} track_muted=${muted}`);
+    }, MIC_FLOW_CHECK_MS);
   }
 
   async releaseMic() {
