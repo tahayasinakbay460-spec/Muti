@@ -78,6 +78,7 @@ async def lifespan(_app: FastAPI):
     )
     yield
     logger.info("Server stopping")
+    room_socket.cancel_pending_departures()
     await engine.dispose()   # veritabanı bağlantılarını düzgünce kapat
 
 

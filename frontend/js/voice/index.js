@@ -8,9 +8,12 @@
 //   update(seats)        → koltuklar değişti (oturdum/kalktım, mikrofon açıldı/kapandı)
 //   removePeer(userId)   → kişi odadan çıktı/atıldı
 //   close()              → odadan çıkarken her şeyi kapat
-// Ekrana iki şey bildirir: onSpeaking(Set<kullanıcı id>) ve onError(mesaj).
+//   reconnect()          → isteğe bağlı: kopan sesi yeniden kur ("Yeniden bağlan" tuşu)
+// Ekrana üç şey bildirir: onSpeaking(Set<kullanıcı id>), onError(mesaj) ve
+// onConnectionLost(true/false) = ses koptu, tuşu göster / bağlantı yeniden deneniyor, gizle.
 import { api } from '../api.js';
 import { USE_MOCK } from '../config.js';
+import { retried } from './retry.js';
 
 const CLIENTS = {
   mesh: () => import('./mesh.js'),
@@ -18,13 +21,26 @@ const CLIENTS = {
   agora: () => import('./agora.js'),
 };
 
-export async function joinVoice({ room, me, channel, onSpeaking, onError }) {
+export async function joinVoice({ room, me, channel, onSpeaking, onError, onConnectionLost, isCancelled = () => false }) {
   // Mock'ta ses yok; "konuşuyor" halkasını mock kanal taklit eder
   if (USE_MOCK) return null;
   if (!window.RTCPeerConnection) {
     onError('Bu tarayıcı sesli görüşmeyi desteklemiyor.');
     return null;
   }
+  // Odaya girerken ağ bir an gittiyse kişi sessiz kalmasın. Odadan atılan için denemenin anlamı yok.
+  let banned = false;
+  return retried(async () => {
+    try {
+      return await connectOnce({ room, me, channel, onSpeaking, onError, onConnectionLost });
+    } catch (error) {
+      banned = error.code === 'room_banned';
+      throw error;
+    }
+  }, { shouldStop: () => banned || isCancelled() });
+}
+
+async function connectOnce({ room, me, channel, onSpeaking, onError, onConnectionLost }) {
   const info = await api.getVoiceJoin(room.id);
   const load = CLIENTS[info.provider];
   if (!load) {
@@ -33,7 +49,7 @@ export async function joinVoice({ room, me, channel, onSpeaking, onError }) {
   }
   const { createVoiceClient } = await load();
   const client = createVoiceClient({
-    info, me, channel, onSpeaking, onError,
+    info, me, channel, onSpeaking, onError, onConnectionLost,
     // Konuşma izni token'a yazılan sağlayıcılarda izin değişince yeni bilgi almak için
     refreshInfo: () => api.getVoiceJoin(room.id),
   });
@@ -47,6 +63,7 @@ export async function joinVoice({ room, me, channel, onSpeaking, onError }) {
     await client.start();
   } catch (error) {
     client.report('join_failed', `${error.code || ''} ${error.message}`);
+    client.close();
     throw error;
   }
   return client;

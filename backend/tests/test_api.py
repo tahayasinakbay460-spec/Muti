@@ -204,9 +204,9 @@ def test_public_lists_load(client, muti):
     for path in ("/banners", "/gifts", "/wallet/packages", "/users/suggested", "/users/2001/profile"):
         assert client.get(f"{API}{path}", headers=muti).status_code == 200, path
     gifters = client.get(f"{API}/leaderboards/gifters", headers=muti).json()
-    # İlk ikisi örnek verinin en büyük gönderenleri; liste büyükten küçüğe sıralı ve sıra numaraları doğru.
-    # (Kesin sıra kontrol edilmez: örnek verideki 30 günlük geçmiş ortadaki sıraları değiştirebilir.)
-    assert [g["user"]["id"] for g in gifters][:2] == [2001, 2012] and len(gifters) == 5
+    # Birincisi örnek verinin en büyük göndereni; liste büyükten küçüğe sıralı ve sıra numaraları doğru.
+    # (Kesin sıra kontrol edilmez: örnek verideki 30 günlük rastgele geçmiş alt sıraları değiştirir.)
+    assert gifters[0]["user"]["id"] == 2001 and len(gifters) == 5
     totals = [g["total_coins"] for g in gifters]
     assert totals == sorted(totals, reverse=True) and [g["rank"] for g in gifters] == [1, 2, 3, 4, 5]
 
@@ -519,10 +519,11 @@ def test_voice_join_info_and_signal_relay(client, guest):
     def token(headers: dict) -> str:
         return headers["Authorization"].removeprefix("Bearer ")
 
-    # Varsayılan sağlayıcı mesh: ICE sunucuları gelir; konuşma izni yalnızca koltuktakinde.
+    # Oda sahibi koltukta olduğu için izin alır; odada olmayan dinleyici alamaz.
     info = client.get(f"{rooms}/voice", headers=host).json()
     assert info["provider"] == "mesh" and info["can_publish"] is True and info["ice_servers"]
-    assert client.get(f"{rooms}/voice", headers=listener).json()["can_publish"] is False
+    outsider = client.get(f"{rooms}/voice", headers=listener)
+    assert outsider.status_code == 403 and outsider.json()["code"] == "not_in_room"
 
     with client.websocket_connect(f"/ws/rooms/{room['id']}?token={token(host)}") as host_socket, \
             client.websocket_connect(f"/ws/rooms/{room['id']}?token={token(listener)}") as listener_socket, \
@@ -532,6 +533,9 @@ def test_voice_join_info_and_signal_relay(client, guest):
         # "odada değil" diye mesajı düşürür ve test sonsuza kadar bekler.
         for socket in (host_socket, listener_socket, other_socket):
             receive_until(socket, "chat:history")
+
+        # Odaya giren dinleyici sesi duyabilir ama konuşamaz (konuşma izni yalnızca koltuktakinde).
+        assert client.get(f"{rooms}/voice", headers=listener).json()["can_publish"] is False
 
         # Dinleyici → koltuktaki oda sahibi: iletilir, gönderen sunucu tarafından yazılır.
         offer = {"type": "offer", "sdp": "v=0 test"}

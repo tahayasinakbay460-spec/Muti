@@ -124,6 +124,7 @@ class MockRoomChannel extends BaseChannel {
 const CLOSE_UNAUTHORIZED = 4401;
 const CLOSE_BANNED = 4403;
 const CLOSE_ROOM_NOT_FOUND = 4404;
+const CLOSE_REPLACED = 4409;
 const MAX_RECONNECT_ATTEMPTS = 5;
 
 // Kopunca yeniden bağlanan WebSocket kanalı. `path`: '/rooms/12' ya da '/me'
@@ -139,7 +140,9 @@ class WebSocketChannel extends BaseChannel {
 
   connect() {
     const token = localStorage.getItem(STORAGE_KEYS.accessToken) || '';
-    const socket = new WebSocket(`${WS_BASE_URL}${this.path}?token=${encodeURIComponent(token)}`);
+    // resume: sunucu koparken kaçırdıklarımızı (koltukları) yeniden göndersin
+    const resume = this.hasConnected ? '&resume=true' : '';
+    const socket = new WebSocket(`${WS_BASE_URL}${this.path}?token=${encodeURIComponent(token)}${resume}`);
     this.socket = socket;
 
     socket.addEventListener('open', () => {
@@ -160,6 +163,11 @@ class WebSocketChannel extends BaseChannel {
       // Odadan atıldı: yasak süresince yeniden bağlanmayı denemenin anlamı yok
       if (code === CLOSE_BANNED) {
         this.emit('error', { code: 'room_banned', detail: 'Bu odadan çıkarıldın, bir süre giremezsin.' });
+        return;
+      }
+      // Aynı hesap başka cihazdan girdi: yeniden bağlanırsak o cihazı biz atarız
+      if (code === CLOSE_REPLACED) {
+        this.emit('error', { code: 'session_replaced', detail: 'Hesabın başka bir cihazda bu odaya girdi.' });
         return;
       }
       if (++this.attempts > MAX_RECONNECT_ATTEMPTS) {
@@ -186,7 +194,8 @@ class WebSocketChannel extends BaseChannel {
   close() {
     this.isClosed = true;
     clearInterval(this.pingTimer);
-    this.socket.close();
+    // 1000 = "kendim çıkıyorum". Sunucu ağ kopmasından bununla ayırır, koltuğu bekletmez.
+    this.socket.close(1000);
     this.handlers = {};
   }
 }

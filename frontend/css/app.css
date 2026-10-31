@@ -1268,6 +1268,8 @@ small { font-size: 12px; color: var(--muted); }
 
 /* PK çubuğu: kırmızı solda, mavi sağda; ortadaki çizginin yeri puan oranını gösterir */
 .pk-bar { flex: none; display: flex; align-items: center; gap: 8px; margin: 0 12px 6px; padding: 6px 10px; border-radius: 999px; background: rgba(0, 0, 0, 0.45); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+.voice-lost { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 12px 6px; padding: 6px 6px 6px 14px; border-radius: 999px; background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); font-size: 13px; font-weight: 600; }
+.voice-lost[hidden] { display: none; }
 .pk-score { min-width: 44px; font-size: 13px; font-weight: 800; text-align: center; }
 .pk-score-red { color: #ff6b81; }
 .pk-score-blue { color: #6bb8ff; }

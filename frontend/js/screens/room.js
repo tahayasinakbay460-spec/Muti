@@ -51,7 +51,9 @@ export async function renderRoom(root, { params }) {
   const channel = connectRoom(room, me);
   // Sesli görüşme (WebRTC). Bağlanırken hata olursa oda yine çalışır, yalnızca ses olmaz.
   let voice = null;
+  let voiceStarted = false;
   let isDisposed = false;
+  let justReconnected = false;
 
   const mySeat = () => room.seats.find((s) => s.user?.id === me.id);
 
@@ -96,6 +98,10 @@ export async function renderRoom(root, { params }) {
         </button>
       </div>
 
+      <div class="voice-lost" id="voice-lost" hidden>
+        <span>Ses bağlantısı koptu</span>
+        <button class="btn btn-sm btn-primary" data-action="voice-reconnect">Yeniden bağlan</button>
+      </div>
       <div class="pk-bar" id="pk-bar" hidden></div>
       <div class="seat-grid" id="seats"></div>
       <div class="media-slot" id="media-slot" hidden></div>
@@ -177,15 +183,27 @@ export async function renderRoom(root, { params }) {
     });
   }
 
-  joinVoice({
-    room, me, channel,
-    onSpeaking: (userIds) => setSpeaking(room.seats.filter((s) => userIds.has(s.user_id)).map((s) => s.index)),
-    onError: (message) => toast(message, 'error'),
-  }).then((client) => {
-    if (isDisposed) return client?.close();
-    voice = client;
-    voice?.update(room.seats);
-  }).catch(() => toast('Sese bağlanılamadı; sohbet yine çalışıyor.', 'error'));
+  function setVoiceLost(isLost) {
+    root.querySelector('#voice-lost').hidden = !isLost;
+  }
+
+  async function startVoice() {
+    setVoiceLost(false);
+    try {
+      const client = await joinVoice({
+        room, me, channel,
+        onSpeaking: (userIds) => setSpeaking(room.seats.filter((s) => userIds.has(s.user_id)).map((s) => s.index)),
+        onError: (message) => toast(message, 'error'),
+        onConnectionLost: setVoiceLost,
+        isCancelled: () => isDisposed,
+      });
+      if (isDisposed) return client?.close();
+      voice = client;
+      voice?.update(room.seats);
+    } catch {
+      if (!isDisposed) setVoiceLost(true);
+    }
+  }
 
   // ─── SOHBET ────────────────────────────────────────────────────────────────
   function addChatLine(html) {
@@ -1006,6 +1024,7 @@ export async function renderRoom(root, { params }) {
     else if (action === 'announcement') toast(room.announcement);
     else if (action === 'chest') claimChest();
     else if (action === 'activities') activities.openActivitiesSheet();
+    else if (action === 'voice-reconnect') voice?.reconnect ? voice.reconnect() : startVoice();
     else if (action === 'toggle-mic') updateRoom(await api.toggleMute(room.id));
     else if (action === 'emoji') {
       const input = root.querySelector('#room-bar input');
@@ -1052,10 +1071,13 @@ export async function renderRoom(root, { params }) {
     .on('room:seats_updated', ({ seats }) => {
       // Yayın herkese aynı gider, kişiye özel `is_following` içermez; bildiğimizi koruyoruz
       const known = new Map(room.seats.filter((s) => s.user).map((s) => [s.user.id, s.user]));
+      const hadSeat = Boolean(mySeat());
       updateRoom({
         ...room,
         seats: seats.map((s) => (s.user ? { ...s, user: { ...s.user, is_following: Boolean(known.get(s.user.id)?.is_following) } } : s)),
       });
+      if (justReconnected && hadSeat && !mySeat()) toast('Bağlantın uzun süre koptuğu için koltuktan kalktın.', 'error');
+      justReconnected = false;
     })
     .on('game:roulette_started', ({ round_id: roundId, started_by: startedBy, betting_seconds: seconds }) => {
       Object.assign(roulette, { roundId, endsAt: Date.now() + seconds * 1000, last: null });
@@ -1083,7 +1105,15 @@ export async function renderRoom(root, { params }) {
       voice?.removePeer(user.id);
       addSystemLine(`<b>${esc(user.display_name)}</b> odadan çıkarıldı`);
     })
-    .on('chat:history', ({ messages }) => messages.forEach(addMessage))
+    .on('chat:history', ({ messages }) => {
+      messages.forEach(addMessage);
+      // Sunucu bizi odaya ekledikten sonra bunu gönderir; ses izni de odada olmayı şart koşuyor.
+      // Yeniden bağlanınca tekrar gelir, ses o zaman kendi bağlantısını zaten koruyor.
+      if (!voiceStarted) {
+        voiceStarted = true;
+        startVoice();
+      }
+    })
     .on('chat:message_deleted', ({ message_id: messageId }) => removeMessage(messageId))
     .on('room:chat_muted', ({ user, seconds }) => {
       if (seconds) chatMutedUntil.set(user.id, Date.now() + seconds * 1000);
@@ -1096,6 +1126,7 @@ export async function renderRoom(root, { params }) {
     .on('room:closed', leaveBecauseClosed)
     .on('error', ({ code, detail }) => {
       if (code === 'room_banned') leaveBecauseKicked();
+      else if (code === 'session_replaced') leaveBecauseReplaced(detail);
       else toast(detail, 'error');
     })
     .on('room:listener_count', ({ listener_count }) => {
@@ -1103,7 +1134,10 @@ export async function renderRoom(root, { params }) {
       root.querySelector('#audience-more').textContent = `+${Math.max(0, listener_count - audience.length)}`;
     })
     .on('room:user_left', ({ user_id: userId }) => voice?.removePeer(userId))
-    .on('connection:reopened', () => voice?.report('socket_reconnected'))
+    .on('connection:reopened', () => {
+      justReconnected = true;
+      voice?.report('socket_reconnected');
+    })
     // Yalnızca mock: gerçek backend'de konuşanları js/voice/ hesaplar
     .on('room:speaking', ({ seat_indexes: seatIndexes }) => setSpeaking(seatIndexes));
 
@@ -1113,6 +1147,11 @@ export async function renderRoom(root, { params }) {
     if (kicked) return;
     kicked = true;
     toast('Bu odadan çıkarıldın.', 'error');
+    roomSession.exit();
+  }
+
+  function leaveBecauseReplaced(detail) {
+    toast(detail, 'error');
     roomSession.exit();
   }
 

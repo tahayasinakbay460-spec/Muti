@@ -113,6 +113,9 @@ jobs:
           node-version: "24"
       - name: JavaScript syntax
         run: find frontend/js -name '*.js' -print0 | xargs -0 -n1 node --check
+      - name: JavaScript tests
+        # Ses istemcisi sahte Agora ile denenir; internete çıkılmaz.
+        run: node --test "frontend/tests/*.test.js"
 
   # Commit'lere yanlışlıkla şifre / API anahtarı girdiyse yakalar (kurallar: .gitleaks.toml).
   secrets:

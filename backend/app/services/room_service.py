@@ -280,22 +280,32 @@ async def publish_seats(db: AsyncSession, room: Room) -> None:
     await voice_provider.sync_publishers(room.id, {
         seat.user_id for seat in snapshot.seats if seat.user_id is not None and not seat.is_mic_blocked
     })
-    await room_hub.publish(room.id, events.ROOM_SEATS_UPDATED, {
-        "seats": [seat.model_dump(mode="json") for seat in snapshot.seats],
-    })
+    await room_hub.publish(room.id, events.ROOM_SEATS_UPDATED, _seats_payload(snapshot))
+
+
+def _seats_payload(snapshot: RoomOut) -> dict:
+    return {"seats": [seat.model_dump(mode="json") for seat in snapshot.seats]}
+
+
+async def seats_payload(db: AsyncSession, room: Room) -> dict:
+    """Koltukların son hali, `room:seats_updated` biçiminde (tek kişiye göndermek için)."""
+    return _seats_payload((await present_rooms(db, [room], viewer_id=None))[0])
 
 
 # ── Sesli görüşme ─────────────────────────────────────────────────────────────
 
 async def get_voice_join(db: AsyncSession, user_id: int, room_id: int) -> VoiceJoinInfo:
     """
-    Odanın sesine bağlanmak için gerekenler (bkz. app/voice/). Herkes dinleyebilir;
+    Odanın sesine bağlanmak için gerekenler (bkz. app/voice/). Odada olan herkes dinleyebilir;
     konuşma izni (can_publish) yalnızca koltukta oturan ve mikrofonu engellenmemiş kişide.
+    Koltuktaki kişi kısa bir kopma sırasında da yenileyebilsin: bağlantısı yok ama odadan çıkmadı.
     """
     room = await get_room_row(db, room_id)
     if await room_state.is_banned(room.id, user_id):
         raise ForbiddenError("Bu odadan çıkarıldın, bir süre giremezsin.", code="room_banned")
     user = await user_service.get_user(db, user_id)
     seated = await room_state.seat_index_of(room.id, user_id) is not None
+    if not seated and not await room_state.is_in_room(room.id, user_id):
+        raise ForbiddenError("Sese bağlanmak için önce odaya girmelisin.", code="not_in_room")
     blocked = user_id in (await room_state.mic_blocked_ids([room.id]))[room.id]
     return await voice_provider.join_info(room.id, user_id, user.display_name, can_publish=seated and not blocked)

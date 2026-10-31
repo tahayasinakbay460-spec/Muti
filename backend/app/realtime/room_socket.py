@@ -11,12 +11,14 @@ Bu dosyadaki akış:
   1. Bağlanan kişinin token'ını doğrula, odayı kontrol et.
   2. Kişiyi odanın yayın listesine ekle, herkese "X katıldı" de.
   3. Kişiden mesaj geldikçe işle (sohbet, zar).
-  4. Bağlantı kopunca listeden çıkar, koltuğunu boşalt.
+  4. Bağlantı kopunca listeden çıkar. Kişi kendisi çıktıysa koltuğunu hemen boşalt, ağ
+     koptuysa kısa bir süre bekle: telefon Wi-Fi'dan mobil veriye geçerken koltuk gitmesin.
 
 TEMEL KURAL — SUNUCU OTORİTEDİR: İstemciden gelen veriye güvenilmez. Mesajı kimin
 yazdığını token'dan biz biliriz, zarı biz atarız, hediyeyi yalnızca gerçekten
 parası düşülmüşse biz yayınlarız.
 """
+import asyncio
 import json
 import logging
 import secrets
@@ -47,6 +49,16 @@ router = APIRouter()
 # Tek bir mesajın en büyük boyutu (karakter). Daha büyüğü işlenmeden reddedilir.
 # Sesli görüşme teklifleri (SDP) birkaç bin karakter tuttuğu için sınır buna göre.
 MAX_MESSAGE_SIZE = 16000
+
+# Bağlantısı kopan kişinin koltuğu bu süre tutulur. İstemci yaklaşık 15 saniye yeniden bağlanmayı
+# dener (bkz. js/realtime.js); bekleme süresi ondan uzun olmalı, yoksa dönen kişi koltuğunu kaybeder.
+SEAT_GRACE_SECONDS = 20
+# Tarayıcı bu kodla kapatıyorsa kişi odadan kendisi çıkmıştır. Ağ kopmasında bu kod gelmez.
+CLOSE_NORMAL = 1000
+
+# Süresi işleyen ayrılmalar: (oda id, kullanıcı id) → bekleyen görev.
+# DEMO KISAYOLU: bu sürecin belleğinde durur; birden fazla sunucuda Redis'te süreli anahtar olacak.
+_pending_departures: dict[tuple[int, int], asyncio.Task] = {}
 
 
 class RateLimiter:
@@ -99,8 +111,50 @@ async def _relay_voice_signal(room_id: int, sender_id: int, signal: events.Voice
     })
 
 
+async def _complete_departure(room_id: int, user_id: int) -> None:
+    """Kişi odadan gerçekten gitti: koltuğunu boşalt, odaya duyur, oyun ve karaoke sırasından çıkar."""
+    if await room_state.leave_seat(room_id, user_id):
+        async with SessionLocal() as db:
+            room = await db.get(Room, room_id)
+            if room is not None:
+                await room_service.publish_seats(db, room)
+    await room_hub.publish(room_id, events.ROOM_USER_LEFT, {"user_id": user_id})
+    # Odadan tamamen çıkan oyuncu masasında hükmen kaybeder, karaoke sırasından düşer.
+    await duels.leave(room_id, user_id)
+    await activity_service.leave_karaoke(user_id, room_id)
+
+
+async def _depart_after_grace(room_id: int, user_id: int) -> None:
+    await asyncio.sleep(SEAT_GRACE_SECONDS)
+    # Buradan sonra iptal edilmesin: yarım kalırsa kişi koltukta asılı kalırdı.
+    _pending_departures.pop((room_id, user_id), None)
+    if await room_state.is_in_room(room_id, user_id):
+        return
+    try:
+        await _complete_departure(room_id, user_id)
+    except Exception:
+        # Arka plan görevinin hatasını kimse beklemez; kaydetmezsek sessizce kaybolur.
+        logger.exception("Room departure failed", extra={"fields": {"room_id": room_id}})
+
+
+def _cancel_departure(room_id: int, user_id: int) -> bool:
+    """Kişi geri döndü: bekleyen ayrılmayı iptal eder. Bekleyen varsa True döner."""
+    task = _pending_departures.pop((room_id, user_id), None)
+    if task is None:
+        return False
+    task.cancel()
+    return True
+
+
+def cancel_pending_departures() -> None:
+    """Sunucu kapanırken çağrılır; bellekteki oda durumu zaten siliniyor."""
+    for key in list(_pending_departures):
+        _cancel_departure(*key)
+
+
 @router.websocket("/ws/rooms/{room_id}")
-async def room_socket(websocket: WebSocket, room_id: int, token: str = "") -> None:
+async def room_socket(websocket: WebSocket, room_id: int, token: str = "", resume: bool = False) -> None:
+    """`resume=true`: istemci kopan bağlantısını yeniliyor, koptuğu sırada olanları bilmiyor."""
     # Önce bağlantıyı kabul ediyoruz ki reddederken istemciye anlamlı bir kod gönderebilelim.
     await websocket.accept()
 
@@ -135,8 +189,12 @@ async def room_socket(websocket: WebSocket, room_id: int, token: str = "") -> No
     request_id_var.set(f"ws-{secrets.token_hex(6)}")
     user_id_var.set(user_id)
     logger.info("Room joined", extra={"fields": {"room_id": room_id}})
+    is_returning = _cancel_departure(room_id, user_id)
     room_hub.add(room_id, websocket, user_id)
     is_first_connection = await room_state.add_listener(room_id, user_id)
+    # Aynı hesapla tek cihaz odada kalır: ses sağlayıcısı da aynı kullanıcıyla iki bağlantı
+    # tutmuyor, eski cihaz odada görünür ama sessiz kalırdı.
+    await room_hub.disconnect_other_connections(room_id, user_id, websocket, events.CLOSE_REPLACED)
     chat_limiter = RateLimiter(limit=5, period=5)    # 5 saniyede en fazla 5 mesaj
     dice_limiter = RateLimiter(limit=1, period=1.5)  # 1.5 saniyede en fazla 1 zar
     game_limiter = RateLimiter(limit=5, period=5)    # rulet: 5 saniyede en fazla 5 işlem
@@ -145,6 +203,7 @@ async def room_socket(websocket: WebSocket, room_id: int, token: str = "") -> No
     duel_limiter = RateLimiter(limit=20, period=10)
     # Ses bağlantısı kurulurken her karşı taraf için onlarca küçük mesaj gider; sınır geniş.
     voice_limiter = RateLimiter(limit=300, period=10)
+    left_on_purpose = False
 
     try:
         # Yeni gelen kişi sohbetin ortasına düşmesin: son mesajları yalnızca ona gönder.
@@ -152,7 +211,17 @@ async def room_socket(websocket: WebSocket, room_id: int, token: str = "") -> No
             {"event": events.CHAT_HISTORY, "payload": {"messages": await room_state.recent_chat(room_id)}},
             ensure_ascii=False, default=str,
         ))
-        if is_first_connection:
+        # Koparken kaçırdığı koltuk yayınlarını telafi eder; yoksa ekranı eski listeyle kalırdı.
+        if resume:
+            async with SessionLocal() as db:
+                room = await db.get(Room, room_id)
+                if room is not None:
+                    await websocket.send_text(json.dumps(
+                        {"event": events.ROOM_SEATS_UPDATED, "payload": await room_service.seats_payload(db, room)},
+                        ensure_ascii=False, default=str,
+                    ))
+        # Kısa kopmadan dönen kişi "yeni katıldı" sayılmaz: giriş efekti ve görev sayacı çalışmasın.
+        if is_first_connection and not is_returning:
             await room_hub.publish(room_id, events.ROOM_USER_JOINED, {"user": user_payload})
             await engagement_service.record_now(user_id, engagement_service.METRIC_ROOM_JOIN)
         await _publish_listener_count(room_id)
@@ -253,24 +322,20 @@ async def room_socket(websocket: WebSocket, room_id: int, token: str = "") -> No
             else:
                 await _send_error(websocket, "unknown_event", "Bilinmeyen olay.")
 
-    except WebSocketDisconnect:
-        pass   # Kullanıcı odadan çıktı ya da bağlantısı koptu; normal bir durum.
+    except WebSocketDisconnect as disconnect:
+        left_on_purpose = disconnect.code == CLOSE_NORMAL
     except RuntimeError:
         pass   # Bağlantıyı sunucu kapattı (ör. kişi odadan atıldı); okumaya devam edilemez.
     finally:
         # ── 4. Temizlik (ne olursa olsun çalışır) ─────────────────────────────
         room_hub.remove(room_id, websocket)
         fully_left = await room_state.remove_listener(room_id, user_id)
-        # Kişinin odada başka açık bağlantısı kalmadıysa koltuğunu da boşalt.
-        if fully_left and await room_state.leave_seat(room_id, user_id):
-            async with SessionLocal() as db:
-                room = await db.get(Room, room_id)
-                if room is not None:
-                    await room_service.publish_seats(db, room)
+        # Kişinin odada başka açık bağlantısı kalmadıysa koltuğunu boşalt. Ağ koptuysa geri
+        # dönme payı tanı; kendisi çıktıysa ya da sunucu kapattıysa beklemenin anlamı yok.
         if fully_left:
-            await room_hub.publish(room_id, events.ROOM_USER_LEFT, {"user_id": user_id})
-            # Odadan tamamen çıkan oyuncu masasında hükmen kaybeder, karaoke sırasından düşer.
-            await duels.leave(room_id, user_id)
-            await activity_service.leave_karaoke(user_id, room_id)
+            if left_on_purpose or getattr(websocket.state, "closed_by_server", False):
+                await _complete_departure(room_id, user_id)
+            else:
+                _pending_departures[(room_id, user_id)] = asyncio.create_task(_depart_after_grace(room_id, user_id))
         await _publish_listener_count(room_id)
         logger.info("Room left", extra={"fields": {"room_id": room_id}})

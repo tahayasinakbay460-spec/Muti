@@ -54,20 +54,29 @@ class RoomHub:
         """
         sockets = [ws for ws, owner in self._connections.get(room_id, {}).items() if owner == user_id]
         for websocket in sockets:
-            self.remove(room_id, websocket)
-            try:
-                await websocket.close(code=code)
-            except Exception:
-                logger.debug("WebSocket already closed")
+            await self._close(room_id, websocket, code)
+
+    async def disconnect_other_connections(self, room_id: int, user_id: int, keep: WebSocket, code: int) -> None:
+        """Kişinin bu odadaki `keep` dışındaki bağlantılarını kapatır (aynı hesap başka cihazdan girdi)."""
+        sockets = [
+            ws for ws, owner in self._connections.get(room_id, {}).items() if owner == user_id and ws is not keep
+        ]
+        for websocket in sockets:
+            await self._close(room_id, websocket, code)
 
     async def disconnect_room(self, room_id: int, code: int) -> None:
         """Odadaki herkesin bağlantısını kapatır (oda kapatıldı)."""
         for websocket in list(self._connections.get(room_id, {})):
-            self.remove(room_id, websocket)
-            try:
-                await websocket.close(code=code)
-            except Exception:
-                logger.debug("WebSocket already closed")
+            await self._close(room_id, websocket, code)
+
+    async def _close(self, room_id: int, websocket: WebSocket, code: int) -> None:
+        # İşaret: bu kapanış ağ kopması değil, kararı sunucu verdi. Koltuk bekletilmez (bkz. room_socket.py).
+        websocket.state.closed_by_server = True
+        self.remove(room_id, websocket)
+        try:
+            await websocket.close(code=code)
+        except Exception:
+            logger.debug("WebSocket already closed")
 
     async def disconnect_user_everywhere(self, user_id: int, code: int) -> None:
         """Kişinin bu sunucudaki bütün oda bağlantılarını kapatır (ör. uygulamadan banlandı)."""

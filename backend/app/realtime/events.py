@@ -20,7 +20,7 @@ GAME_ROULETTE_BET_PLACED = "game:roulette_bet_placed"  # { round_id, user, color
 GAME_ROULETTE_RESULT = "game:roulette_result"        # { round_id, number, color, winners, player_count }
 ROOM_USER_JOINED = "room:user_joined"          # { user }
 ROOM_LISTENER_COUNT = "room:listener_count"    # { listener_count }
-ROOM_SEATS_UPDATED = "room:seats_updated"      # { seats: [...] }
+ROOM_SEATS_UPDATED = "room:seats_updated"      # { seats: [...] }  (kopup dönene yalnızca ona da gider)
 ROOM_USER_LEFT = "room:user_left"              # { user_id }  (kişinin odada hiç bağlantısı kalmadı)
 ROOM_ROLES_UPDATED = "room:roles_updated"      # { admin_ids: [...], vip_ids: [...] }
 ROOM_USER_KICKED = "room:user_kicked"          # { user }  (atılan kişinin bağlantısı ardından kapanır)
@@ -49,6 +49,7 @@ PING = "ping"                                  # istemci → sunucu: "hâlâ bur
 CLOSE_UNAUTHORIZED = 4401    # token yok/geçersiz → token yenile ya da giriş yap
 CLOSE_BANNED = 4403          # odadan atıldı, yasak süresi dolmadı → odaya girme
 CLOSE_ROOM_NOT_FOUND = 4404  # oda yok ya da kapatılmış (oda sahibi odayı kapatınca da bu kod)
+CLOSE_REPLACED = 4409       # aynı hesap başka cihazdan odaya girdi → yeniden bağlanma
 
 # Sesli görüşme (yalnızca mesh sağlayıcıda; bkz. app/voice/mesh.py).
 # İstemci → sunucu: { to, description?, candidate? }   Sunucu → alıcı: { from, description?, candidate? }
