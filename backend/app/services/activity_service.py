@@ -52,6 +52,11 @@ _pks: dict[int, Pk] = {}
 _timers: set[asyncio.Task] = set()
 
 
+def running_pk_room_ids() -> set[int]:
+    """Şu an PK'si süren odalar (oda listesindeki "Canlı PK" filtresi ve rozeti için)."""
+    return {room_id for room_id, pk in _pks.items() if pk.status == "running"}
+
+
 def _schedule(coroutine) -> None:
     task = asyncio.create_task(coroutine)
     _timers.add(task)                     # tutulmazsa Python görevi yarıda çöpe atabilir

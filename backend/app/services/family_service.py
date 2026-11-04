@@ -11,7 +11,7 @@ Aile seviyesi ve haftalık puan, üyelerin gönderdiği hediyelerin coin toplam�
 DEMO KISAYOLU: Bu toplamlar her istekte defterden hesaplanıyor; kalabalıkta günlük özet
 tablosu ya da Redis sayacı kullanılmalı.
 """
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import case, delete, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -34,32 +34,31 @@ ROLE_RANK = {"owner": 3, "admin": 2, "member": 1}
 
 # ── Okuma ─────────────────────────────────────────────────────────────────────
 
-async def _gift_totals(db: AsyncSession, family_ids: list[int], since=None) -> dict[int, int]:
-    """Aile id → üyelerinin (şu anki üyeler) gönderdiği hediyelerin coin toplamı."""
+async def _gift_totals(db: AsyncSession, family_ids: list[int]) -> dict[int, tuple[int, int]]:
+    """Aile id → (bu hafta, toplam): üyelerinin (şu anki üyeler) gönderdiği hediyelerin coin toplamı."""
     if not family_ids:
         return {}
+    since = period_start("week")
+    # Hafta ve toplam aynı satırlardan tek sorguda: hafta için CASE.
+    week = func.coalesce(func.sum(case((Transaction.created_at >= since, -Transaction.amount), else_=0)), 0)
     total = func.coalesce(func.sum(-Transaction.amount), 0)
-    statement = (
-        select(FamilyMember.family_id, total)
+    rows = await db.execute(
+        select(FamilyMember.family_id, week, total)
         .join(Transaction, Transaction.user_id == FamilyMember.user_id)
         .where(FamilyMember.family_id.in_(family_ids), Transaction.type == "gift_sent")
         .group_by(FamilyMember.family_id)
     )
-    if since is not None:
-        statement = statement.where(Transaction.created_at >= since)
-    return dict((await db.execute(statement)).all())
+    return {family_id: (week_coins, total_coins) for family_id, week_coins, total_coins in rows}
 
 
 async def present_families(db: AsyncSession, families: list[Family], viewer_id: int | None) -> list[FamilyOut]:
-    ids = [family.id for family in families]
-    week = await _gift_totals(db, ids, since=period_start("week"))
-    total = await _gift_totals(db, ids)
+    totals = await _gift_totals(db, [family.id for family in families])
     my = await db.scalar(select(FamilyMember).where(FamilyMember.user_id == viewer_id)) if viewer_id else None
     return [
         FamilyOut(
             id=family.id, name=family.name, badge=family.badge, slogan=family.slogan, owner_id=family.owner_id,
             member_count=family.member_count, max_members=FAMILY_MAX_MEMBERS,
-            week_coins=week.get(family.id, 0), level=1 + total.get(family.id, 0) // FAMILY_LEVEL_STEP,
+            week_coins=totals.get(family.id, (0, 0))[0], level=1 + totals.get(family.id, (0, 0))[1] // FAMILY_LEVEL_STEP,
             my_role=my.role if my and my.family_id == family.id else None,
         )
         for family in families

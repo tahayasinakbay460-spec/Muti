@@ -140,25 +140,38 @@ async def resolve_report(db: AsyncSession, admin_id: int, report_id: int, action
 
 # ── Kullanıcılar ──────────────────────────────────────────────────────────────
 
+async def _admin_users_out(db: AsyncSession, users: list[User]) -> list[AdminUserOut]:
+    """Liste için: şikâyet sayıları tek sorguda, kullanıcı görünümleri tek seferde (N+1 yok)."""
+    if not users:
+        return []
+    user_ids = [user.id for user in users]
+    reports = dict((await db.execute(
+        select(Report.target_id, func.count(Report.id))
+        .where(Report.target_type == "user", Report.target_id.in_(user_ids)).group_by(Report.target_id)
+    )).all())
+    outs = await user_service.present_users(db, users, viewer_id=None)
+    return [
+        AdminUserOut(
+            user=out, email=user.email, is_active=user.is_active, staff_role=user.staff_role,
+            coin_balance=user.coin_balance, diamond_balance=user.diamond_balance,
+            reports_against=reports.get(user.id, 0), recent_transactions=[],
+        )
+        for user, out in zip(users, outs)
+    ]
+
+
 async def _admin_user_out(db: AsyncSession, user: User, with_transactions: bool) -> AdminUserOut:
-    reports = await db.scalar(
-        select(func.count(Report.id)).where(Report.target_type == "user", Report.target_id == user.id)
-    ) or 0
-    transactions = []
+    out = (await _admin_users_out(db, [user]))[0]
     if with_transactions:
         rows = await db.scalars(
             select(Transaction).where(Transaction.user_id == user.id).order_by(Transaction.id.desc()).limit(20)
         )
-        transactions = [
+        out.recent_transactions = [
             TransactionOut(id=t.id, type=t.type, currency=t.currency, label=t.label, amount=t.amount,
                            created_at=as_utc(t.created_at), time_label=time_ago_label(t.created_at))
             for t in rows
         ]
-    return AdminUserOut(
-        user=await user_service.present_user(db, user, viewer_id=None), email=user.email,
-        is_active=user.is_active, staff_role=user.staff_role, coin_balance=user.coin_balance,
-        diamond_balance=user.diamond_balance, reports_against=reports, recent_transactions=transactions,
-    )
+    return out
 
 
 async def _get_any_user(db: AsyncSession, user_id: int) -> User:
@@ -191,7 +204,7 @@ async def search_users(db: AsyncSession, query: str, sort: str = "newest") -> li
         if text.isdigit():
             conditions.append(User.id == int(text))
         statement = statement.where(or_(*conditions))
-    return [await _admin_user_out(db, user, with_transactions=False) for user in await db.scalars(statement)]
+    return await _admin_users_out(db, list(await db.scalars(statement)))
 
 
 async def get_user_detail(db: AsyncSession, user_id: int) -> AdminUserOut:

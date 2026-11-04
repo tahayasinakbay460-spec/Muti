@@ -9,6 +9,7 @@ from app.models.economy import CoinPackage, Gift, Transaction
 from app.models.engagement import EVENT_METRICS, DailyCheckIn, Event, TaskClaim, TaskCounter
 from app.models.family import FAMILY_ROLES, Couple, Family, FamilyMember, FamilyMessage
 from app.models.message import Conversation, Message, RoomMessage
+from app.models.moment import Moment, MomentComment, MomentLike, ProfileVisit
 from app.models.room import ROOM_CATEGORIES, ROOM_MEMBER_ROLES, Room, RoomFollow, RoomMember
 from app.models.social import REPORT_REASONS, REPORT_TARGET_TYPES, Notification, Report, UserBlock
 from app.models.staff import StaffAction
@@ -19,7 +20,7 @@ __all__ = [
     "Agency", "AgencyMember", "RoomMessage",
     "Couple", "DailyCheckIn", "Event", "EVENT_METRICS", "FAMILY_ROLES", "Family", "FamilyMember", "FamilyMessage",
     "TaskClaim", "TaskCounter",
-    "CoinPackage", "Conversation", "Follow", "Gift", "Message", "Notification",
+    "CoinPackage", "Conversation", "Follow", "Gift", "Message", "Moment", "MomentComment", "MomentLike", "Notification", "ProfileVisit",
     "RefreshToken", "Report", "REPORT_REASONS", "REPORT_TARGET_TYPES", "Room", "RoomFollow", "RoomMember",
     "ROOM_CATEGORIES", "ROOM_MEMBER_ROLES", "StaffAction", "STORE_DURATIONS", "STORE_ITEM_KINDS", "StoreItem", "Transaction",
     "User", "UserBlock", "UserItem",

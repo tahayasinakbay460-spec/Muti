@@ -3,11 +3,16 @@ import { api } from '../api.js';
 import { esc, icon, avatarImg } from '../ui.js';
 import { clearNotificationBadge, onInbox } from '../inbox.js';
 
-const TYPE_ICONS = { follow: '👤', gift_received: '🎁', level_up: '⭐', room_role: '👑' };
+const TYPE_ICONS = {
+  follow: '👤', gift_received: '🎁', level_up: '⭐', room_role: '👑', moment_like: '❤️', moment_comment: '💬',
+  agency_application: '🏢', agency_joined: '🏢', agency_invite: '🏢',
+};
 
 // Bildirime dokununca gidilecek yer
 function targetHref(notification) {
   if (notification.data?.room_id) return `#/room/${notification.data.room_id}`;
+  if (notification.type.startsWith('agency_')) return '#/agency';
+  if (notification.type === 'moment_like' || notification.type === 'moment_comment') return '#/profile';
   if (notification.actor) return `#/profile/${notification.actor.id}`;
   if (notification.type === 'level_up') return '#/profile';
   return null;

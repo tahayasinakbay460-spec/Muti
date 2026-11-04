@@ -101,8 +101,8 @@ async def _relay_voice_signal(room_id: int, sender_id: int, signal: events.Voice
     """
     if signal.to == sender_id or not await room_state.is_in_room(room_id, signal.to):
         return
-    seated = {seat.user_id for seat in (await room_state.get_seats([room_id]))[room_id]}
-    if sender_id not in seated and signal.to not in seated:
+    if (await room_state.seat_index_of(room_id, sender_id) is None
+            and await room_state.seat_index_of(room_id, signal.to) is None):
         return
     await room_hub.send_to_user(room_id, signal.to, events.VOICE_SIGNAL, {
         "from": sender_id,

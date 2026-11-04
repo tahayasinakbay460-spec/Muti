@@ -8,7 +8,7 @@ DEMO KISAYOLU: Her istekte defter toplanıyor. Kalabalıkta her hediyede Redis s
 """
 from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.timefmt import period_start
@@ -19,38 +19,66 @@ from app.services import user_service
 LIMIT = 30
 
 
-async def user_scores(
-    db: AsyncSession, metric: str, since: datetime, until: datetime | None = None, limit: int | None = LIMIT,
-) -> list[tuple[int, int]]:
-    """
-    [(kullanıcı id, puan)] büyükten küçüğe. metric: "gifts_sent" (coin) ya da "gifts_received" (elmas).
-    `limit=None` herkesi döner (kişinin kendi sırasını bulmak için).
-    """
+def _score_filter(metric: str, since: datetime, until: datetime | None):
+    """(puan ifadesi, defter süzgeçleri). metric: "gifts_sent" (coin) ya da "gifts_received" (elmas)."""
     if metric == "gifts_sent":
         score, kind = func.sum(-Transaction.amount), "gift_sent"
     else:
         score, kind = func.sum(Transaction.amount), "gift_received"
+    conditions = [Transaction.type == kind, Transaction.created_at >= since]
+    if until is not None:
+        conditions.append(Transaction.created_at < until)
+    return score, conditions
+
+
+async def user_scores(
+    db: AsyncSession, metric: str, since: datetime, until: datetime | None = None, limit: int | None = LIMIT,
+) -> list[tuple[int, int]]:
+    """[(kullanıcı id, puan)] büyükten küçüğe. `limit=None` herkesi döner (etkinlik ödülü dağıtımı)."""
+    score, conditions = _score_filter(metric, since, until)
     statement = (
         select(Transaction.user_id, score.label("score"))
-        .where(Transaction.type == kind, Transaction.created_at >= since)
+        .where(*conditions)
         .group_by(Transaction.user_id)
         # Eşitlikte önce o puana ilk ulaşan değil, küçük id üstte: sıra her istekte aynı kalsın.
         .order_by(score.desc(), Transaction.user_id)
     )
-    if until is not None:
-        statement = statement.where(Transaction.created_at < until)
     if limit is not None:
         statement = statement.limit(limit)
     return [(row.user_id, row.score) for row in await db.execute(statement)]
+
+
+async def _viewer_rank(
+    db: AsyncSession, viewer_id: int, metric: str, since: datetime, until: datetime | None,
+) -> tuple[int, int] | None:
+    """
+    Kişinin (sıra, puan) değeri; dönemde hiç hareketi yoksa None.
+    Herkesi çekip Python'da aramak yerine iki küçük sorgu: kendi puanı, sonra önünde kaç kişi var.
+    "Önünde" tanımı `user_scores` sıralamasıyla aynı: puanı büyük olan ya da puanı eşit ve id'si küçük olan.
+    """
+    score, conditions = _score_filter(metric, since, until)
+    mine = await db.scalar(select(score).where(*conditions, Transaction.user_id == viewer_id))
+    if mine is None:
+        return None
+    scores = (
+        select(Transaction.user_id, score.label("score")).where(*conditions).group_by(Transaction.user_id).subquery()
+    )
+    ahead = await db.scalar(
+        select(func.count()).select_from(scores).where(
+            or_(scores.c.score > mine, and_(scores.c.score == mine, scores.c.user_id < viewer_id))
+        )
+    )
+    return 1 + (ahead or 0), mine
 
 
 async def user_entries(
     db: AsyncSession, viewer_id: int, metric: str, since: datetime, until: datetime | None = None,
 ) -> tuple[list[LeaderboardEntry], LeaderboardEntry | None]:
     """Kişi sıralaması ve isteği atanın kendi sırası (ilk 30'da olmasa da)."""
-    everyone = await user_scores(db, metric, since, until, limit=None)
-    top = everyone[:LIMIT]
-    mine = next(((rank, score) for rank, (uid, score) in enumerate(everyone, 1) if uid == viewer_id), None)
+    top = await user_scores(db, metric, since, until)
+    mine = next(((rank, score) for rank, (uid, score) in enumerate(top, 1) if uid == viewer_id), None)
+    if mine is None:
+        mine = await _viewer_rank(db, viewer_id, metric, since, until)
     users = await user_service.load_users_out(db, {uid for uid, _ in top} | {viewer_id}, viewer_id)
     entries = [
         LeaderboardEntry(rank=rank, score=score, user=users[uid])

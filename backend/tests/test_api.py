@@ -201,14 +201,8 @@ def test_conversation_flow_and_privacy(client, muti, guest):
 
 
 def test_public_lists_load(client, muti):
-    for path in ("/banners", "/gifts", "/wallet/packages", "/users/suggested", "/users/2001/profile"):
+    for path in ("/gifts", "/wallet/packages", "/users/suggested", "/users/2001/profile"):
         assert client.get(f"{API}{path}", headers=muti).status_code == 200, path
-    gifters = client.get(f"{API}/leaderboards/gifters", headers=muti).json()
-    # Birincisi örnek verinin en büyük göndereni; liste büyükten küçüğe sıralı ve sıra numaraları doğru.
-    # (Kesin sıra kontrol edilmez: örnek verideki 30 günlük rastgele geçmiş alt sıraları değiştirir.)
-    assert gifters[0]["user"]["id"] == 2001 and len(gifters) == 5
-    totals = [g["total_coins"] for g in gifters]
-    assert totals == sorted(totals, reverse=True) and [g["rank"] for g in gifters] == [1, 2, 3, 4, 5]
 
 
 # ── WebSocket ─────────────────────────────────────────────────────────────────

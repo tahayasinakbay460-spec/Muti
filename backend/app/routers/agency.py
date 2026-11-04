@@ -1,13 +1,21 @@
 """
 Ajans uçları: /api/v1/agencies/... (ajans sahibi ve yayıncılar). Ajansı yönetici kurar (/admin/agencies).
 """
-from fastapi import APIRouter
+from typing import Annotated
+
+from fastapi import APIRouter, Query
 
 from app.core.deps import CurrentUserId, DbSession
-from app.schemas.admin import AgencyDashboard, AgencyTargetRequest, MyAgency
+from app.schemas.admin import AgencyDashboard, AgencyOut, AgencyTargetRequest, MyAgency
 from app.services import agency_service
 
 router = APIRouter(prefix="/agencies", tags=["agencies"])
+
+
+@router.get("", response_model=list[AgencyOut])
+async def list_agencies(_user_id: CurrentUserId, db: DbSession, query: Annotated[str, Query(max_length=40)] = ""):
+    """Başvurulabilecek ajanslar; ada ya da ajans numarasına göre aranır."""
+    return await agency_service.list_public(db, query)
 
 
 @router.get("/me", response_model=MyAgency)
@@ -24,6 +32,18 @@ async def accept_invite(user_id: CurrentUserId, db: DbSession):
 @router.post("/me/invite/decline", response_model=MyAgency)
 async def decline_invite(user_id: CurrentUserId, db: DbSession):
     return await agency_service.answer_invite(db, user_id, accept=False)
+
+
+@router.delete("/me/application", response_model=MyAgency)
+async def withdraw_application(user_id: CurrentUserId, db: DbSession):
+    """Bekleyen ajans başvurumu geri çekerim."""
+    return await agency_service.withdraw_application(db, user_id)
+
+
+@router.post("/me/applications/{target_id}/accept", response_model=AgencyDashboard)
+async def accept_application(target_id: int, user_id: CurrentUserId, db: DbSession):
+    """Ajans sahibi başvuruyu kabul eder. Reddetmek için: DELETE /me/members/{target_id}."""
+    return await agency_service.accept_application(db, user_id, target_id)
 
 
 @router.delete("/me/membership", response_model=MyAgency)
@@ -46,3 +66,9 @@ async def set_member_target(target_id: int, data: AgencyTargetRequest, user_id: 
 async def remove_member(target_id: int, user_id: CurrentUserId, db: DbSession):
     """Üyeyi çıkarır ya da bekleyen daveti geri çeker."""
     return await agency_service.remove_member(db, user_id, target_id)
+
+
+@router.post("/{agency_id}/apply", response_model=MyAgency)
+async def apply_to_agency(agency_id: int, user_id: CurrentUserId, db: DbSession):
+    """Ajansa yayıncı olarak başvurur; ajans sahibi kabul edince üye olunur."""
+    return await agency_service.apply(db, user_id, agency_id)

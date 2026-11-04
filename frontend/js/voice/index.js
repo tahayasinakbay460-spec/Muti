@@ -12,7 +12,6 @@
 // Ekrana üç şey bildirir: onSpeaking(Set<kullanıcı id>), onError(mesaj) ve
 // onConnectionLost(true/false) = ses koptu, tuşu göster / bağlantı yeniden deneniyor, gizle.
 import { api } from '../api.js';
-import { USE_MOCK } from '../config.js';
 import { retried } from './retry.js';
 
 const CLIENTS = {
@@ -22,8 +21,6 @@ const CLIENTS = {
 };
 
 export async function joinVoice({ room, me, channel, onSpeaking, onError, onConnectionLost, isCancelled = () => false }) {
-  // Mock'ta ses yok; "konuşuyor" halkasını mock kanal taklit eder
-  if (USE_MOCK) return null;
   if (!window.RTCPeerConnection) {
     onError('Bu tarayıcı sesli görüşmeyi desteklemiyor.');
     return null;

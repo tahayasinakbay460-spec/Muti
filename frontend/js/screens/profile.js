@@ -1,22 +1,21 @@
-// Profil: kapak, istatistikler ve sekmeler (Duvar, Eşyalar, Oyun & Ödüller, Hakkında)
+// Profil (Instagram düzeni): solda avatar, sağda Anı / Takipçi / Takip sayıları (hepsi tıklanır); altında ad,
+// rozetler, biyografi ve düğmeler. Kendi profilimde kısayollar: VIP merkezi, Cüzdan, Mağaza, Görevler.
+// İki sekme: Paylaştıklarım (anı ızgarası) ve Hakkımda (seviye, başarılar, eşyalar, bilgiler).
 import { api } from '../api.js';
-import { ADMIN_URL, DEFAULT_COVER_URL } from '../config.js';
-import { esc, icon, avatarImg, formatCount, joinParts, vipBadge, levelBadge, toast, openSheet } from '../ui.js';
+import { ADMIN_URL } from '../config.js';
+import { esc, icon, avatarImg, formatCoins, formatCount, joinParts, vipBadge, levelBadge, toast, openSheet, daysLeft } from '../ui.js';
 import { openEditProfileSheet } from './edit-profile.js';
 import { openReportSheet } from './report.js';
 import { onInbox } from '../inbox.js';
+import { momentTile, bindMomentActions, openComposer } from './moments.js';
 
 const KIND_LABELS = { frame: 'Çerçeve', entry_effect: 'Giriş efekti', chat_bubble: 'Sohbet balonu' };
-const daysLeft = (iso) => Math.max(1, Math.ceil((new Date(iso) - Date.now()) / 86400000));
-
-const TABS = [
-  { id: 'wall', label: 'Duvar' },
-  { id: 'items', label: 'Eşyalar' },
-  { id: 'rewards', label: 'Oyun & Ödüller' },
-  { id: 'about', label: 'Hakkında' },
+const tabsFor = (isMe) => [
+  { id: 'posts', label: isMe ? 'Paylaştıklarım' : 'Paylaşımlar', icon: 'grid' },
+  { id: 'about', label: isMe ? 'Hakkımda' : 'Hakkında', icon: 'user' },
 ];
 
-// Kendi profilimde: seviye ve bir sonraki seviyeye kalan deneyim puanı
+// Seviye ve bir sonraki seviyeye kalan deneyim puanı
 function levelProgress(user) {
   const percent = Math.min(100, Math.round((user.experience / Math.max(1, user.next_level_experience)) * 100));
   return `
@@ -26,118 +25,192 @@ function levelProgress(user) {
     </div>`;
 }
 
+// Takipçi / Takip listesi: alttan açılan panel, iki sekmeli; her satırda takip et düğmesi
+async function openFollowList(user, initialKind, myId) {
+  let kind = initialKind;
+  const sheet = openSheet(`
+    <h2 class="sheet-title">${esc(user.display_name)}</h2>
+    <nav class="segmented follow-tabs">
+      <button data-kind="followers">${formatCount(user.followers_count)} Takipçi</button>
+      <button data-kind="following">${formatCount(user.following_count)} Takip</button>
+    </nav>
+    <div class="sheet-list follow-list" id="follow-list"></div>`, { className: 'sheet-tall' });
+  const list = sheet.el.querySelector('#follow-list');
+  let people = [];
+
+  const row = (u) => `
+    <div class="member-row">
+      <a href="#/profile/${u.id}" data-close>${avatarImg(u, 'avatar-md')}</a>
+      <a class="member-info" href="#/profile/${u.id}" data-close><b>${esc(u.display_name)}</b><small>@${esc(u.username)}</small></a>
+      ${u.id === myId ? '' : `<button class="btn btn-sm ${u.is_following ? 'btn-soft' : 'btn-primary'}" data-follow-user="${u.id}">${u.is_following ? 'Takiptesin' : 'Takip et'}</button>`}
+    </div>`;
+
+  async function load() {
+    sheet.el.querySelectorAll('[data-kind]').forEach((b) => b.classList.toggle('is-active', b.dataset.kind === kind));
+    list.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+    const requested = kind;
+    const result = await (kind === 'followers' ? api.listUserFollowers(user.id) : api.listUserFollowing(user.id));
+    if (requested !== kind) return;
+    people = result;
+    list.innerHTML = people.map(row).join('')
+      || `<p class="member-empty">${kind === 'followers' ? 'Henüz takipçisi yok.' : 'Henüz kimseyi takip etmiyor.'}</p>`;
+  }
+
+  sheet.el.addEventListener('click', async (event) => {
+    const tab = event.target.closest('[data-kind]');
+    if (tab && tab.dataset.kind !== kind) {
+      kind = tab.dataset.kind;
+      load().catch((error) => toast(error.message, 'error'));
+      return;
+    }
+    const button = event.target.closest('[data-follow-user]');
+    if (!button) return;
+    button.disabled = true;
+    try {
+      const { is_following: isFollowing } = await api.toggleFollow(button.dataset.followUser);
+      button.textContent = isFollowing ? 'Takiptesin' : 'Takip et';
+      button.className = `btn btn-sm ${isFollowing ? 'btn-soft' : 'btn-primary'}`;
+    } catch (error) {
+      toast(error.message, 'error');
+    } finally {
+      button.disabled = false;
+    }
+  });
+  await load();
+}
+
 export async function renderProfile(root, { params }) {
   const me = await api.getMe();
-  const user = params[0] ? await api.getUser(params[0]) : me;
-  const [extras, initialItems] = await Promise.all([api.getProfileExtras(user.id), api.listUserItems(user.id)]);
-  // Kullanıcının süresi dolmamış mağaza eşyaları (çerçeve, giriş efekti, sohbet balonu)
+  const user = params[0] && Number(params[0]) !== me.id ? await api.getUser(params[0]) : me;
+  const [extras, initialItems, initialMoments] = await Promise.all([
+    api.getProfileExtras(user.id), api.listUserItems(user.id), api.listUserMoments(user.id),
+  ]);
   let items = initialItems;
-  let activeTab = 'wall';
+  let moments = initialMoments;
+  let activeTab = 'posts';
+
+  const shortcuts = [
+    { href: '#/vip', emoji: '👑', label: 'VIP merkezi', tone: 'gold' },
+    { href: '#/wallet', emoji: '🪙', label: 'Cüzdan', detail: formatCoins(user.coin_balance ?? 0), tone: 'amber' },
+    { href: '#/store', emoji: '🛍️', label: 'Mağaza', tone: 'pink' },
+    { href: '#/tasks', emoji: '🎯', label: 'Görevler', tone: 'violet' },
+  ];
 
   root.innerHTML = `
-    <div class="profile">
-      <div class="profile-cover">
-        <img src="${esc(user.cover_url || DEFAULT_COVER_URL)}" alt="" />
-        <div class="profile-cover-actions">
-          ${user.is_me ? '<span></span>' : `<button class="icon-btn icon-btn-glass" data-action="back" aria-label="Geri">${icon('chevron-left', 22)}</button>`}
-          <button class="icon-btn icon-btn-glass" data-action="menu" aria-label="Menü">${icon('more', 20)}</button>
+    <div class="profile-ig">
+      <header class="topbar">
+        ${user.is_me ? '<span></span>' : `<button class="icon-btn icon-btn-plain" data-action="back" aria-label="Geri">${icon('chevron-left', 22)}</button>`}
+        <button class="profile-handle" data-action="copy-id">@${esc(user.username)} <small>ID ${user.id} ${icon('copy', 12)}</small></button>
+        <button class="icon-btn icon-btn-plain" data-action="menu" aria-label="Menü">${icon('more', 20)}</button>
+      </header>
+
+      <div class="profile-top">
+        <div class="profile-avatar ${esc(user.frame || '')}" id="profile-avatar">
+          ${avatarImg(user)}${user.is_online ? '<span class="online-dot"></span>' : ''}
+        </div>
+        <div class="profile-counts">
+          <button data-tab-jump="posts"><b id="moment-count">${formatCount(moments.length)}</b><small>Anı</small></button>
+          <button data-follow-list="followers"><b>${formatCount(user.followers_count)}</b><small>Takipçi</small></button>
+          <button data-follow-list="following"><b>${formatCount(user.following_count)}</b><small>Takip</small></button>
         </div>
       </div>
 
-      <div class="profile-head">
-        <div class="profile-avatar ${esc(user.frame || '')}" id="profile-avatar">${avatarImg(user)}</div>
-        <div class="profile-id">
-          <h1>${esc(user.display_name)} ${user.is_verified ? `<span class="verified">${icon('verified', 18)}</span>` : ''}</h1>
-          <button class="id-copy" data-action="copy-id">ID ${user.id} ${icon('copy', 13)}</button>
-        </div>
+      <div class="profile-bio-block">
+        <h1>${esc(user.display_name)} ${user.is_verified ? `<span class="verified">${icon('verified', 16)}</span>` : ''}</h1>
         <div class="profile-badges">${vipBadge(user.vip_level)}${levelBadge(user.level)}${user.family ? `<a class="family-chip" href="#/family/${user.family.id}">${esc(user.family.badge)} ${esc(user.family.name)}</a>` : ''}</div>
+        ${user.bio ? `<p class="profile-bio">${esc(user.bio)}</p>` : ''}
+        <p class="profile-meta">${esc(joinParts([user.age && `${user.age} yaş`, user.city, `${user.joined_days} gündür Muti'de`]))}</p>
       </div>
-      ${user.is_me ? levelProgress(user) : ''}
-
-      <p class="profile-meta">${esc(joinParts([user.age && `${user.age} yaş`, user.city, `${user.joined_days} gündür burada`]))}</p>
-      <p class="profile-bio">${esc(user.bio)}</p>
 
       <div class="profile-actions">
         ${user.is_me
-          ? `<button class="btn btn-soft" data-action="edit">${icon('edit', 16)} Profili Düzenle</button>
-             <a class="btn btn-soft" href="#/wallet">${icon('wallet', 16)} Cüzdan</a>`
-          : `<button class="btn ${user.is_following ? 'btn-soft' : 'btn-primary'}" data-action="follow">${user.is_following ? 'Takiptesin' : 'Takip Et'}</button>
+          ? `<button class="btn btn-soft" data-action="edit">Profili düzenle</button>
+             <button class="btn btn-soft" data-action="compose">${icon('plus', 16)} Anı paylaş</button>`
+          : `<button class="btn ${user.is_following ? 'btn-soft' : 'btn-primary'}" data-action="follow">${user.is_following ? 'Takiptesin' : 'Takip et'}</button>
              <button class="btn btn-soft" data-action="message">${icon('chat', 16)} Mesaj</button>`}
       </div>
 
-      <div class="stats">
-        <div><b>${formatCount(user.followers_count)}</b><small>Takipçi</small></div>
-        <div><b>${formatCount(user.following_count)}</b><small>Takip</small></div>
-        <div><b>${formatCount(user.friends_count)}</b><small>Arkadaş</small></div>
-        <div><b>${formatCount(user.visitors_count)}</b><small>Ziyaretçi</small></div>
-      </div>
+      ${user.is_me ? `
+        <nav class="profile-shortcuts">
+          ${shortcuts.map((s) => `
+            <a class="profile-shortcut tone-${s.tone}" href="${s.href}">
+              <i>${s.emoji}</i><b>${s.label}</b>${s.detail ? `<small>${s.detail}</small>` : ''}
+            </a>`).join('')}
+        </nav>` : ''}
 
       <div id="cp-slot"></div>
 
-      <div class="quick-tiles">
-        <button data-tab-jump="items"><i>💠</i><span><b>Eşyalar</b><small id="item-count">${items.length}</small></span></button>
-        <button data-tab-jump="rewards"><i>🏆</i><span><b>Oyun Ödülleri</b><small>${extras.achievements.length}</small></span></button>
-        <button data-tab-jump="rewards"><i>🎖️</i><span><b>Rozetler</b><small>${extras.recent_rewards.length}</small></span></button>
-      </div>
-
-      <div class="tabs" id="profile-tabs">
-        ${TABS.map((t) => `<button class="${t.id === activeTab ? 'is-active' : ''}" data-tab="${t.id}">${t.label}</button>`).join('')}
-      </div>
-      <div class="tab-panel" id="tab-panel"></div>
+      <nav class="profile-tabs" id="profile-tabs">
+        ${tabsFor(user.is_me).map((t) => `<button class="${t.id === activeTab ? 'is-active' : ''}" data-tab="${t.id}" aria-label="${t.label}">${icon(t.icon, 20)}<span>${t.label}</span></button>`).join('')}
+      </nav>
+      <div id="tab-panel"></div>
     </div>`;
 
   const panel = root.querySelector('#tab-panel');
   const avatarEl = root.querySelector('#profile-avatar');
 
+  const itemsHtml = () => `
+    <div class="frame-grid">
+      ${items.map((item) => `
+        <button class="frame-item ${item.is_equipped ? 'is-active' : ''}" data-owned-item="${item.id}">
+          ${item.kind === 'frame'
+            ? `<span class="frame-preview ${esc(item.style)}">${avatarImg(user)}</span>`
+            : `<span class="owned-icon ${item.kind === 'chat_bubble' ? esc(item.style) : ''}">${item.emoji}</span>`}
+          <b>${esc(item.name)}</b>
+          <small>${item.is_equipped ? 'Kullanımda' : `${KIND_LABELS[item.kind]} · ${daysLeft(item.owned_until)} gün`}</small>
+        </button>`).join('')}
+      ${user.is_me ? '<a class="frame-item frame-shop" href="#/store"><span class="owned-icon">🛍️</span><b>Mağaza</b><small>Yeni eşya al</small></a>' : ''}
+    </div>
+    ${!items.length && !user.is_me ? '<p class="member-empty">Henüz eşyası yok.</p>' : ''}`;
+
   const panels = {
-    wall: () => extras.wall_posts.map((post) => `
-      <article class="post">
-        <header>${avatarImg(user, 'avatar-sm')}<span><b>${esc(user.display_name)}</b><small>${esc(post.time_label)}</small></span></header>
-        <p>${esc(post.text)}</p>
-        <div class="post-images post-images-${Math.min(post.image_urls.length, 3)}">
-          ${post.image_urls.map((url) => `<img src="${esc(url)}" alt="" loading="lazy" />`).join('')}
-        </div>
-        <footer>
-          <button data-action="like" data-count="${post.like_count}">${icon('heart', 18)} <span>${post.like_count}</span></button>
-          <button data-action="soon">${icon('chat', 18)} ${post.comment_count}</button>
-          <button data-action="soon">${icon('share', 18)}</button>
-        </footer>
-      </article>`).join(''),
-
-    items: () => `
-      <div class="frame-grid">
-        ${items.map((item) => `
-          <button class="frame-item ${item.is_equipped ? 'is-active' : ''}" data-owned-item="${item.id}">
-            ${item.kind === 'frame'
-              ? `<span class="frame-preview ${esc(item.style)}">${avatarImg(user)}</span>`
-              : `<span class="owned-icon ${item.kind === 'chat_bubble' ? esc(item.style) : ''}">${item.emoji}</span>`}
-            <b>${esc(item.name)}</b>
-            <small>${item.is_equipped ? 'Kullanımda' : `${KIND_LABELS[item.kind]} · ${daysLeft(item.owned_until)} gün`}</small>
-          </button>`).join('')}
-        ${user.is_me ? `<a class="frame-item frame-shop" href="#/store"><span class="owned-icon">🛍️</span><b>Mağaza</b><small>Yeni eşya al</small></a>` : ''}
-      </div>
-      ${!items.length && !user.is_me ? '<p class="member-empty">Henüz eşyası yok.</p>' : ''}`,
-
-    rewards: () => `
-      <h3 class="sub-title">Oyun Başarıları</h3>
-      <div class="reward-grid">
-        ${extras.achievements.map((a) => `<div class="reward reward-gold"><i>${a.emoji}</i><b>${esc(a.name)}</b><small>${esc(a.detail)}</small></div>`).join('')}
-      </div>
-      <h3 class="sub-title">Son Kazanılan Ödüller</h3>
-      <div class="reward-grid">
-        ${extras.recent_rewards.map((r) => `<div class="reward"><i>${r.emoji}</i><b>${esc(r.name)}</b><small>${esc(r.date_label)}</small></div>`).join('')}
-      </div>`,
+    posts: () => (moments.length
+      ? `<div class="moment-grid">${moments.map(momentTile).join('')}</div>`
+      : `<div class="empty">
+           <p>${user.is_me ? 'İlk anını paylaş: takipçilerin Anılar sekmesinde görür.' : 'Henüz paylaşımı yok.'}</p>
+           ${user.is_me ? '<button class="btn btn-primary" data-action="compose">Anı paylaş</button>' : ''}
+         </div>`),
 
     about: () => `
+      ${levelProgress(user)}
+      <div class="about-stats">
+        <span><b>🪙 ${formatCoins(extras.stats.gifts_sent_coins)}</b><small>Gönderdiği hediye</small></span>
+        <span><b>💎 ${formatCoins(extras.stats.gifts_received_diamonds)}</b><small>Aldığı hediye</small></span>
+        <span><b>${extras.stats.rooms_count}</b><small>Odası</small></span>
+      </div>
+      <h3 class="sub-title">Başarılar <small>${extras.achievements.filter((a) => a.is_unlocked).length} / ${extras.achievements.length}</small></h3>
+      <div class="achievement-grid">
+        ${extras.achievements.map((a) => `
+          <div class="achievement ${a.is_unlocked ? 'is-unlocked' : ''}">
+            <i>${a.emoji}</i><b>${esc(a.name)}</b><small>${esc(a.detail)}</small>
+          </div>`).join('')}
+      </div>
+      <h3 class="sub-title">Eşyalar <small>${items.length}</small></h3>
+      ${itemsHtml()}
+      <h3 class="sub-title">Bilgiler</h3>
       <dl class="about">
         <div><dt>Kullanıcı adı</dt><dd>@${esc(user.username)}</dd></div>
         <div><dt>Şehir</dt><dd>${esc(user.city || '—')}</dd></div>
         <div><dt>Yaş</dt><dd>${user.age || '—'}</dd></div>
-        <div><dt>Seviye</dt><dd>Lv.${user.level}</dd></div>
         <div><dt>VIP</dt><dd>${user.vip_level ? `VIP ${user.vip_level}` : 'Yok'}</dd></div>
+        <div><dt>Ziyaretçi</dt><dd>${formatCount(user.visitors_count)}</dd></div>
         <div><dt>Üyelik</dt><dd>${user.joined_days} gün</dd></div>
       </dl>`,
   };
+
+  function showTab(tabId) {
+    activeTab = tabId;
+    root.querySelectorAll('#profile-tabs button').forEach((b) => b.classList.toggle('is-active', b.dataset.tab === tabId));
+    panel.innerHTML = panels[tabId]();
+  }
+  showTab(activeTab);
+
+  const repaintMoments = (list) => {
+    moments = list;
+    root.querySelector('#moment-count').textContent = formatCount(moments.length);
+    if (activeTab === 'posts') showTab('posts');
+  };
+  bindMomentActions(root, { getList: () => moments, onChange: repaintMoments });
 
   // ─── CP (çift) ─────────────────────────────────────────────────────────────
   const cpSlot = root.querySelector('#cp-slot');
@@ -203,26 +276,18 @@ export async function renderProfile(root, { params }) {
     }
   });
 
-  function showTab(tabId) {
-    activeTab = tabId;
-    root.querySelectorAll('#profile-tabs button').forEach((b) => b.classList.toggle('is-active', b.dataset.tab === tabId));
-    panel.innerHTML = panels[tabId]();
-  }
-  showTab(activeTab);
-
   function openMenu() {
     const sheet = openSheet(`
       <div class="menu-list">
         <button data-menu="share">${icon('share', 20)} Profili paylaş</button>
         ${user.is_me
-          ? `<a href="#/wallet" data-close>${icon('wallet', 20)} Cüzdan</a>
-             <a href="#/store" data-close>${icon('crown', 20)} Mağaza</a>
-             <a href="#/vip" data-close>👑 VIP</a>
-             <a href="#/agency" data-close>🏢 Ajans</a>
-             ${user.staff_role ? `<a href="${ADMIN_URL}" target="_blank" rel="noopener" data-close>🛡️ Yönetim Paneli (masaüstü)</a>` : ''}
+          ? `<a href="#/my-rooms" data-close>${icon('mic', 20)} Yayın odam</a>
+             <a href="#/agency" data-close>${icon('building', 20)} Ajans</a>
+             <a href="#/families" data-close>🛡️ Aileler</a>
+             ${user.staff_role ? `<a href="${ADMIN_URL}" target="_blank" rel="noopener" data-close>🛡️ Yönetim paneli (masaüstü)</a>` : ''}
              <a href="#/settings" data-close>${icon('edit', 20)} Ayarlar</a>
              <button data-menu="logout" class="is-danger">${icon('logout', 20)} Çıkış yap</button>`
-          : `${!user.cp_partner_id && !me.cp_partner_id ? `<button data-menu="propose">💍 CP teklif et</button>` : ''}
+          : `${!user.cp_partner_id && !me.cp_partner_id ? '<button data-menu="propose">💍 CP teklif et</button>' : ''}
              <button data-menu="block">${icon('lock', 20)} ${user.is_blocked ? 'Engeli kaldır' : 'Engelle'}</button>
              <button data-menu="report" class="is-danger">${icon('close', 20)} Şikâyet et</button>`}
       </div>`);
@@ -251,6 +316,7 @@ export async function renderProfile(root, { params }) {
           toast(error.message, 'error');
         }
       } else {
+        navigator.clipboard?.writeText(`${location.origin}${location.pathname}#/profile/${user.id}`).catch(() => {});
         toast('Profil bağlantısı kopyalandı');
       }
     });
@@ -277,10 +343,16 @@ export async function renderProfile(root, { params }) {
         const frame = items.find((i) => i.kind === 'frame' && i.is_equipped);
         avatarEl.className = `profile-avatar ${frame ? frame.style : ''}`;
         toast(selected.is_equipped ? `${selected.name} çıkarıldı` : `${selected.name} takıldı`, 'success');
-        return showTab('items');
+        return showTab('about');
       } catch (error) {
         return toast(error.message, 'error');
       }
+    }
+
+    const followList = event.target.closest('[data-follow-list]');
+    if (followList) {
+      openFollowList(user, followList.dataset.followList, me.id).catch((error) => toast(error.message, 'error'));
+      return;
     }
 
     const action = event.target.closest('[data-action]')?.dataset.action;
@@ -296,21 +368,27 @@ export async function renderProfile(root, { params }) {
       navigator.clipboard?.writeText(String(user.id)).catch(() => {});
       toast('ID kopyalandı');
     } else if (action === 'follow') {
-      const { is_following } = await api.toggleFollow(user.id);
-      button.textContent = is_following ? 'Takiptesin' : 'Takip Et';
-      button.className = `btn ${is_following ? 'btn-soft' : 'btn-primary'}`;
+      try {
+        const { is_following: isFollowing } = await api.toggleFollow(user.id);
+        button.textContent = isFollowing ? 'Takiptesin' : 'Takip et';
+        button.className = `btn ${isFollowing ? 'btn-soft' : 'btn-primary'}`;
+      } catch (error) {
+        toast(error.message, 'error');
+      }
     } else if (action === 'message') {
-      const conversationId = await api.openConversationWith(user.id);
-      location.hash = `#/chat/${conversationId}`;
-    } else if (action === 'like') {
-      const liked = button.classList.toggle('is-liked');
-      button.querySelector('span').textContent = Number(button.dataset.count) + (liked ? 1 : 0);
+      try {
+        const conversationId = await api.openConversationWith(user.id);
+        location.hash = `#/chat/${conversationId}`;
+      } catch (error) {
+        toast(error.message, 'error');
+      }
+    } else if (action === 'compose') {
+      openComposer((moment) => { repaintMoments([moment, ...moments]); showTab('posts'); })
+        .catch((error) => toast(error.message, 'error'));
     } else if (action === 'edit') {
       // Kaydedilince ekranı yeniden çiz (yönlendirici aynı adresi baştan yükler)
       openEditProfileSheet(user, () => window.dispatchEvent(new HashChangeEvent('hashchange')))
         .catch((error) => toast(error.message, 'error'));
-    } else if (action === 'soon') {
-      toast('Bu özellik yakında geliyor');
     }
   });
 

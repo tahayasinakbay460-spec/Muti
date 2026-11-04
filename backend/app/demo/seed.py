@@ -26,8 +26,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import sync_id_sequences, utcnow
 from app.core.security import hash_password
 from app.models import (
-    Agency, AgencyMember, Report, Conversation, Couple, Event, Family, FamilyMember, FamilyMessage, Follow, Message, Room,
-    RoomMessage, StoreItem, Transaction, User,
+    Agency, AgencyMember, Report, Conversation, Couple, Event, Family, FamilyMember, FamilyMessage, Follow, Message, Moment,
+    MomentLike, ProfileVisit, Room, RoomFollow, RoomMessage, StoreItem, Transaction, User,
 )
 from app.services import catalog_service, store_service, vip_service
 from app.realtime.state import InMemoryRoomStateStore, RoomStateStore
@@ -331,3 +331,74 @@ async def seed_live_state(state: RoomStateStore) -> None:
                 state.demo_set_seat(rid, index, user_id=abs(occupant), is_muted=occupant < 0)
 
     state.demo_always_online = {user[0] for user in USERS if user[11]}
+
+
+# ── Anılar, ziyaretçiler ve ana kullanıcının yayın odası ──────────────────────
+# Bu tablolar sonradan eklendi; seed_database yalnızca BOŞ veritabanında çalıştığı için bunlar
+# ayrı bir adımda, "anı tablosu boşsa" eklenir. Böylece eski demo veritabanları da dolar.
+
+# (yazan, metin, görsel adı | None, kaç saat önce)
+MOMENTS = [
+    (2001, "Havuz Sohbeti'nde bu akşam rekor kalabalık vardı, hepinize teşekkürler 🌴", "beach", 2),
+    (2012, "Cuma canlı müzik listesi hazır, istek parçalarınızı yorumlara değil odaya yazın 🎸", "guitar", 5),
+    (2015, "Gece kuşları burada mı? 🌙", "night", 7),
+    (2003, "Yeni şarkı keşfi: bu hafta hep akustik dinledim", "music", 11),
+    (2009, "Deniz feneri manzarasında karaoke gecesi hayal edin", "lighthouse", 20),
+    (2010, "Zar turnuvasında finale kaldım 🎲 izlemeye gelin", None, 26),
+    (2005, "Antalya'dan herkese selamlar ☀️", "coast", 30),
+    (2008, "Kahve molası odasında yeni tanıştığım herkese sevgiler ☕", "coffee", 40),
+    (2007, "Kitap kulübünün bu haftaki kitabı: Kürk Mantolu Madonna 📚", "terrace", 52),
+    (2002, "Bursa'da akşam yürüyüşü", "city", 70),
+    (2014, "Tavla ustası kim? Meydan okuyorum 😄", None, 90),
+    (MAIN_USER_ID, "Muti'de ilk anım! Odama herkesi beklerim 🎙️", "sky", 100),
+]
+# Ana kullanıcının profiline bakanlar: (kim, kaç saat önce)
+MAIN_USER_VISITORS = [(2001, 1), (2015, 3), (2005, 6), (2009, 12), (2013, 30)]
+# Ana kullanıcının odası: (başlık, kategori, kapak, takip edenler, [(gönderen, elmas, kaç gün önce)])
+MAIN_USER_ROOM = ("Muti'nin Odası 🎙️", "chat", "sky", [2001, 2003, 2005, 2008, 2013],
+                  [(2001, 1200, 0), (2005, 300, 2), (2015, 2500, 5), (2003, 600, 12)])
+
+
+async def seed_social(db: AsyncSession) -> None:
+    """Anılar boşsa örnek anıları, beğenileri, ziyaretçileri ve ana kullanıcının odasını ekler."""
+    if await db.scalar(select(func.count(Moment.id))):
+        return
+    main_user = await db.get(User, MAIN_USER_ID)
+    if main_user is None:
+        return
+    now = utcnow()
+    rng = random.Random(7)
+    likers = [user[0] for user in USERS]
+
+    # Eskiden yeniye ekliyoruz: akış id'ye göre sıralı, en yeni anı en büyük id'yi alsın
+    for author, text, image, hours in sorted(MOMENTS, key=lambda m: -m[3]):
+        fans = [uid for uid in rng.sample(likers, rng.randint(2, 9)) if uid != author]
+        moment = Moment(user_id=author, text=text, image_url=f"assets/covers/{image}.jpg" if image else None,
+                        like_count=len(fans), created_at=now - timedelta(hours=hours))
+        db.add(moment)
+        await db.flush()
+        db.add_all([MomentLike(moment_id=moment.id, user_id=uid) for uid in fans])
+
+    db.add_all([
+        ProfileVisit(visitor_id=uid, visited_id=MAIN_USER_ID, visited_at=now - timedelta(hours=hours))
+        for uid, hours in MAIN_USER_VISITORS
+    ])
+    # Sayaç listeyle aynı olsun (örnek verideki uydurma sayı yerine)
+    main_user.visitors_count = len(MAIN_USER_VISITORS)
+
+    if not await db.scalar(select(Room.id).where(Room.host_id == MAIN_USER_ID)):
+        title, category, cover, followers, gifts = MAIN_USER_ROOM
+        room = Room(title=title, category=category, cover_url=f"assets/covers/{cover}.jpg", host_id=MAIN_USER_ID,
+                    announcement="Herkese hoş geldiniz, koltuklar açık!", is_live=True)
+        db.add(room)
+        await db.flush()
+        db.add_all([RoomFollow(user_id=uid, room_id=room.id) for uid in followers])
+        # Odada ana kullanıcıya gelen hediyeler: defter ile bakiye tutarlı olsun diye elmas bakiyesi de artar.
+        balance = main_user.diamond_balance
+        for sender, diamonds, days in sorted(gifts, key=lambda g: -g[2]):
+            balance += diamonds
+            db.add(Transaction(user_id=MAIN_USER_ID, type="gift_received", currency="diamond", amount=diamonds,
+                               balance_after=balance, label="Hediye alındı (örnek veri)", counterparty_id=sender,
+                               room_id=room.id, quantity=1, created_at=now - timedelta(days=days, hours=1)))
+        main_user.diamond_balance = balance
+    await db.commit()

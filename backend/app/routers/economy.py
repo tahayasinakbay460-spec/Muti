@@ -13,7 +13,6 @@ from app.schemas.economy import (
     CoinPackageOut, ExchangeRequest, ExchangeResult, GiftOut, GiftSendRequest, GiftSendResult, IncomeSummary,
     PurchaseRequest, PurchaseResult, TransactionOut,
 )
-from app.schemas.user import TopGifter
 from app.services import gift_service, wallet_service
 
 router = APIRouter(tags=["economy"])
@@ -69,8 +68,3 @@ async def list_transactions(
 ):
     """Cüzdan geçmişi. Daha eskileri için `before_id` = listedeki son kaydın id'si."""
     return await wallet_service.list_transactions(db, user_id, currency, limit, before_id)
-
-
-@router.get("/leaderboards/gifters", response_model=list[TopGifter])
-async def list_top_gifters(user_id: CurrentUserId, db: DbSession):
-    return await gift_service.list_top_gifters(db, user_id)

@@ -24,3 +24,29 @@ export function chips(items, activeId) {
 export function coinPill(balance) {
   return `<a class="coin-pill" href="#/wallet"><span class="coin"></span><b>${formatCoins(balance)}</b><span class="coin-plus">+</span></a>`;
 }
+
+// Ajans kartı: kişinin ajansla ilişkisine göre tek satırlık özet
+export function agencyCard(agency) {
+  const tier = agency.tiers?.[agency.my_tier_index];
+  let title = 'Ajansa katıl';
+  let detail = 'Ajanslı yayıncılar aylık hedef ve seviye bonusuyla kazanır';
+  if (agency.role === 'owner') {
+    title = agency.dashboard.agency.name;
+    detail = `Ajans sahibisin · ${agency.dashboard.agency.member_count} yayıncı · 💎 ${formatCoins(agency.dashboard.month_diamonds)} bu ay`;
+  } else if (agency.role === 'member') {
+    title = agency.agency.name;
+    detail = `${tier ? `${tier.emoji} ${tier.name}` : ''} · 💎 ${formatCoins(agency.my_month_diamonds)} bu ay`;
+  } else if (agency.invite) {
+    title = `${agency.invite.name} seni davet etti`;
+    detail = 'Daveti görmek için dokun';
+  } else if (agency.application) {
+    title = `${agency.application.name} başvurun bekliyor`;
+    detail = 'Ajans sahibi kabul edince yayıncısı olursun';
+  }
+  return `
+    <a class="agency-card" href="#/agency">
+      <span class="agency-card-icon">${icon('building', 22)}</span>
+      <span class="my-room-info"><b>${esc(title)}</b><small>${esc(detail)}</small></span>
+      ${icon('chevron-right', 18)}
+    </a>`;
+}

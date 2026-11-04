@@ -7,13 +7,10 @@
   --line: rgba(255, 255, 255, 0.08);
   --text: #ffffff;
   --muted: #9b98ad;
-  --purple: #8b5cff;
-  --pink: #ff4d9d;
   --grad: linear-gradient(135deg, #6d5bff 0%, #b14bff 50%, #ff4d9d 100%);
   --gold: #ffc53d;
   --green: #2ee6a6;
   --red: #ff4d6d;
-  --blue: #3d8bff;
   --radius: 16px;
   color-scheme: dark;
 }

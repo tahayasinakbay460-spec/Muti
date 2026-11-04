@@ -12,7 +12,6 @@ rolü alınınca bir sonraki isteği reddedilir.
 from typing import Literal
 
 StaffRole = Literal["admin", "moderator", "finance"]
-STAFF_ROLES: tuple[str, ...] = ("admin", "moderator", "finance")
 
 # Yetkiler ve ne işe yaradıkları
 PERMISSIONS: dict[str, str] = {

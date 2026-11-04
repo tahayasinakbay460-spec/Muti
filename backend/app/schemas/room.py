@@ -40,6 +40,8 @@ class RoomOut(BaseModel):
     # Bakan kişiye göre değişir: isteği atan kişi bu odayı takip ediyor mu?
     # Herkese giden yayınlarda (viewer yok) her zaman false'tur.
     is_following: bool = False
+    # Odada şu an PK (hediye yarışı) sürüyor mu: listede "PK" rozeti için.
+    has_pk: bool = False
 
 
 class RoomMemberOut(BaseModel):
@@ -91,3 +93,12 @@ class RoomRoleRequest(BaseModel):
 class ChatMuteRequest(BaseModel):
     """Sohbette susturma süresi (dakika). Yalnızca bu seçenekler; arayüzdeki düğmelerle aynı."""
     minutes: Literal[5, 30, 60, 1440]
+
+
+class MyRoomStats(BaseModel):
+    """Yayın odam ekranı: sahibi olduğum bir oda ve o odaya gelen hediyeler."""
+    room: RoomOut
+    follower_count: int       # odayı takip eden kişi sayısı
+    gift_count: int           # odada gönderilen hediye sayısı (adet)
+    gift_diamonds: int        # odadaki herkese giden hediyelerin elması, bugüne kadar
+    month_gift_diamonds: int  # aynısı, bu ay

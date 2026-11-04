@@ -34,33 +34,43 @@ class RoomHub:
         # oda id → { o odaya bu sunucudan bağlı WebSocket → bağlantının sahibi (kullanıcı id) }
         # Sahibini de tutuyoruz ki odadan atılan birinin bağlantılarını bulup kapatabilelim.
         self._connections: dict[int, dict[WebSocket, int]] = {}
+        # Aynı bilginin kişiye göre dizini: oda id → { kullanıcı id → o kişinin bağlantıları }.
+        # Tek kişiye gönderirken (ses sinyali, koltuk daveti) odadaki herkesi taramamak için.
+        self._by_user: dict[int, dict[int, set[WebSocket]]] = {}
 
     def add(self, room_id: int, websocket: WebSocket, user_id: int) -> None:
         self._connections.setdefault(room_id, {})[websocket] = user_id
+        self._by_user.setdefault(room_id, {}).setdefault(user_id, set()).add(websocket)
 
     def remove(self, room_id: int, websocket: WebSocket) -> None:
         sockets = self._connections.get(room_id)
         if not sockets:
             return
-        sockets.pop(websocket, None)
+        user_id = sockets.pop(websocket, None)
+        if user_id is not None:
+            owned = self._by_user[room_id][user_id]
+            owned.discard(websocket)
+            if not owned:
+                del self._by_user[room_id][user_id]
         if not sockets:
             # Boş odaların kaydını tutmayalım, bellek şişmesin.
             del self._connections[room_id]
+            self._by_user.pop(room_id, None)
+
+    def _user_sockets(self, room_id: int, user_id: int) -> list[WebSocket]:
+        return list(self._by_user.get(room_id, {}).get(user_id, ()))
 
     async def disconnect_user(self, room_id: int, user_id: int, code: int) -> None:
         """
         Bir kullanıcının bu odadaki bütün bağlantılarını kapatır (odadan atma).
         Redis'e geçişte bu da bir pub/sub mesajı olacak; her sunucu kendi bağlantılarını kapatacak.
         """
-        sockets = [ws for ws, owner in self._connections.get(room_id, {}).items() if owner == user_id]
-        for websocket in sockets:
+        for websocket in self._user_sockets(room_id, user_id):
             await self._close(room_id, websocket, code)
 
     async def disconnect_other_connections(self, room_id: int, user_id: int, keep: WebSocket, code: int) -> None:
         """Kişinin bu odadaki `keep` dışındaki bağlantılarını kapatır (aynı hesap başka cihazdan girdi)."""
-        sockets = [
-            ws for ws, owner in self._connections.get(room_id, {}).items() if owner == user_id and ws is not keep
-        ]
+        sockets = [ws for ws in self._user_sockets(room_id, user_id) if ws is not keep]
         for websocket in sockets:
             await self._close(room_id, websocket, code)
 
@@ -80,8 +90,8 @@ class RoomHub:
 
     async def disconnect_user_everywhere(self, user_id: int, code: int) -> None:
         """Kişinin bu sunucudaki bütün oda bağlantılarını kapatır (ör. uygulamadan banlandı)."""
-        for room_id, sockets in list(self._connections.items()):
-            if user_id in sockets.values():
+        for room_id, users in list(self._by_user.items()):
+            if user_id in users:
                 await self.disconnect_user(room_id, user_id, code)
 
     async def send_to_user(self, room_id: int, user_id: int, event: str, payload: dict) -> None:
@@ -89,7 +99,7 @@ class RoomHub:
         Olayı yalnızca odadaki TEK bir kişiye gönderir (koltuk daveti, sesli görüşme sinyali).
         Redis'e geçişte bu da pub/sub üzerinden "şu odadaki şu kişiye" diye dağıtılacak.
         """
-        sockets = [ws for ws, owner in self._connections.get(room_id, {}).items() if owner == user_id]
+        sockets = self._user_sockets(room_id, user_id)
         if not sockets:
             return
         message = json.dumps({"event": event, "payload": payload}, ensure_ascii=False, default=str)

@@ -7,8 +7,10 @@ from fastapi import APIRouter, Path, Query, Response, status
 
 from app.core.deps import CurrentUserId, DbSession
 from app.schemas.room import (
-    ChatMuteRequest, RoomCreateRequest, RoomFollowResult, RoomMemberOut, RoomOut, RoomRoleRequest, RoomUpdateRequest,
+    ChatMuteRequest, MyRoomStats, RoomCreateRequest, RoomFollowResult, RoomMemberOut, RoomOut, RoomRoleRequest,
+    RoomUpdateRequest,
 )
+from app.schemas.user import UserOut
 from app.schemas.store import ChestClaimResult, ChestOut
 from app.services import moderation_service, room_service, treasure_service
 from app.voice import VoiceJoinInfo
@@ -40,6 +42,12 @@ async def create_room(data: RoomCreateRequest, user_id: CurrentUserId, db: DbSes
 async def list_followed_rooms(user_id: CurrentUserId, db: DbSession):
     """Takip ettiğim odalar (ana sayfadaki "Takip" sekmesi)."""
     return await room_service.list_followed_rooms(db, user_id)
+
+
+@router.get("/mine", response_model=list[MyRoomStats])
+async def list_my_rooms(user_id: CurrentUserId, db: DbSession):
+    """Yayın odam: sahibi olduğum odalar, takipçi ve hediye sayılarıyla."""
+    return await room_service.list_my_rooms(db, user_id)
 
 
 @router.get("/{room_id}", response_model=RoomOut)
@@ -79,6 +87,12 @@ async def get_voice_join(room_id: int, user_id: CurrentUserId, db: DbSession):
 async def toggle_room_follow(room_id: int, user_id: CurrentUserId, db: DbSession):
     """Odayı takip ediyorsan bırakır, etmiyorsan takip eder."""
     return RoomFollowResult(is_following=await room_service.toggle_room_follow(db, user_id, room_id))
+
+
+@router.get("/{room_id}/followers", response_model=list[UserOut])
+async def list_room_followers(room_id: int, user_id: CurrentUserId, db: DbSession):
+    """Odayı takip edenler. Yalnızca oda sahibi ve yöneticiler."""
+    return await room_service.list_room_followers(db, user_id, room_id)
 
 
 @router.post("/{room_id}/seats/{seat_index}", response_model=RoomOut)

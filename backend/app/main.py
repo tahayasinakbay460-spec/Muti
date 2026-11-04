@@ -34,8 +34,8 @@ from app.realtime import room_socket, user_socket
 from app.realtime.state import room_state
 from app.services import admin_service, auth_service, catalog_service
 from app.routers import (
-    activities, admin, agency, auth, content, conversations, diagnostics, economy, engagement, rooms, social, store,
-    users,
+    activities, admin, agency, auth, content, conversations, diagnostics, economy, engagement, moments, rooms, social,
+    store, users,
 )
 
 
@@ -64,6 +64,10 @@ async def lifespan(_app: FastAPI):
         async with SessionLocal() as db:
             # Vitrinde demo yönetici hesabı (parolası herkesçe bilinen) oluşturulmaz
             await seed.seed_database(db, with_admin=settings.demo_mode)
+            # Anı/ziyaretçi örnekleri yalnızca yerel demoda: canlıdaki dolu veritabanına
+            # sonradan örnek kayıt ve elmas eklenmesin.
+            if settings.demo_mode:
+                await seed.seed_social(db)
     if settings.demo_mode:
         await seed.seed_live_state(room_state)
     async with SessionLocal() as db:
@@ -107,7 +111,7 @@ app.add_middleware(RequestLogMiddleware)
 api_v1 = APIRouter(prefix="/api/v1")
 for module in (
     auth, users, rooms, activities, economy, store, engagement, agency, admin, conversations, social, content,
-    diagnostics,
+    diagnostics, moments,
 ):
     api_v1.include_router(module.router)
 app.include_router(api_v1)

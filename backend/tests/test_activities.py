@@ -47,6 +47,9 @@ def test_pk_counts_gifts_to_team_seats_and_picks_winner(client):
         assert started["status"] == "running" and started["red_seats"] == [0, 1, 2, 3]
         assert client.post(f"{rooms}/pk", headers=host, json={"minutes": 3}).json()["code"] == "pk_running"
         receive_until(socket, "room:pk_updated")
+        # Oda listesinde "Canlı PK" filtresi ve rozeti
+        pk_rooms = client.get(f"{API}/rooms?category=pk", headers=listener).json()
+        assert [r["id"] for r in pk_rooms] == [room["id"]] and pk_rooms[0]["has_pk"]
 
         gift = {"room_id": room["id"], "quantity": 1}
         client.post(f"{API}/gifts/send", headers=fan, json={**gift, "receiver_id": host_id, "gift_id": 6})       # 299
@@ -60,6 +63,7 @@ def test_pk_counts_gifts_to_team_seats_and_picks_winner(client):
         assert ended["status"] == "ended" and ended["winner"] == "red" and (ended["red"], ended["blue"]) == (299, 10)
         assert ended["mvp"]["user"]["id"] == fan_id and ended["mvp"]["coins"] == 309
         assert client.delete(f"{rooms}/pk", headers=host).json()["code"] == "no_pk"
+        assert client.get(f"{API}/rooms?category=pk", headers=listener).json() == []
 
 
 def test_pk_ends_by_itself_when_time_is_up(client, monkeypatch):

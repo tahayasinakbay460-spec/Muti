@@ -1,22 +1,13 @@
 """
-/api/v1/banners — ana sayfadaki kayan tanıtım görselleri.
 /api/v1/app-info — giriş yapmadan okunabilen uygulama bilgisi.
 """
 from fastapi import APIRouter
 
 from app.core.config import settings
-from app.core.deps import CurrentUserId
-from app.demo import content
 from app.demo.seed import DEMO_PASSWORD, MAIN_USER_ID, USERS
 from app.schemas.content import AppInfo, DemoLogin
 
 router = APIRouter(tags=["content"])
-
-
-@router.get("/banners")
-async def list_banners(_user_id: CurrentUserId) -> list[dict]:
-    """DEMO KISAYOLU: sabit liste. Canlıda yönetim panelinden düzenlenen bir tablodan gelecek."""
-    return content.BANNERS
 
 
 @router.get("/app-info", response_model=AppInfo)

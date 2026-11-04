@@ -1,13 +1,16 @@
-// Uygulama girişi: hash tabanlı yönlendirme ve alt sekme çubuğu.
+// Uygulama girişi: hash tabanlı yönlendirme ve alt sekme çubuğu (Muti · Anılar · Odalar · Mesajlar · Profil).
 import { api } from './api.js';
+import { APP_NAME } from './config.js';
 import { esc, icon, closeAllSheets, toast } from './ui.js';
 import { startInbox, stopInbox, refreshUnread, paintUnreadBadge } from './inbox.js';
 import { renderAuth } from './screens/auth.js';
 import { renderHome } from './screens/home.js';
 import { renderExplore } from './screens/explore.js';
-import { renderFollowing } from './screens/following.js';
 import { renderRoom, roomSession } from './screens/room.js';
-import { renderMessages, renderChat } from './screens/messages.js';
+import { renderMessages, renderChat, renderRequests, renderVisitors } from './screens/messages.js';
+import { renderMoments } from './screens/moments.js';
+import { renderMyRooms } from './screens/my-rooms.js';
+import { renderRooms } from './screens/rooms.js';
 import { renderProfile } from './screens/profile.js';
 import { renderWallet } from './screens/wallet.js';
 import { renderStore } from './screens/store.js';
@@ -19,37 +22,42 @@ import { renderEvents, renderEvent } from './screens/events.js';
 import { renderAgency } from './screens/agency.js';
 import { renderNotifications } from './screens/notifications.js';
 import { renderSettings } from './screens/settings.js';
-import { openCreateRoomSheet } from './screens/create-room.js';
 
 const routes = [
   { pattern: /^\/auth$/, render: renderAuth, isPublic: true },
   { pattern: /^\/home$/, render: renderHome, tab: 'home' },
-  { pattern: /^\/explore$/, render: renderExplore, tab: 'explore' },
-  { pattern: /^\/following$/, render: renderFollowing, tab: 'home' },
+  { pattern: /^\/explore$/, render: renderExplore, tab: 'rooms' },
+  { pattern: /^\/rooms$/, render: renderRooms, tab: 'rooms' },
   { pattern: /^\/room\/(\d+)$/, render: renderRoom, isFixed: true },
+  { pattern: /^\/moments$/, render: renderMoments, tab: 'moments' },
   { pattern: /^\/messages$/, render: renderMessages, tab: 'messages' },
+  { pattern: /^\/requests$/, render: renderRequests, tab: 'messages' },
+  { pattern: /^\/visitors$/, render: renderVisitors, tab: 'messages' },
+  { pattern: /^\/my-rooms$/, render: renderMyRooms, tab: 'rooms' },
   { pattern: /^\/chat\/(\d+)$/, render: renderChat, isFixed: true },
   { pattern: /^\/profile$/, render: renderProfile, tab: 'profile' },
   { pattern: /^\/profile\/(\d+)$/, render: renderProfile },
-  { pattern: /^\/wallet$/, render: renderWallet, tab: 'wallet' },
+  { pattern: /^\/wallet$/, render: renderWallet, tab: 'profile' },
   { pattern: /^\/store$/, render: renderStore, tab: 'profile' },
   { pattern: /^\/vip$/, render: renderVip, tab: 'profile' },
-  { pattern: /^\/tasks$/, render: renderTasks, tab: 'home' },
-  { pattern: /^\/agency$/, render: renderAgency, tab: 'profile' },
-  { pattern: /^\/leaderboard$/, render: renderLeaderboard, tab: 'home' },
-  { pattern: /^\/families$/, render: renderFamilies, tab: 'home' },
-  { pattern: /^\/family\/(\d+)$/, render: renderFamily, tab: 'home' },
-  { pattern: /^\/events$/, render: renderEvents, tab: 'home' },
-  { pattern: /^\/event\/(\d+)$/, render: renderEvent, tab: 'home' },
+  { pattern: /^\/tasks$/, render: renderTasks, tab: 'rooms' },
+  { pattern: /^\/agency$/, render: renderAgency, tab: 'rooms' },
+  { pattern: /^\/leaderboard$/, render: renderLeaderboard, tab: 'rooms' },
+  { pattern: /^\/families$/, render: renderFamilies, tab: 'rooms' },
+  { pattern: /^\/family\/(\d+)$/, render: renderFamily, tab: 'rooms' },
+  { pattern: /^\/events$/, render: renderEvents, tab: 'rooms' },
+  { pattern: /^\/event\/(\d+)$/, render: renderEvent, tab: 'rooms' },
   { pattern: /^\/notifications$/, render: renderNotifications },
   { pattern: /^\/settings$/, render: renderSettings },
 ];
 
+// Beş sekme; ortadaki büyük düğme Odalar (yayın odam, ajans, popüler ve tüm odalar orada).
+// Cüzdan/VIP/mağaza profildeki kısayollardan ve ana sayfadaki bakiyeden açılır.
 const TABS = [
-  { id: 'home', label: 'Ana Sayfa', icon: 'home', href: '#/home' },
+  { id: 'home', label: APP_NAME, icon: 'home', href: '#/home' },
+  { id: 'moments', label: 'Anılar', icon: 'image', href: '#/moments' },
+  { id: 'rooms', label: 'Odalar', icon: 'radio', href: '#/rooms', isCenter: true },
   { id: 'messages', label: 'Mesajlar', icon: 'chat', href: '#/messages' },
-  { id: 'create', label: 'Oda Aç', icon: 'plus' },
-  { id: 'wallet', label: 'Cüzdan', icon: 'wallet', href: '#/wallet' },
   { id: 'profile', label: 'Profil', icon: 'user', href: '#/profile' },
 ];
 
@@ -102,16 +110,12 @@ function renderTabbar(activeTab) {
   tabbarEl.hidden = !activeTab;
   if (!activeTab) return;
   tabbarEl.innerHTML = TABS.map((tab) => (
-    tab.id === 'create'
-      ? `<button class="tab tab-create" data-action="create-room" aria-label="${tab.label}"><span class="tab-create-btn">${icon('plus', 28)}</span></button>`
-      : `<a class="tab ${tab.id === activeTab ? 'is-active' : ''}" href="${tab.href}" data-tab="${tab.id}">${icon(tab.icon, 24)}<span>${tab.label}</span></a>`
+    tab.isCenter
+      ? `<a class="tab tab-center ${tab.id === activeTab ? 'is-active' : ''}" href="${tab.href}" data-tab="${tab.id}"><span class="tab-center-btn">${icon(tab.icon, 26)}</span><span>${tab.label}</span></a>`
+      : `<a class="tab ${tab.id === activeTab ? 'is-active' : ''}" href="${tab.href}" data-tab="${tab.id}">${icon(tab.icon, 24)}<span>${esc(tab.label)}</span></a>`
   )).join('');
   paintUnreadBadge();
 }
-
-tabbarEl.addEventListener('click', (event) => {
-  if (event.target.closest('[data-action="create-room"]')) openCreateRoomSheet();
-});
 
 async function handleRoute() {
   const [path, queryString = ''] = (location.hash.slice(1) || '/home').split('?');

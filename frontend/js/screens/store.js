@@ -1,14 +1,12 @@
 // Mağaza: avatar çerçevesi, odaya giriş efekti ve sohbet balonu satın alma ve takma
 import { api } from '../api.js';
-import { esc, icon, avatarImg, formatCoins, toast, openSheet } from '../ui.js';
+import { esc, icon, avatarImg, formatCoins, toast, openSheet, daysLeft } from '../ui.js';
 
 const TABS = [
   { id: 'frame', label: 'Çerçeve' },
   { id: 'entry_effect', label: 'Giriş Efekti' },
   { id: 'chat_bubble', label: 'Sohbet Balonu' },
 ];
-
-const daysLeft = (iso) => Math.max(1, Math.ceil((new Date(iso) - Date.now()) / 86400000));
 
 // Eşyanın nasıl görüneceği: çerçeve avatarın etrafında, efekt şerit olarak, balon örnek mesajla
 function preview(item, me, size = '') {

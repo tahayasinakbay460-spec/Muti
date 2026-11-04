@@ -40,7 +40,11 @@ export async function renderWallet(root, { query }) {
   let tab = query.tab === 'income' ? 'income' : 'coins';
 
   root.innerHTML = `
-    <header class="topbar"><h1 class="page-title">Cüzdan</h1></header>
+    <header class="topbar">
+      <a class="icon-btn icon-btn-plain" href="#/profile" aria-label="Geri">${icon('chevron-left', 22)}</a>
+      <h1 class="page-title">Cüzdan</h1>
+      <span></span>
+    </header>
     <div class="segmented wallet-tabs">
       <button data-wallet-tab="coins">🪙 Coin</button>
       <button data-wallet-tab="income">💎 Gelir</button>

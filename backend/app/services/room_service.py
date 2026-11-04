@@ -5,16 +5,18 @@ Bir odanın bilgisi iki yerden gelir ve burada birleştirilir:
   - kalıcı bilgiler (ad, sahip, kategori)      → veritabanı (models/room.py)
   - canlı bilgiler (koltuklar, dinleyici sayısı) → canlı durum deposu (realtime/state.py)
 """
-from sqlalchemy import delete, or_, select
+from sqlalchemy import case, delete, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import ConflictError, ForbiddenError, NotFoundError
-from app.models import Room, RoomFollow, RoomMember
+from app.core.timefmt import period_start
+from app.models import Room, RoomFollow, RoomMember, Transaction, User
 from app.realtime import events
 from app.realtime.hub import room_hub
 from app.realtime.state import room_state
-from app.schemas.room import RoomCreateRequest, RoomOut, SeatOut
+from app.schemas.room import MyRoomStats, RoomCreateRequest, RoomOut, SeatOut
+from app.schemas.user import UserOut
 from app.services import user_service
 from app.voice import VoiceJoinInfo, voice_provider
 
@@ -72,6 +74,12 @@ async def get_room_row(db: AsyncSession, room_id: int) -> Room:
     return room
 
 
+def _running_pk_room_ids() -> set[int]:
+    # activity_service bu dosyayı içe aktarıyor; döngü olmasın diye burada, çağrı anında alıyoruz.
+    from app.services import activity_service
+    return activity_service.running_pk_room_ids()
+
+
 async def present_rooms(db: AsyncSession, rooms: list[Room], viewer_id: int | None) -> list[RoomOut]:
     """
     Oda satırlarını canlı bilgilerle birleştirip JSON'a hazırlar.
@@ -101,6 +109,8 @@ async def present_rooms(db: AsyncSession, rooms: list[Room], viewer_id: int | No
         .where(RoomMember.room_id.in_(room_ids)).order_by(RoomMember.created_at)
     ):
         member_ids.setdefault((room_id, role), []).append(member_id)
+
+    pk_room_ids = _running_pk_room_ids()
 
     # Bakan kişinin bu odalardan hangilerini takip ettiği (tek sorgu).
     followed_ids: set[int] = set()
@@ -133,6 +143,7 @@ async def present_rooms(db: AsyncSession, rooms: list[Room], viewer_id: int | No
             vip_ids=member_ids.get((room.id, VIP), []),
             free_seating=room.free_seating,
             is_following=room.id in followed_ids,
+            has_pk=room.id in pk_room_ids,
         )
         for room in rooms
     ]
@@ -142,8 +153,10 @@ async def list_rooms(
     db: AsyncSession, viewer_id: int, category: str = "", query: str = "", limit: int = 30, offset: int = 0,
 ) -> list[RoomOut]:
     statement = select(Room).where(Room.is_active)
-    # "for_you" gerçek bir kategori değil, "hepsi" demek.
-    if category and category != "for_you":
+    # "for_you" gerçek bir kategori değil, "hepsi" demek. "pk" de kategori değil: PK'si süren odalar.
+    if category == "pk":
+        statement = statement.where(Room.id.in_(_running_pk_room_ids() or {0}))
+    elif category and category != "for_you":
         statement = statement.where(Room.category == category)
     if query.strip():
         # Kullanıcının yazdığı % ve _ işaretleri SQL'de "joker" anlamına gelir;
@@ -221,6 +234,58 @@ async def list_followed_rooms(db: AsyncSession, user_id: int, limit: int = 50) -
     return await present_rooms(db, list(rooms), user_id)
 
 
+# ── Yayın odam (oda sahibinin istatistikleri) ─────────────────────────────────
+
+async def list_my_rooms(db: AsyncSession, user_id: int) -> list[MyRoomStats]:
+    """
+    Sahibi olduğum açık odalar, her biri için takipçi ve hediye sayıları.
+    Hediye bilgisi para defterinden (transactions, gift_received) toplanır: ayrı sayaç tutmuyoruz,
+    böylece sayılar her zaman defterle aynıdır.
+    DEMO KISAYOLU: her istekte toplanıyor; canlıda günlük özet tablosu kullanılır.
+    """
+    rooms = list(await db.scalars(
+        select(Room).where(Room.host_id == user_id, Room.is_active).order_by(Room.id.desc())
+    ))
+    if not rooms:
+        return []
+    room_ids = [room.id for room in rooms]
+    followers = dict((await db.execute(
+        select(RoomFollow.room_id, func.count()).where(RoomFollow.room_id.in_(room_ids)).group_by(RoomFollow.room_id)
+    )).all())
+
+    received = (Transaction.type == "gift_received") & Transaction.room_id.in_(room_ids)
+    # Toplam ve bu ay aynı satırlardan çıkar: iki ayrı tarama yerine tek sorgu, ay için CASE.
+    month_amount = case((Transaction.created_at >= period_start("month"), Transaction.amount), else_=0)
+    totals = {
+        room_id: (count, diamonds, month) for room_id, count, diamonds, month in await db.execute(
+            select(Transaction.room_id, func.coalesce(func.sum(Transaction.quantity), 0),
+                   func.sum(Transaction.amount), func.sum(month_amount))
+            .where(received).group_by(Transaction.room_id)
+        )
+    }
+
+    return [
+        MyRoomStats(
+            room=out, follower_count=followers.get(out.id, 0),
+            gift_count=int(totals.get(out.id, (0, 0, 0))[0]), gift_diamonds=int(totals.get(out.id, (0, 0, 0))[1]),
+            month_gift_diamonds=int(totals.get(out.id, (0, 0, 0))[2]),
+        )
+        for out in await present_rooms(db, rooms, user_id)
+    ]
+
+
+async def list_room_followers(db: AsyncSession, user_id: int, room_id: int) -> list[UserOut]:
+    """Odayı takip edenler, en yeni en üstte. Yalnızca oda sahibi ve yöneticiler görür."""
+    room = await get_room_row(db, room_id)
+    await require_moderator(db, room, user_id)
+    users = await db.scalars(
+        select(User).join(RoomFollow, RoomFollow.user_id == User.id)
+        .where(RoomFollow.room_id == room_id, User.is_active)
+        .order_by(RoomFollow.created_at.desc()).limit(200)
+    )
+    return await user_service.present_users(db, list(users), user_id)
+
+
 # ── Koltuk işlemleri ──────────────────────────────────────────────────────────
 # Üçü de aynı kalıbı izler: odayı doğrula → canlı depoda değişikliği yap →
 # odadaki herkese yeni koltuk düzenini yayınla → isteği atana odanın son halini dön.
@@ -267,29 +332,51 @@ async def toggle_mute(db: AsyncSession, user_id: int, room_id: int) -> RoomOut:
     return (await present_rooms(db, [room], user_id))[0]
 
 
+async def present_seats(db: AsyncSession, room: Room) -> list[SeatOut]:
+    """
+    Yalnızca koltuklar, herkese aynı giden biçimde (viewer yok). `present_rooms` ile birebir
+    aynı SeatOut üretir; ama oda sırası, dinleyici sayısı, yönetici listesi gibi koltuk
+    yayınında kullanılmayan bilgileri hesaplamaz. Her koltuk değişiminde çalışır.
+    """
+    await room_state.ensure_room(room.id, room.seat_count)
+    seats = (await room_state.get_seats([room.id]))[room.id]
+    mic_blocked = (await room_state.mic_blocked_ids([room.id]))[room.id]
+    users = await user_service.load_users_out(
+        db, {seat.user_id for seat in seats if seat.user_id is not None}, None,
+    )
+    return [
+        SeatOut(
+            index=seat.index, user_id=seat.user_id, is_muted=seat.is_muted,
+            is_locked=seat.is_locked, user=users.get(seat.user_id),
+            is_mic_blocked=seat.user_id in mic_blocked,
+        )
+        for seat in seats
+    ]
+
+
 async def publish_seats(db: AsyncSession, room: Room) -> None:
     """
     Koltukların son halini odadaki herkese yayınlar.
     Yayın herkese aynı gittiği için kişiye özel alanlar (is_me, is_following) boştur;
     istemci "bu ben miyim" kontrolünü kullanıcı id'si ile kendisi yapar.
     """
-    snapshot = (await present_rooms(db, [room], viewer_id=None))[0]
+    seats = await present_seats(db, room)
     # Önce ses sağlayıcısına kimlerin konuşabileceğini bildir (SFU'da sunucu tarafında
     # uygulanır), sonra odaya duyur: koltuğa oturan kişi mikrofonunu açmaya çalıştığında
     # izni hazır olsun.
     await voice_provider.sync_publishers(room.id, {
-        seat.user_id for seat in snapshot.seats if seat.user_id is not None and not seat.is_mic_blocked
+        seat.user_id for seat in seats if seat.user_id is not None and not seat.is_mic_blocked
     })
-    await room_hub.publish(room.id, events.ROOM_SEATS_UPDATED, _seats_payload(snapshot))
+    await room_hub.publish(room.id, events.ROOM_SEATS_UPDATED, _seats_payload(seats))
 
 
-def _seats_payload(snapshot: RoomOut) -> dict:
-    return {"seats": [seat.model_dump(mode="json") for seat in snapshot.seats]}
+def _seats_payload(seats: list[SeatOut]) -> dict:
+    return {"seats": [seat.model_dump(mode="json") for seat in seats]}
 
 
 async def seats_payload(db: AsyncSession, room: Room) -> dict:
     """Koltukların son hali, `room:seats_updated` biçiminde (tek kişiye göndermek için)."""
-    return _seats_payload((await present_rooms(db, [room], viewer_id=None))[0])
+    return _seats_payload(await present_seats(db, room))
 
 
 # ── Sesli görüşme ─────────────────────────────────────────────────────────────

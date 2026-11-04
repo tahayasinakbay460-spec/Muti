@@ -48,7 +48,7 @@ export async function renderRoom(root, { params }) {
   // Odadaki rulet turunun durumu (panel kapalıyken de güncel tutulur; panel açılınca buradan çizilir)
   const roulette = { roundId: null, endsAt: 0, bets: new Map(), last: null };
   let rouletteView = null;   // rulet paneli açıkken { render } nesnesi
-  const channel = connectRoom(room, me);
+  const channel = connectRoom(room);
   // Sesli görüşme (WebRTC). Bağlanırken hata olursa oda yine çalışır, yalnızca ses olmaz.
   let voice = null;
   let voiceStarted = false;
@@ -169,7 +169,6 @@ export async function renderRoom(root, { params }) {
 
   function updateRoom(nextRoom) {
     room = nextRoom;
-    channel.room = nextRoom;
     renderSeats();
     voice?.update(room.seats);
   }
@@ -474,11 +473,7 @@ export async function renderRoom(root, { params }) {
           const result = await api.sendGift({ room_id: room.id, receiver_id: receiverId, gift_id: giftId, quantity });
           me.coin_balance = result.coin_balance;
           sheet.el.querySelector('#gift-balance').textContent = formatCoins(result.coin_balance);
-          // Animasyonu odaya sunucu yayınlar; bu satır yalnızca mock'ta bir şey yapar
-          channel.simulateServerEvent('gift:sent', {
-            sender: me, receiver: result.receiver, gift: result.gift, quantity,
-            lucky_win: result.lucky_win, lucky_multiplier: result.lucky_multiplier,
-          });
+          // Hediye animasyonunu odaya sunucu yayınlar (`gift:sent`), burada tetiklenmez
           if (result.lucky_win) toast(`🍀 x${result.lucky_multiplier} yakaladın! +${formatCoins(result.lucky_win)} coin`, 'success');
           // Büyük hediyede panel kapanır ki tam ekran animasyon görünsün
           if (result.gift.price * quantity >= GIFT_BIG_FROM) sheet.close();
@@ -781,7 +776,7 @@ export async function renderRoom(root, { params }) {
       if (item === 'user') return openUserSheet(message.user);
       try {
         await api.deleteChatMessage(room.id, message.id);
-        // Mock'ta sunucu yayını yok; gerçek backend'de `chat:message_deleted` herkese gelir
+        // Sunucu silmeyi `chat:message_deleted` ile herkese yayınlar; kendi ekranımızda beklemeden kaldırıyoruz
         removeMessage(message.id);
       } catch (error) {
         toast(error.message, 'error');
@@ -1137,9 +1132,7 @@ export async function renderRoom(root, { params }) {
     .on('connection:reopened', () => {
       justReconnected = true;
       voice?.report('socket_reconnected');
-    })
-    // Yalnızca mock: gerçek backend'de konuşanları js/voice/ hesaplar
-    .on('room:speaking', ({ seat_indexes: seatIndexes }) => setSpeaking(seatIndexes));
+    });
 
   // Hem `room:user_kicked` hem bağlantının 4403 ile kapanması buraya gelir; bir kez çalışsın
   let kicked = false;

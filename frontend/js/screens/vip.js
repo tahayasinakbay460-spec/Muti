@@ -1,10 +1,8 @@
 // VIP üyelik: durum, günlük ödül ve üç kademe (Gümüş, Altın, Elmas)
 import { api } from '../api.js';
-import { esc, icon, formatCoins, toast, openSheet } from '../ui.js';
+import { esc, icon, formatCoins, toast, openSheet, daysLeft } from '../ui.js';
 
 const TIER_CLASSES = { 1: 'vip-silver', 2: 'vip-gold', 3: 'vip-diamond' };
-const daysLeft = (iso) => Math.max(1, Math.ceil((new Date(iso) - Date.now()) / 86400000));
-
 function statusCard(status) {
   if (!status.level) {
     return `
@@ -55,8 +53,8 @@ export async function renderVip(root) {
   function render() {
     root.innerHTML = `
       <header class="topbar">
-        <a class="icon-btn icon-btn-plain" href="#/store" aria-label="Geri">${icon('chevron-left', 22)}</a>
-        <h1 class="page-title">VIP</h1>
+        <a class="icon-btn icon-btn-plain" href="#/profile" aria-label="Geri">${icon('chevron-left', 22)}</a>
+        <h1 class="page-title">VIP merkezi</h1>
         <a class="coin-pill topbar-actions" href="#/wallet"><span class="coin"></span><b>${formatCoins(me.coin_balance)}</b><span class="coin-plus">+</span></a>
       </header>
       ${statusCard(status)}

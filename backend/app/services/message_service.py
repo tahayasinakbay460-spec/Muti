@@ -8,7 +8,7 @@ mobil aşamanın işi.
 """
 from datetime import datetime
 
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import case, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -182,9 +182,12 @@ async def mark_read(db: AsyncSession, me: int, conversation_id: int) -> None:
 
 async def total_unread(db: AsyncSession, me: int) -> int:
     """Bütün sohbetlerimdeki okunmamış mesaj toplamı (alt çubuktaki "Mesajlar" rozeti)."""
-    low = select(func.coalesce(func.sum(Conversation.unread_low), 0)).where(Conversation.user_low_id == me)
-    high = select(func.coalesce(func.sum(Conversation.unread_high), 0)).where(Conversation.user_high_id == me)
-    return (await db.scalar(low)) + (await db.scalar(high))
+    # Tek sorgu: ben "low" taraftaysam low sayacı, değilsem high sayacı. (Kişi kendisiyle sohbet açamaz.)
+    mine = case((Conversation.user_low_id == me, Conversation.unread_low), else_=Conversation.unread_high)
+    return await db.scalar(
+        select(func.coalesce(func.sum(mine), 0))
+        .where(or_(Conversation.user_low_id == me, Conversation.user_high_id == me))
+    )
 
 
 # ── Oda sohbeti kaydı ─────────────────────────────────────────────────────────

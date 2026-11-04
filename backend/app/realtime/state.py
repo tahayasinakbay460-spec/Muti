@@ -362,6 +362,22 @@ class InMemoryRoomStateStore(RoomStateStore):
     async def room_ranks(self, room_ids: list[int]) -> dict[int, int]:
         # DEMO KISAYOLU: her çağrıda bütün odaları sıralıyoruz. Oda sayısı büyüyünce
         # pahalı olur; Redis'te bu iş sorted set ile (ZREVRANK) tek adımdır.
+        if len(room_ids) == 1:
+            # Tek oda (en sık durum: oda ekranı, her koltuk değişimi): sıralama yapmadan say.
+            # `sorted(reverse=True)` kararlıdır: eşit sayıda, sözlükte önce gelen üstte kalır;
+            # aynı sırayı burada da veriyoruz.
+            rid = room_ids[0]
+            if rid not in self._seats:
+                return {rid: len(self._seats) + 1}
+            mine, rank, seen_self = self._count(rid), 1, False
+            for other in self._seats:
+                if other == rid:
+                    seen_self = True
+                    continue
+                count = self._count(other)
+                if count > mine or (count == mine and not seen_self):
+                    rank += 1
+            return {rid: rank}
         ordered = sorted(self._seats, key=self._count, reverse=True)
         position = {rid: index + 1 for index, rid in enumerate(ordered)}
         return {rid: position.get(rid, len(ordered) + 1) for rid in room_ids}

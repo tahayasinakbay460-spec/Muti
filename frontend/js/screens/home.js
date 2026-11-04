@@ -1,222 +1,161 @@
-// Ana sayfa: üst sekmeler, banner, hızlı kategoriler, öne çıkan odalar, oyunlar, popüler yayıncılar
+// Ana sayfa (alt çubukta "Muti"). Yukarıdan aşağı:
+//   üst çubuk: avatarım, bakiye (+), mağaza · görevler, arama
+//   → günlük giriş şeridi (bugünkü ödül alınmadıysa "Al")
+//   → Klasik oyunlar: üç sütun, aşağı doğru; 8 oyun + "Diğer oyunlar" (hepsi alttan açılan panelde)
+//   → Sana Özel: havuz (vitrin) odaları, geniş kartlar.
+// Odaların tamamı, Yayın odam, Ajans ve Popüler ayrı "Odalar" sekmesinde (rooms.js).
 import { api } from '../api.js';
-import { APP_NAME, CATEGORY_LABELS } from '../config.js';
-import { esc, icon, avatarImg, formatCoins, formatCount, toast } from '../ui.js';
-import { roomRow, coinPill } from './components.js';
-import { paintNotificationBadge } from '../inbox.js';
+import { CATEGORY_LABELS } from '../config.js';
+import { esc, icon, avatarImg, formatCoins, toast, openSheet } from '../ui.js';
+import { coinPill } from './components.js';
+import { seatedAvatars, statusPill, listenerCount } from './rooms.js';
+import { openCreateRoomSheet } from './create-room.js';
 import { maybeShowCheckin } from './tasks.js';
 
-// Üst sekmeler. Henüz ekranı olmayanlar "Yakında" bildirimi gösterir.
-const TOP_TABS = [
-  { id: 'discover', label: 'Keşfet', icon: 'flame' },
-  { id: 'rooms', label: 'Odalar', icon: 'home', href: '#/explore' },
-  { id: 'games', label: 'Oyunlar', icon: 'gamepad', scrollTo: 'games' },
-  { id: 'events', label: 'Etkinlik', icon: 'trophy', href: '#/events' },
-  { id: 'following', label: 'Takip', icon: 'users', href: '#/following' },
-];
-
-const QUICK_TILES = [
-  { id: 'tasks', label: 'Görevler', emoji: '🎯', href: '#/tasks' },
-  { id: 'leaderboard', label: 'Sıralama', emoji: '🏆', href: '#/leaderboard' },
-  { id: 'families', label: 'Aileler', emoji: '🛡️', href: '#/families' },
-  { id: 'game-rooms', label: 'Oyun Odaları', emoji: '🎮', href: '#/explore?category=game' },
-  { id: 'vip', label: 'VIP', emoji: '👑', href: '#/vip' },
-];
-
-// Oda içi oyunlar. Oynanabilenler (isPlayable) oda içinden açılır: kart oyun odalarına götürür.
+// Oyun vitrini. `inRoom`: bugün oda içinden oynanabilenler; diğerleri yalnızca görsel ("Yakında").
+// DEMO: oyun görselleri renk + emoji; kendi oyun görsellerimiz gelince `art-*` sınıfları görsel olur.
 const GAMES = [
-  { id: 'roulette', name: 'Rulet', emoji: '🎡', isPlayable: true },
-  { id: 'billiards', name: 'Bilardo', emoji: '🎱' },
+  { id: 'roulette', name: 'Rulet', emoji: '🎡', inRoom: true },
+  { id: 'connect4', name: 'Dört Bağla', emoji: '🔴', inRoom: true, tag: 'Yeni' },
+  { id: 'rps', name: 'Taş Kağıt Makas', emoji: '✂️', inRoom: true },
+  { id: 'ludo', name: 'Ludo', emoji: '🏁' },
   { id: 'okey', name: '101 Okey', emoji: '🀄' },
-  { id: 'candy', name: 'Candy', emoji: '🍭' },
+  { id: 'backgammon', name: 'Tavla', emoji: '🎲' },
+  { id: 'domino', name: 'Domino', emoji: '🁣' },
+  { id: 'uno', name: 'UNO', emoji: '🃏' },
+  { id: 'chess', name: 'Satranç', emoji: '♟️' },
+  { id: 'carrom', name: 'Carrom', emoji: '🥏' },
+  { id: 'billiards', name: 'Bilardo', emoji: '🎱' },
+  { id: 'draw', name: 'Çiz Tahmin Et', emoji: '🎨' },
+  { id: 'werewolf', name: 'Kurt Adam', emoji: '🐺' },
+  { id: 'mines', name: 'Mayın Tarlası', emoji: '💣' },
+  { id: 'song', name: 'Şarkı Tahmini', emoji: '🎵' },
+  { id: 'match', name: 'Eşleştirme', emoji: '🧩' },
 ];
+const FRONT_GAMES = 8;      // ana sayfada görünen; kalanı "Diğer oyunlar"
+const SHOWCASE_SIZE = 8;
 
-// Banner başlığının son satırı renkli vurguyla yazılır ("Muti'de!")
-function bannerTitle(title) {
-  const lines = esc(title).split('\n');
-  const last = lines.pop();
-  return [...lines, `<em>${last}</em>`].join('<br />');
+// Üç sütunlu büyük oyun kartı: adı kartın içinde, altta
+const gameCard = (g) => `
+  <button class="game-card art-${g.id}" data-game="${g.id}">
+    ${g.tag ? `<em class="game-tag">${g.tag}</em>` : g.inRoom ? '' : '<em class="game-tag game-tag-soon">Yakında</em>'}
+    <i>${g.emoji}</i>
+    <b>${esc(g.name)}</b>
+  </button>`;
+
+// Oyuna dokununca: odada oynanıyorsa oyun odalarına götür, değilse "yakında"
+function openGame(gameId) {
+  const item = GAMES.find((g) => g.id === gameId);
+  if (!item) return;
+  if (item.inRoom) {
+    location.hash = '#/rooms?filter=game';
+    toast(`${item.name} odada oynanır: bir odaya gir, alttaki oyun düğmesine dokun`);
+  } else {
+    toast(`${item.name} yakında geliyor`);
+  }
 }
 
-function featuredRoomCard(room) {
+function openAllGames() {
+  const sheet = openSheet(`
+    <h2 class="sheet-title">Bütün oyunlar</h2>
+    <div class="game-grid game-grid-sheet">${GAMES.map(gameCard).join('')}</div>`, { className: 'sheet-tall' });
+  sheet.el.addEventListener('click', (event) => {
+    const game = event.target.closest('[data-game]');
+    if (!game) return;
+    sheet.close();
+    openGame(game.dataset.game);
+  });
+}
+
+// Sana Özel: geniş vitrin kartı (yeni kullanıcı ilk bunları görür)
+function showcaseCard(room) {
   return `
-    <a class="feature-card" href="#/room/${room.id}">
-      <img class="feature-card-cover" src="${esc(room.cover_url)}" alt="" loading="lazy" />
-      <div class="feature-card-top">
-        ${room.is_live ? '<span class="pill pill-live">CANLI</span>' : '<span></span>'}
-        <span class="pill pill-dark">${icon('users', 11)} ${formatCount(room.listener_count)}</span>
-      </div>
-      <div class="feature-card-body">
-        ${avatarImg(room.host)}
-        <span>
-          <b>${esc(room.title)}</b>
-          <small>${CATEGORY_LABELS[room.category] || ''} • Herkes</small>
-        </span>
-      </div>
+    <a class="showcase-card" href="#/room/${room.id}">
+      <img src="${esc(room.cover_url)}" alt="" loading="lazy" />
+      <span class="showcase-top">${statusPill(room)}<span class="pill pill-dark">${listenerCount(room)}</span></span>
+      <span class="showcase-body">
+        <b>${esc(room.title)}</b>
+        <span class="showcase-host">${avatarImg(room.host, 'avatar-xs')}<span>${esc(room.host.display_name)}</span><em>${esc(CATEGORY_LABELS[room.category] || '')}</em></span>
+        <span class="avatar-stack">${seatedAvatars(room, 5)}</span>
+      </span>
     </a>`;
 }
 
-// Popüler yayıncılar: önce şu an canlı odası olan ev sahipleri, sonra önerilen kişiler (kullanıcının kendisi hariç)
-function collectStreamers(rooms, suggested, meId) {
-  const seen = new Set([meId]);
-  const list = [];
-  for (const room of rooms) {
-    if (!room.is_live || seen.has(room.host.id)) continue;
-    seen.add(room.host.id);
-    list.push({ user: room.host, roomId: room.id });
-  }
-  for (const user of suggested) {
-    if (seen.has(user.id)) continue;
-    seen.add(user.id);
-    list.push({ user, roomId: null });
-  }
-  return list.slice(0, 12);
+// Günlük giriş şeridi: alınmadıysa ödülü söyler ve "Al" düğmesi; alındıysa görevlere götürür
+function checkinBanner(status) {
+  if (!status) return '';
+  const coins = status.rewards[status.day - 1] || 0;
+  return status.claimed_today
+    ? `<a class="promo-banner is-done" href="#/tasks">
+         <span class="promo-banner-icon">${icon('target', 22)}</span>
+         <span class="promo-banner-text"><b>Günlük ödülünü aldın</b><small>Görevleri tamamla, daha çok coin kazan</small></span>
+         <span class="btn btn-sm btn-soft">Görevler</span>
+       </a>`
+    : `<div class="promo-banner">
+         <span class="promo-banner-icon">🎁</span>
+         <span class="promo-banner-text"><b>${status.day}. gün giriş ödülün hazır</b><small>Bugün al: +${formatCoins(coins)} coin · art arda gel, ödül büyüsün</small></span>
+         <button class="btn btn-sm btn-primary" data-action="checkin">Al</button>
+       </div>`;
 }
 
 export async function renderHome(root) {
-  const [me, banners, suggested, gifters, rooms] = await Promise.all([
-    api.getMe(), api.listBanners(), api.listSuggestedUsers(), api.listTopGifters(),
-    api.listRooms({ category: 'for_you' }),
+  const [me, rooms, checkin] = await Promise.all([
+    api.getMe(),
+    api.listRooms({ category: 'for_you', limit: 30 }),
+    api.getCheckin().catch(() => null),
   ]);
-  const sorted = [...rooms].sort((a, b) => a.hourly_rank - b.hourly_rank);
-  const featured = sorted.slice(0, 8);
-  const active = sorted.slice(8);
-  const streamers = collectStreamers(sorted, suggested, me.id);
+  const showcase = [...rooms].sort((a, b) => b.listener_count - a.listener_count).slice(0, SHOWCASE_SIZE);
 
   root.innerHTML = `
-    <header class="topbar">
-      <div class="logo"><span class="logo-mark">M</span><span class="logo-text">${APP_NAME}</span></div>
+    <header class="home-head">
+      <a class="home-me" href="#/profile" aria-label="Profilim">${avatarImg(me, 'avatar-sm')}</a>
+      ${coinPill(me.coin_balance)}
+      <a class="icon-btn icon-btn-plain" href="#/store" aria-label="Mağaza">${icon('gift', 22)}</a>
       <div class="topbar-actions">
+        <a class="icon-btn icon-btn-plain" href="#/tasks" aria-label="Görevler">${icon('target', 22)}</a>
         <a class="icon-btn icon-btn-plain" href="#/explore?focus=1" aria-label="Ara">${icon('search', 22)}</a>
-        <button class="icon-btn icon-btn-plain" data-action="notifications" aria-label="Bildirimler">${icon('bell', 22)}</button>
-        ${coinPill(me.coin_balance)}
       </div>
     </header>
 
-    <nav class="top-tabs">
-      ${TOP_TABS.map((t) => `
-        <button class="top-tab ${t.id === 'discover' ? 'is-active' : ''}" data-top-tab="${t.id}">${icon(t.icon, 14)}${t.label}</button>`).join('')}
-    </nav>
+    <div id="checkin-slot">${checkinBanner(checkin)}</div>
 
-    <section class="banner" id="banner">
-      <div class="banner-track">
-        ${banners.map((b) => `
-          <a class="banner-slide" href="${esc(b.target)}">
-            <img src="${esc(b.image_url)}" alt="" />
-            <div class="banner-text">
-              <h2>${bannerTitle(b.title)}</h2>
-              <span class="banner-cta">${esc(b.cta)} ${icon('chevron-right', 13)}</span>
-            </div>
-            <div class="banner-dots">${banners.map((_, i) => `<i class="${i === 0 ? 'is-active' : ''}"></i>`).join('')}</div>
-          </a>`).join('')}
-      </div>
-    </section>
-
-    <div class="quick-cats">
-      ${QUICK_TILES.map((t) => `
-        <button class="quick-cat" data-quick="${t.id}"><i>${t.emoji}</i><span>${t.label}</span></button>`).join('')}
-    </div>
-
-    <section class="section">
-      <div class="section-head"><h2>Sana Özel Öne Çıkan Odalar</h2><a href="#/explore">Tümünü Gör ${icon('chevron-right', 13)}</a></div>
-      <div class="h-strip">
-        ${featured.map(featuredRoomCard).join('') || '<p class="muted">Şu an açık oda yok.</p>'}
-      </div>
-    </section>
-
-    <section class="section" id="games">
-      <div class="section-head"><h2>Oyunlar</h2><a href="#/explore?category=game">Tümünü Gör ${icon('chevron-right', 13)}</a></div>
+    <section class="home-section">
+      <div class="section-head"><h2>Klasik oyunlar</h2><button class="btn btn-sm btn-soft" data-action="create-room">Özel oda ${icon('plus', 14)}</button></div>
       <div class="game-grid">
-        ${GAMES.map((g) => `
-          <button class="game-card" data-game="${g.id}">
-            <span class="game-art game-${g.id}"><i>${g.emoji}</i></span>
-            <b>${g.name}</b>
-          </button>`).join('')}
+        ${GAMES.slice(0, FRONT_GAMES).map(gameCard).join('')}
+        <button class="game-card game-card-more" data-action="all-games"><i>🎮</i><b>Diğer oyunlar</b></button>
       </div>
     </section>
 
-    <section class="section" id="streamers">
-      <div class="section-head"><h2>Popüler Yayıncılar</h2><a href="#/explore?mode=people">Tümünü Gör ${icon('chevron-right', 13)}</a></div>
-      <div class="streamer-strip">
-        ${streamers.map(({ user, roomId }, i) => `
-          <a class="streamer" href="${roomId ? `#/room/${roomId}` : `#/profile/${user.id}`}">
-            <span class="streamer-ring ${i === 0 && roomId ? 'is-live' : ''}">
-              ${i === 0 && roomId ? '<i class="streamer-crown">👑</i>' : ''}
-              ${avatarImg(user)}
-              ${i === 0 && roomId ? '<span class="streamer-live">CANLI</span>' : (user.is_online ? '<span class="online-dot"></span>' : '')}
-            </span>
-            <b>${esc(user.display_name)}</b>
-          </a>`).join('')}
+    <section class="home-section">
+      <div class="section-head"><h2>Sana Özel</h2><a href="#/rooms">Tüm odalar ${icon('chevron-right', 13)}</a></div>
+      <div class="showcase-strip">
+        ${showcase.map(showcaseCard).join('') || '<p class="muted">Şu an açık oda yok.</p>'}
       </div>
-    </section>
-
-    <section class="section">
-      <div class="section-head"><h2>Haftanın Yıldızları</h2><span class="muted">En çok hediye alanlar</span></div>
-      <div class="rank-strip">
-        ${gifters.map((g) => `
-          <a class="rank-item rank-${g.rank}" href="#/profile/${g.user.id}">
-            <span class="rank-no">${g.rank}</span>
-            ${avatarImg(g.user, 'avatar-md')}
-            <b>${esc(g.user.display_name)}</b>
-            <small><span class="coin coin-sm"></span>${formatCoins(g.total_coins)}</small>
-          </a>`).join('')}
-      </div>
-    </section>
-
-    <section class="section" ${active.length ? '' : 'hidden'}>
-      <div class="section-head"><h2>Şu An Aktif</h2></div>
-      <div class="room-list">${active.map(roomRow).join('')}</div>
     </section>`;
 
-  const scrollToSection = (id) => root.querySelector(`#${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  // Bağlantısı ya da kaydırma hedefi olmayan öğeler henüz yapılmadı
-  const follow = (item) => {
-    if (item.href) location.hash = item.href;
-    else if (item.scrollTo) scrollToSection(item.scrollTo);
-    else toast('Yakında');
-  };
-
-  paintNotificationBadge();
-
-  root.addEventListener('click', (event) => {
-    const topTab = event.target.closest('[data-top-tab]');
-    if (topTab && topTab.dataset.topTab !== 'discover') follow(TOP_TABS.find((t) => t.id === topTab.dataset.topTab));
-
-    const quick = event.target.closest('[data-quick]');
-    if (quick) follow(QUICK_TILES.find((t) => t.id === quick.dataset.quick));
-
-    const game = event.target.closest('[data-game]');
-    if (game) {
-      const item = GAMES.find((g) => g.id === game.dataset.game);
-      if (item.isPlayable) {
-        location.hash = '#/explore?category=game';
-        toast(`${item.name} oda içinden oynanır: bir odaya gir, alttaki oyun düğmesine dokun`);
-      } else {
-        toast(`${item.name} yakında geliyor`);
+  root.addEventListener('click', async (event) => {
+    const action = event.target.closest('[data-action]')?.dataset.action;
+    if (action === 'create-room') return openCreateRoomSheet();
+    if (action === 'all-games') return openAllGames();
+    if (action === 'checkin') {
+      const button = event.target.closest('[data-action]');
+      button.disabled = true;
+      try {
+        const result = await api.claimCheckin();
+        toast(`🎉 ${result.day}. gün ödülü: +${formatCoins(result.coins)} coin`, 'success');
+        root.querySelector('.coin-pill b').textContent = formatCoins(result.coin_balance);
+        root.querySelector('#checkin-slot').innerHTML = checkinBanner({ ...checkin, claimed_today: true });
+      } catch (error) {
+        toast(error.message, 'error');
+        button.disabled = false;
       }
+      return;
     }
-
-    if (event.target.closest('[data-action="notifications"]')) location.hash = '#/notifications';
+    const game = event.target.closest('[data-game]');
+    if (game) openGame(game.dataset.game);
   });
-
-  // Banner otomatik kaydırma; kullanıcı elle kaydırırsa noktalar da güncellenir.
-  // Slaytlar tam genişlik değil (yanda bir sonrakinin ucu görünür), bu yüzden slayt genişliğiyle hesaplanır.
-  const track = root.querySelector('.banner-track');
-  const slideStep = () => (track.firstElementChild?.getBoundingClientRect().width ?? track.clientWidth) + 10;
-  const currentIndex = () => Math.round(track.scrollLeft / slideStep());
-  track.addEventListener('scroll', () => {
-    const index = currentIndex();
-    track.querySelectorAll('.banner-dots').forEach((group) => {
-      [...group.children].forEach((dot, i) => dot.classList.toggle('is-active', i === index));
-    });
-  }, { passive: true });
-  const bannerTimer = setInterval(() => {
-    const next = (currentIndex() + 1) % banners.length;
-    track.scrollTo({ left: next * slideStep(), behavior: 'smooth' });
-  }, 4500);
 
   // Bugünkü giriş ödülü alınmadıysa günde bir kez hatırlat
   maybeShowCheckin();
-
-  return () => clearInterval(bannerTimer);
 }

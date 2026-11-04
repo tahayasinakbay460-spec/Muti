@@ -3,42 +3,11 @@ DEMO KISAYOLU — sabit içerik.
 
 Bu dosyadaki veriler henüz veritabanında tablo olarak yok; frontend'in ekranları
 dolu görünsün diye buradan sabit olarak dönüyor. İlgili özellik gerçekten yazıldığında
-(duvar gönderileri, başarımlar, banner yönetimi) buradaki listeler
+(görsel yükleme) buradaki listeler
 silinip yerlerine tablo + servis gelecek.
 
 Görsel yolları frontend'in kendi `assets/` klasörünü gösterir.
 """
-
-BANNERS = [
-    {"id": 1, "title": "Sesin, Sohbetin,\nOyunların\nMuti'de!", "cta": "Hemen Katıl",
-     "image_url": "assets/covers/music.jpg", "target": "#/explore"},
-    {"id": 2, "title": "Odana\nOyun Aç", "cta": "Oyun Odaları",
-     "image_url": "assets/covers/banner2.jpg", "target": "#/explore?category=game"},
-    {"id": 3, "title": "İlk alımına\n%50 bonus", "cta": "Coin Al",
-     "image_url": "assets/covers/banner3.jpg", "target": "#/wallet"},
-]
-
-PROFILE_EXTRAS = {
-    "wall_posts": [
-        {"id": 1, "time_label": "2 gün önce", "text": "Harika bir geceydi, güzel insanlar 🔥",
-         "image_urls": ["assets/covers/terrace.jpg", "assets/covers/night.jpg", "assets/covers/music.jpg"],
-         "like_count": 128, "comment_count": 24},
-        {"id": 2, "time_label": "1 hafta önce", "text": "Yeni avatar çerçevemi aldım 🎮",
-         "image_urls": ["assets/covers/city.jpg"], "like_count": 86, "comment_count": 11},
-    ],
-    "achievements": [
-        {"id": 1, "name": "Zar Ustası", "emoji": "🎲", "detail": "Seviye 5"},
-        {"id": 2, "name": "Çark Şampiyonu", "emoji": "🎡", "detail": "Seviye 3"},
-        {"id": 3, "name": "Sohbet Yıldızı", "emoji": "⭐", "detail": "Seviye 4"},
-        {"id": 4, "name": "Turnuva", "emoji": "🏆", "detail": "İlk 100"},
-    ],
-    "recent_rewards": [
-        {"id": 1, "name": "Altın Kupa", "emoji": "🏆", "date_label": "15.09.2026"},
-        {"id": 2, "name": "Özel Çerçeve", "emoji": "💠", "date_label": "01.09.2026"},
-        {"id": 3, "name": "365 Gün Rozeti", "emoji": "🎖️", "date_label": "28.08.2026"},
-        {"id": 4, "name": "1000 Coin", "emoji": "🪙", "date_label": "20.08.2026"},
-    ],
-}
 
 # Profil düzenlemede seçilebilecek hazır görseller.
 # DEMO KISAYOLU: Görsel yükleme (upload) yokken kullanıcı yalnızca bu listeden seçebilir.
@@ -50,3 +19,6 @@ COVER_CHOICES = [
     for name in ("sky", "coast", "city", "night", "beach", "cafe", "canal", "canyon",
                  "coffee", "guitar", "lighthouse", "mountain", "music", "terrace", "profile")
 ]
+
+# Anı paylaşırken seçilebilecek hazır görseller (aynı güvenlik kuralı: yalnızca bu liste).
+MOMENT_IMAGE_CHOICES = [url for url in COVER_CHOICES if not url.endswith("/profile.jpg")]

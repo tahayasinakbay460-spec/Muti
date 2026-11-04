@@ -12,7 +12,6 @@ const RPS = [
   { id: 'scissors', emoji: '✌️', label: 'Makas' },
 ];
 const RPS_EMOJI = Object.fromEntries(RPS.map((r) => [r.id, r.emoji]));
-const COLUMNS = 7;
 
 // ─── YouTube oynatıcı ─────────────────────────────────────────────────────────
 // YouTube'un resmi "IFrame Player API"si: videoyu durdurup belirli saniyeye götürebilmek için gerekli.

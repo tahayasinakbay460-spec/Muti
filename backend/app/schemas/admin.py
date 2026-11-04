@@ -116,12 +116,25 @@ class AgencyOut(BaseModel):
     member_count: int
 
 
+class AgencyTier(BaseModel):
+    """
+    Yayıncı seviyesi (maaş tablosu). Ajanslı uygulamalarda yayıncının ay içinde topladığı elmasa göre
+    bir seviyesi olur; her seviyenin ay sonu bonusu vardır. DEMO: bonus yalnızca gösterilir, ödenmez.
+    """
+    name: str
+    emoji: str
+    min_diamonds: int         # bu seviyeye girmek için gereken aylık elmas
+    bonus_percent: int        # ay sonunda kazancın üstüne verilecek bonus (%)
+
+
 class AgencyMemberOut(BaseModel):
     user: UserOut
-    status: Literal["invited", "active"]
+    # invited: ajans davet etti · applied: yayıncı başvurdu · active: üye
+    status: Literal["invited", "applied", "active"]
     monthly_target: int
     month_diamonds: int       # bu ay hediyelerden kazandığı elmas
     progress_percent: int     # hedefe göre ilerleme (hedef yoksa 0)
+    tier_index: int = 0       # AGENCY_TIERS içindeki sırası (bu ayki elmasına göre)
 
 
 class AgencyDashboard(BaseModel):
@@ -138,7 +151,10 @@ class MyAgency(BaseModel):
     agency: AgencyOut | None = None            # üyesiyse
     my_month_diamonds: int = 0
     my_target: int = 0
+    my_tier_index: int = 0
     invite: AgencyOut | None = None            # bekleyen davet
+    application: AgencyOut | None = None       # benim bekleyen başvurum
+    tiers: list[AgencyTier] = []               # yayıncı seviyeleri (maaş tablosu)
 
 
 class AgencyTargetRequest(BaseModel):

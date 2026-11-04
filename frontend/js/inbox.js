@@ -46,6 +46,9 @@ export async function refreshUnread() {
   }
 }
 
+// Mesajlar ekranındaki "Bildirimler" kutucuğu okunmamış sayıyı buradan alır
+export const getUnreadNotificationCount = () => unreadNotifications;
+
 // Bildirim ekranı açılınca sayaç sıfırlanır
 export function clearNotificationBadge() {
   setUnreadNotifications(0);
@@ -61,7 +64,7 @@ function setUnreadNotifications(count) {
   paintNotificationBadge();
 }
 
-// Ana sayfadaki zil. Ekran yeniden çizilince home.js de bunu çağırır.
+// Ana sayfadaki zil. Ekran yeniden çizilince moments.js de bunu çağırır.
 export function paintNotificationBadge() {
   const bell = document.querySelector('[data-action="notifications"]');
   if (!bell) return;

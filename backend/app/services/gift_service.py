@@ -1,9 +1,9 @@
 """
-Hediyeler: katalog, hediye gönderme (şanslı hediye dahil), en çok hediye gönderenler.
+Hediyeler: katalog, hediye gönderme (şanslı hediye dahil).
 """
 import secrets
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,7 +13,6 @@ from app.models import Gift, Room, Transaction, User
 from app.realtime import events
 from app.realtime.hub import room_hub
 from app.schemas.economy import GiftOut, GiftSendRequest, GiftSendResult
-from app.schemas.user import TopGifter
 from app.services import (
     activity_service, engagement_service, level_service, notification_service, treasure_service, user_service,
     wallet_service,
@@ -181,26 +180,3 @@ async def send_gift(
         await treasure_service.add_gift_coins(data.room_id, total_coins)
         await activity_service.add_gift(data.room_id, receiver.id, people[sender_id].model_dump(mode="json"), total_coins)
     return result
-
-
-async def list_top_gifters(db: AsyncSession, viewer_id: int, limit: int = 5) -> list[TopGifter]:
-    """
-    En çok coin değerinde hediye gönderenler.
-
-    DEMO KISAYOLU: Her istekte bütün hediye hareketleri toplanıyor. Tablo büyüyünce
-    yavaşlar; canlıda sıralama Redis sorted set'te tutulur ve her hediyede +tutar yapılır.
-    """
-    total = func.sum(-Transaction.amount).label("total")   # amount eksi olduğu için işaretini çeviriyoruz
-    rows = (await db.execute(
-        select(Transaction.user_id, total)
-        .where(Transaction.type == "gift_sent")
-        .group_by(Transaction.user_id)
-        .order_by(total.desc())
-        .limit(limit)
-    )).all()
-
-    users = await user_service.load_users_out(db, {row.user_id for row in rows}, viewer_id)
-    return [
-        TopGifter(rank=index + 1, user=users[row.user_id], total_coins=row.total)
-        for index, row in enumerate(rows) if row.user_id in users
-    ]

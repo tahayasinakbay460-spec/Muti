@@ -6,8 +6,6 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
-from app.schemas.user import UserOut
-
 StoreItemKind = Literal["frame", "entry_effect", "chat_bubble"]
 
 
@@ -97,9 +95,3 @@ class ChestOut(BaseModel):
 class ChestClaimResult(BaseModel):
     coins: int
     coin_balance: int
-
-
-class ChestClaim(BaseModel):
-    """Sandıktan çıkanı odaya duyururken kullanılan biçim."""
-    user: UserOut
-    coins: int

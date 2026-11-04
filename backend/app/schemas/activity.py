@@ -7,9 +7,6 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-PkTeam = Literal["red", "blue"]
-
-
 class PkStartRequest(BaseModel):
     minutes: Literal[1, 3, 5, 10]
 

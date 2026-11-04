@@ -94,14 +94,29 @@ class MediaOptions(BaseModel):
     covers: list[str]
 
 
-class TopGifter(BaseModel):
-    rank: int
-    user: UserOut
-    total_coins: int
+class Achievement(BaseModel):
+    """Profildeki başarı rozeti. Kazanılmamış olanlar da gelir (soluk gösterilir, hedef olsun diye)."""
+    id: str
+    name: str
+    emoji: str
+    detail: str               # nasıl kazanılır / ne kadarı tamam ("10 / 50 takipçi")
+    is_unlocked: bool
+
+
+class ProfileStats(BaseModel):
+    moments_count: int        # paylaştığı anı sayısı
+    rooms_count: int          # açık odası
+    gifts_sent_coins: int     # bugüne kadar hediyeye harcadığı coin
+    gifts_received_diamonds: int  # bugüne kadar hediyelerden kazandığı elmas
 
 
 class ProfileExtras(BaseModel):
-    """Profil ekranının alt bölümleri. DEMO: içerik şimdilik sabit (demo/content.py)."""
-    wall_posts: list[dict]
-    achievements: list[dict]
-    recent_rewards: list[dict]
+    """Profilin "Hakkında" bölümü: veritabanındaki gerçek sayılardan hesaplanır (bkz. profile_service)."""
+    stats: ProfileStats
+    achievements: list[Achievement]
+
+
+class VisitorOut(BaseModel):
+    """Profilime bakan kişi ve en son ne zaman baktığı."""
+    user: UserOut
+    visited_at: datetime

@@ -17,7 +17,7 @@ function checkinStrip(status) {
   }).join('');
 }
 
-export function checkinCard(status) {
+function checkinCard(status) {
   return `
     <section class="checkin-card">
       <div class="section-head"><h2>Günlük Giriş</h2><small>Art arda gel, ödül büyüsün</small></div>

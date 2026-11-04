@@ -8,7 +8,7 @@ yer bellidir.
 """
 from datetime import timedelta
 
-from sqlalchemy import func, select, update
+from sqlalchemy import case, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -243,16 +243,19 @@ async def income_summary(db: AsyncSession, user_id: int) -> IncomeSummary:
     """
     received = (Transaction.user_id == user_id) & (Transaction.type == "gift_received")
 
-    async def total_since(start) -> int:
-        statement = select(func.coalesce(func.sum(Transaction.amount), 0)).where(received)
-        if start is not None:
-            statement = statement.where(Transaction.created_at >= start)
-        return await db.scalar(statement)
-
     now = utcnow()
     # "Bugün" kullanıcının saatine göre (DEMO: sabit Türkiye saati, bkz. config).
     offset = timedelta(hours=settings.display_utc_offset_hours)
     local_midnight = (now + offset).replace(hour=0, minute=0, second=0, microsecond=0) - offset
+
+    def total_since(start):
+        # Üç dönem (bugün, hafta, hepsi) aynı satırlardan tek sorguda toplanır: CASE ile süzülür.
+        return func.coalesce(func.sum(case((Transaction.created_at >= start, Transaction.amount), else_=0)), 0)
+
+    today, week, total = (await db.execute(
+        select(total_since(local_midnight), total_since(now - timedelta(days=7)),
+               func.coalesce(func.sum(Transaction.amount), 0)).where(received)
+    )).one()
 
     supporters_total = func.sum(Transaction.amount).label("total")
     rows = (await db.execute(
@@ -265,9 +268,9 @@ async def income_summary(db: AsyncSession, user_id: int) -> IncomeSummary:
     _, diamond_balance = await _balances(db, user_id)
     return IncomeSummary(
         diamond_balance=diamond_balance,
-        today_diamonds=await total_since(local_midnight),
-        week_diamonds=await total_since(now - timedelta(days=7)),
-        total_diamonds=await total_since(None),
+        today_diamonds=today,
+        week_diamonds=week,
+        total_diamonds=total,
         diamond_to_coin_rate=settings.diamond_to_coin_rate,
         withdrawals_enabled=settings.withdrawals_enabled,
         top_supporters=[
