@@ -30,6 +30,7 @@ class UserOut(BaseModel):
     display_name: str
     age: int | None
     city: str | None
+    country: str | None = None   # ISO iki harfli ülke kodu ("TR"); bayrağı istemci çizer
     avatar_url: str | None
     cover_url: str | None
     bio: str
@@ -38,6 +39,7 @@ class UserOut(BaseModel):
     experience: int           # deneyim puanı (bkz. services/level_service.py)
     next_level_experience: int  # bir sonraki seviye için gereken toplam deneyim
     is_verified: bool
+    is_host: bool = False     # onaylı yayıncı (rozet; ajansa katılabilir)
     is_guest: bool
     is_online: bool
     # ── Takılı kozmetikler (mağaza / VIP) ─────────────────────────────────────
@@ -77,6 +79,7 @@ class ProfileUpdateRequest(BaseModel):
     bio: str | None = Field(default=None, max_length=300)
     age: int | None = Field(default=None, ge=13, le=99)
     city: str | None = Field(default=None, max_length=60)
+    country: str | None = Field(default=None, pattern=r"^[A-Za-z]{2}$")
     # Yalnızca hazır listeden (demo/content.py) bir adres kabul edilir; kontrol serviste.
     avatar_url: str | None = Field(default=None, max_length=500)
     cover_url: str | None = Field(default=None, max_length=500)
@@ -86,6 +89,12 @@ class ProfileUpdateRequest(BaseModel):
     def strip_text(cls, value):
         # Baştaki/sondaki boşlukları at; "   " gibi boş bir ad min_length kontrolüne takılsın.
         return value.strip() if isinstance(value, str) else value
+
+    @field_validator("country")
+    @classmethod
+    def upper_country(cls, value):
+        # "tr" ile "TR" aynı ülke: veritabanında hep büyük harf dursun.
+        return value.upper() if isinstance(value, str) else value
 
 
 class MediaOptions(BaseModel):

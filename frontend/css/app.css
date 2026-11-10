@@ -1535,3 +1535,160 @@ small { font-size: 12px; color: var(--muted); }
 /* Yüzen paylaş düğmesi (Anılar) */
 .fab { position: absolute; right: 16px; bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px) + 18px); z-index: 30; width: 54px; height: 54px; border-radius: 50%; display: grid; place-items: center; background: var(--grad); color: #fff; box-shadow: 0 10px 26px rgba(177, 75, 255, 0.5); transition: transform 0.12s; }
 .fab:active { transform: scale(0.92); }
+
+/* ─── ODALAR: BEN / KEŞFET / CANLI (2026-11-10) ───────────────────────── */
+/* Tür ve ülke çipleri birlikte yapışkan: liste kayarken ikisi de üstte kalır */
+.filter-sticky { position: sticky; top: 0; z-index: 5; background: var(--bg); }
+.filter-sticky .filter-bar { position: static; }
+.filter-bar-countries { padding-top: 0; }
+.filter-bar-countries .filter-chip { height: 30px; padding: 0 11px; font-size: 12px; background: var(--surface); border: 1px solid var(--line); }
+.filter-bar-countries .filter-chip i { font-size: 15px; }
+.filter-bar-countries .filter-chip.is-active { border-color: transparent; }
+
+/* Canlı: iki sütunlu kartlar */
+.live-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 10px; padding: 6px var(--pad) 0; }
+.live-grid .room-list-empty { grid-column: 1 / -1; }
+.live-card { display: grid; gap: 6px; min-width: 0; color: inherit; }
+.live-card-cover { position: relative; aspect-ratio: 1; border-radius: 16px; overflow: hidden; background: var(--surface-2); }
+.live-card-cover img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.3s; }
+.live-card:active .live-card-cover img { transform: scale(1.04); }
+.live-card-cover::after { content: ""; position: absolute; inset: 55% 0 0; background: linear-gradient(transparent, rgba(8, 7, 15, 0.8)); }
+.live-card-heat, .live-card-mic { position: absolute; z-index: 1; bottom: 8px; display: inline-flex; align-items: center; gap: 3px; font-size: 12px; font-weight: 800; }
+.live-card-heat { left: 8px; color: #fff; }
+.live-card-heat .icon { color: #ff8a3d; }
+.live-card-mic { right: 8px; padding: 2px 7px; border-radius: 999px; background: rgba(0, 0, 0, 0.45); font-size: 11px; }
+.live-card-pk { position: absolute; z-index: 1; top: 8px; right: 8px; }
+.live-card > b { font-size: 13.5px; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.live-card-host { display: flex; align-items: center; gap: 5px; min-width: 0; margin-top: -2px; font-size: 11.5px; color: #cfcbe0; }
+.live-card-host .avatar { width: 18px; height: 18px; flex: none; }
+.live-card-host span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.live-card-host i { font-style: normal; flex: none; }
+
+/* Ben: büyük "Odam" kartı ve son girilen odalar şeridi */
+.my-room-hero { position: relative; display: flex; align-items: flex-end; min-height: 150px; padding: 14px; border-radius: 20px; overflow: hidden; color: inherit; background: var(--surface-2); }
+.my-room-hero > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.my-room-hero::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(8, 7, 15, 0.1) 20%, rgba(8, 7, 15, 0.88)); }
+.my-room-hero-body { position: relative; z-index: 1; flex: 1; min-width: 0; display: grid; gap: 3px; }
+.my-room-hero-body small { color: #d8d4ea; font-weight: 600; }
+.my-room-hero-body b { font-family: var(--display); font-size: 20px; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.my-room-hero-stats { display: flex; flex-wrap: wrap; gap: 10px; font-size: 12px; font-weight: 700; color: #e9e6f5; }
+.my-room-hero-stats span { display: inline-flex; align-items: center; gap: 4px; }
+.my-room-hero-enter { position: relative; z-index: 1; flex: none; margin-left: 10px; }
+.recent-rooms { display: flex; gap: 10px; padding: 0 var(--pad); overflow-x: auto; scrollbar-width: none; }
+.recent-rooms::-webkit-scrollbar { display: none; }
+.recent-room { flex: none; width: 74px; display: grid; gap: 5px; color: inherit; }
+.recent-room-cover { position: relative; width: 74px; height: 74px; border-radius: 16px; overflow: hidden; background: var(--surface-2); }
+.recent-room-cover img { width: 100%; height: 100%; object-fit: cover; }
+.recent-room-live { position: absolute; left: 5px; bottom: 5px; padding: 3px 5px; border-radius: 6px; background: rgba(0, 0, 0, 0.55); display: grid; }
+.recent-room small { font-size: 11px; color: #d5d2e4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; }
+
+.field select { width: 100%; height: 48px; padding: 0 12px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface-2); color: inherit; font: inherit; font-size: 16px; outline: none; }
+.field select:focus { border-color: var(--purple); }
+
+/* ─── SOHBET: SAAT, SESLİ MESAJ, HEDİYE, ARAMA İZİ (2026-11-10) ───────── */
+.chat-screen .topbar { gap: 4px; }
+.chat-screen .topbar .chat-peer { min-width: 0; }
+.chat-peer b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-thread { gap: 6px; }
+.chat-empty { margin: auto; color: var(--muted); }
+.chat-date { align-self: center; margin: 10px 0 4px; font-size: 11px; font-weight: 600; color: var(--muted); }
+.bubble .bubble-time { margin-top: 3px; font-size: 10px; color: var(--muted); text-align: right; }
+.bubble.is-mine .bubble-time { color: rgba(255, 255, 255, 0.75); }
+
+.voice-note { display: flex; align-items: center; gap: 10px; min-width: 170px; color: inherit; }
+.voice-note-icon { flex: none; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; font-style: normal; background: rgba(255, 255, 255, 0.16); }
+.voice-note-bars { position: relative; flex: 1; height: 22px; border-radius: 4px; overflow: hidden;
+  background: repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.35) 0 3px, transparent 3px 6px);
+  -webkit-mask: linear-gradient(transparent 20%, #000 20% 80%, transparent 80%); mask: linear-gradient(transparent 20%, #000 20% 80%, transparent 80%); }
+.voice-note-progress { position: absolute; inset: 0 auto 0 0; width: 0; background: repeating-linear-gradient(90deg, #fff 0 3px, transparent 3px 6px); }
+.voice-note small { flex: none; font-size: 11.5px; font-weight: 700; color: inherit; }
+
+.bubble-gift { background: linear-gradient(135deg, rgba(255, 77, 109, 0.35), rgba(255, 138, 61, 0.3)); border: 1px solid rgba(255, 138, 61, 0.45); }
+.bubble-gift.is-mine { background: linear-gradient(135deg, rgba(255, 77, 109, 0.55), rgba(177, 75, 255, 0.5)); }
+.gift-note { display: flex; align-items: center; gap: 10px; }
+.gift-note i { font-style: normal; font-size: 34px; animation: pop 0.6s ease; }
+.gift-note span { display: grid; gap: 1px; }
+.gift-note small { color: rgba(255, 255, 255, 0.8); }
+
+.call-note { align-self: center; display: inline-flex; align-items: center; gap: 6px; margin: 6px 0; padding: 7px 13px; border-radius: 999px; background: var(--surface-2); font-size: 12.5px; font-weight: 600; }
+.call-note small { font-size: 10.5px; }
+.call-note.is-missed { color: #ff8fa3; }
+
+/* Alt yazma çubuğu: hepsi tek satırda (Anılar'daki .composer'dan ayrı sınıf; o sınıf ızgara düzenindedir) */
+.chat-composer { flex: none; display: flex; align-items: center; gap: 8px; padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px)); border-top: 1px solid var(--line); background: var(--bg); }
+.chat-composer input { flex: 1; min-width: 0; height: 42px; padding: 0 16px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface-2); outline: none; font-size: 16px; }
+.chat-composer input:focus { border-color: var(--purple); }
+.chat-composer-btn { flex: none; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: var(--surface-2); transition: transform 0.15s; }
+.chat-composer-btn:active { transform: scale(0.9); }
+.chat-composer-gift { font-size: 21px; background: none; }
+.chat-composer-send { background: var(--grad); }
+.chat-recorder { flex: none; display: flex; align-items: center; gap: 10px; padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px)); border-top: 1px solid var(--line); }
+.chat-recorder small { flex: 1; }
+.chat-recorder-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--live); animation: rec-blink 1s ease-in-out infinite; }
+@keyframes rec-blink { 50% { opacity: 0.25; } }
+.gift-sheet-to { display: flex; align-items: center; gap: 6px; margin: -6px 0 12px; color: var(--muted); }
+
+/* ─── BİREBİR ARAMA KATMANI ───────────────────────────────────────────── */
+.call-layer { position: absolute; inset: 0; z-index: 60; display: flex; flex-direction: column; justify-content: space-between; overflow: hidden; background: #07060d; animation: view-in 0.25s ease; }
+.call-layer.is-leaving { opacity: 0; transition: opacity 0.25s; }
+.call-backdrop { position: absolute; inset: -40px; background-size: cover; background-position: center; filter: blur(40px) brightness(0.45); }
+.call-remote { position: absolute; inset: 0; z-index: 1; }
+.call-remote video, .call-remote div { width: 100%; height: 100%; object-fit: cover; }
+.call-voice .call-remote { opacity: 0; pointer-events: none; }   /* sesli aramada görüntü öğesi yalnızca sesi çalar */
+.call-layer:not(.has-remote-video) .call-remote { opacity: 0; }
+.call-top { position: relative; z-index: 2; display: grid; justify-items: center; gap: 6px; padding: calc(56px + env(safe-area-inset-top, 0px)) 24px 0; text-align: center; }
+.call-top h2 { font-family: var(--display); font-size: 24px; font-weight: 800; }
+.call-top p { color: #d8d4ea; }
+.call-avatar { width: 112px; height: 112px; border: 3px solid rgba(255, 255, 255, 0.2); animation: call-pulse 1.8s ease-in-out infinite; }
+.has-remote-video .call-top { padding-top: calc(18px + env(safe-area-inset-top, 0px)); text-shadow: 0 1px 6px rgba(0, 0, 0, 0.6); }
+.has-remote-video .call-avatar { width: 46px; height: 46px; animation: none; }
+@keyframes call-pulse { 50% { box-shadow: 0 0 0 14px rgba(177, 75, 255, 0.18); } }
+.call-cost { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 999px; background: rgba(0, 0, 0, 0.35); font-size: 12.5px; font-weight: 700; }
+.call-warning { max-width: 300px; padding: 8px 12px; border-radius: 12px; background: rgba(255, 59, 92, 0.2); border: 1px solid rgba(255, 59, 92, 0.5); font-size: 12.5px; }
+.call-warning a { color: #fff; font-weight: 800; text-decoration: underline; }
+.call-local { position: absolute; z-index: 3; top: calc(16px + env(safe-area-inset-top, 0px)); right: 14px; width: 104px; height: 146px; border-radius: 16px; overflow: hidden; background: #000; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5); }
+.call-local video, .call-local div { width: 100%; height: 100%; object-fit: cover; }
+.call-local > video { transform: scaleX(-1); }   /* kendi görüntün ayna gibi */
+.call-actions { position: relative; z-index: 2; display: flex; justify-content: center; gap: 22px; padding: 0 24px calc(44px + env(safe-area-inset-bottom, 0px)); }
+.call-btn { width: 62px; height: 62px; border-radius: 50%; display: grid; place-items: center; background: rgba(255, 255, 255, 0.16); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); transition: transform 0.15s; }
+.call-btn:active { transform: scale(0.92); }
+.call-btn.is-off { background: #fff; color: #111; }
+.call-btn-accept { background: #22c55e; animation: call-pulse 1.4s ease-in-out infinite; }
+.call-btn-decline { background: var(--live); }
+.call-btn-decline .icon { transform: rotate(135deg); }
+.call-confirm { display: grid; justify-items: center; gap: 10px; text-align: center; }
+.call-confirm .sheet-title { margin: 4px 0 0; }
+.call-confirm p { color: #d8d4ea; line-height: 1.45; }
+.call-confirm .btn-primary { display: inline-flex; justify-content: center; align-items: center; gap: 8px; margin-top: 6px; }
+
+/* ─── YAYINCILIK, AJANS TANITIMI, FOTOĞRAF (2026-11-10) ────────────────── */
+.host-card-wrap { padding: 0 var(--pad) 6px; }
+.host-card { width: 100%; display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 18px; background: var(--surface); border: 1px solid var(--line); text-align: left; color: inherit; }
+.host-card > i { flex: none; font-style: normal; font-size: 24px; }
+.host-card > span { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.host-card b { font-size: 14.5px; font-weight: 800; }
+.host-card-cta { background: linear-gradient(135deg, rgba(109, 91, 255, 0.28), rgba(255, 77, 157, 0.22)); border-color: rgba(177, 75, 255, 0.45); }
+.host-card.is-host { border-color: rgba(46, 230, 166, 0.4); }
+.host-badge { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; margin-left: 4px; border-radius: 999px; background: var(--grad); font-size: 11px; font-weight: 800; vertical-align: middle; }
+.sheet-note { margin: -6px 0 14px; color: var(--muted); font-size: 13px; line-height: 1.45; }
+.host-rules { margin-bottom: 12px; padding: 12px 14px; border-radius: 14px; background: var(--surface-2); font-size: 13px; }
+.host-rules ul, .agency-pitch ul { margin: 6px 0 0; padding-left: 18px; color: #d5d2e4; line-height: 1.55; }
+.check-row { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 14px; font-size: 13px; line-height: 1.4; }
+.check-row input { width: 18px; height: 18px; flex: none; margin-top: 1px; accent-color: var(--purple); }
+.agency-pitch { margin-bottom: 14px; font-size: 13.5px; line-height: 1.45; }
+.agency-pitch + .btn, .agency-pitch ~ .btn { margin-top: 8px; }
+.agency-note { display: block; margin-top: 8px; text-align: center; }
+
+.picker-upload { display: grid; place-items: center; align-content: center; gap: 2px; font-size: 22px; border: 1.5px dashed rgba(255, 255, 255, 0.3); background: var(--surface-2); }
+.picker-upload small { font-size: 10px; }
+.image-picker-upload { display: grid; place-items: center; align-content: center; gap: 2px; font-size: 22px; border: 1.5px dashed rgba(255, 255, 255, 0.3) !important; background: var(--surface-2); }
+.image-picker-upload small { font-size: 10px; }
+
+.chat-composer-photo { background: none; }
+.chat-photo { display: grid; place-items: center; width: 200px; min-height: 140px; max-width: 100%; border-radius: 12px; overflow: hidden; background: rgba(0, 0, 0, 0.25); }
+.chat-photo img { width: 100%; max-height: 280px; object-fit: cover; }
+.bubble-image { padding: 4px; }
+.bubble-image .bubble-time { padding: 0 8px 4px; }
+.photo-viewer { position: absolute; inset: 0; z-index: 70; display: grid; place-items: center; background: rgba(0, 0, 0, 0.92); animation: view-in 0.2s ease; }
+.photo-viewer img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.photo-viewer button { position: absolute; top: calc(14px + env(safe-area-inset-top, 0px)); right: 14px; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: rgba(255, 255, 255, 0.15); }

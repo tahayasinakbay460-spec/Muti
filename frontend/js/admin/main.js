@@ -19,6 +19,8 @@ const PAGES = [
   { id: 'reports', label: 'Şikâyetler', icon: '🚩', perm: 'reports.manage' },
   { id: 'catalog', label: 'Hediye & Paketler', icon: '🎁', perm: 'catalog.manage' },
   { id: 'agencies', label: 'Ajanslar', icon: '🏢', perm: 'agencies.manage' },
+  { id: 'settlements', label: 'Ajans Komisyonu', icon: '💸', perm: 'agencies.settle' },
+  { id: 'hosts', label: 'Yayıncı Başvuruları', icon: '🎙️', perm: 'hosts.review' },
   { id: 'broadcast', label: 'Duyuru', icon: '📢', perm: 'broadcast.send' },
   { id: 'staff', label: 'Ekip', icon: '🛡️', perm: 'staff.manage' },
   { id: 'activity', label: 'İşlem Kaydı', icon: '📜', perm: 'staff.audit' },
@@ -31,7 +33,8 @@ const STAFF_ACTION_LABELS = {
   vip_granted: 'VIP verildi', report_resolved: 'Şikâyet karara bağlandı', room_closed: 'Oda kapatıldı',
   conversation_viewed: 'Özel sohbet okundu', room_chat_viewed: 'Oda sohbeti okundu', gift_updated: 'Hediye düzenlendi',
   package_updated: 'Paket düzenlendi', broadcast_sent: 'Duyuru gönderildi', agency_created: 'Ajans kuruldu',
-  staff_role_changed: 'Personel rolü değişti',
+  staff_role_changed: 'Personel rolü değişti', host_approved: 'Yayıncı onaylandı', host_rejected: 'Yayıncı reddedildi',
+  host_revoked: 'Yayıncılık kaldırıldı', agency_month_settled: 'Ajans komisyonu ödendi',
 };
 
 // Para defterindeki işlem türlerinin Türkçe adları
@@ -40,7 +43,7 @@ const TX_LABELS = {
   store_purchase: 'Mağaza', vip_purchase: 'VIP üyelik', vip_daily: 'VIP günlük ödül', lucky_win: 'Şanslı hediye kazancı',
   chest_reward: 'Hazine sandığı', daily_checkin: 'Günlük giriş', task_reward: 'Görev ödülü', family_create: 'Aile kurma',
   cp_proposal: 'CP teklifi', cp_refund: 'CP iadesi', event_reward: 'Etkinlik ödülü', admin_adjustment: 'Yönetici düzeltmesi',
-  reward: 'Ödül',
+  reward: 'Ödül', call_charge: 'Arama ücreti', call_income: 'Arama geliri', agency_commission: 'Ajans komisyonu',
 };
 const REASON_LABELS = Object.fromEntries(REASONS.map((r) => [r.id, r.label]));
 const ACTION_LABELS = { dismiss: 'Reddedildi', ban_user: 'Kullanıcı banlandı', close_room: 'Oda kapatıldı' };
@@ -592,6 +595,110 @@ async function agenciesPage(main) {
   await render();
 }
 
+// Yayıncı başvuruları: onay / ret (ret sebebi kişiye bildirim olarak gider) ve yayıncılığı geri alma
+async function hostsPage(main) {
+  let status = 'pending';
+  async function render() {
+    const rows = await api.adminHostApplications(status);
+    main.innerHTML = `
+      <div class="card table-wrap">
+        <div class="form-row" style="justify-content:space-between;margin-bottom:12px">
+          <h2 style="margin:0">Yayıncı başvuruları</h2>
+          <select class="input" id="host-status" style="max-width:200px">
+            ${[['pending', 'Bekleyenler'], ['approved', 'Onaylananlar'], ['rejected', 'Reddedilenler']]
+              .map(([id, label]) => `<option value="${id}" ${id === status ? 'selected' : ''}>${label}</option>`).join('')}
+          </select>
+        </div>
+        <p style="color:var(--muted);margin-bottom:12px">Yaş kişinin beyanından hesaplanır (kimlik doğrulaması henüz yok). 18 altı başvuru sistemce kabul edilmez.</p>
+        <table>
+          <thead><tr><th>Kişi</th><th class="num">Yaş</th><th>Tanıtım</th><th>Tarih</th><th></th></tr></thead>
+          <tbody>${rows.map((a) => `
+            <tr>
+              <td>${userCell(a.user)}</td>
+              <td class="num">${a.age}</td>
+              <td style="max-width:360px">${esc(a.intro)}${a.review_note ? `<br><small>Not: ${esc(a.review_note)}</small>` : ''}</td>
+              <td><small>${dateTime(a.created_at)}</small></td>
+              <td>${a.status === 'pending' ? `
+                <div class="form-row">
+                  <button class="btn btn-primary btn-sm" data-approve="${a.id}">Onayla</button>
+                  <button class="btn btn-sm" data-reject="${a.id}">Reddet</button>
+                </div>` : a.status === 'approved' ? `<button class="btn btn-sm" data-revoke="${a.user.id}">Yayıncılığı kaldır</button>` : ''}</td>
+            </tr>`).join('') || '<tr><td colspan="5" class="empty">Başvuru yok</td></tr>'}</tbody>
+        </table>
+      </div>`;
+    main.querySelector('#host-status').addEventListener('change', (event) => { status = event.target.value; render(); });
+  }
+  main.addEventListener('click', async (event) => {
+    const approve = event.target.closest('[data-approve]');
+    const reject = event.target.closest('[data-reject]');
+    const revoke = event.target.closest('[data-revoke]');
+    try {
+      if (approve) {
+        await api.adminReviewHost(Number(approve.dataset.approve), true);
+        toast('Yayıncı onaylandı', 'success');
+      } else if (reject) {
+        // Tarayıcı penceresi (prompt) yerine satıra not kutusu açmak daha iyi olurdu; panel masaüstü, kısa tutuldu
+        const note = window.prompt('Ret sebebi (kişiye gönderilir, boş bırakılabilir):') ?? null;
+        if (note === null) return;
+        await api.adminReviewHost(Number(reject.dataset.reject), false, note);
+        toast('Başvuru reddedildi', 'success');
+      } else if (revoke) {
+        if (!confirmTap(revoke)) return;
+        await api.adminRevokeHost(Number(revoke.dataset.revoke), 'Panelden kaldırıldı');
+        toast('Yayıncılık kaldırıldı; ajansından da çıkarıldı', 'success');
+      } else {
+        return;
+      }
+      await render();
+    } catch (error) {
+      toast(error.message, 'error');
+    }
+  });
+  await render();
+}
+
+// Ajans ay sonu komisyonu: bitmiş bir ayı seç, her ajansın komisyonunu gör ve öde (her ay bir kez)
+async function settlementsPage(main) {
+  let month = '';
+  async function render() {
+    const rows = await api.adminAgencySettlements(month);
+    month = rows[0]?.month || month;
+    main.innerHTML = `
+      <div class="card table-wrap">
+        <div class="form-row" style="justify-content:space-between;margin-bottom:12px">
+          <h2 style="margin:0">Ajans komisyonu</h2>
+          <input class="input" type="month" id="settle-month" value="${esc(month)}" style="max-width:200px" />
+        </div>
+        <p style="color:var(--muted);margin-bottom:12px">Komisyon bizim payımızdan ödenir: yayıncının kazancı düşmez, ajans sahibine elmas eklenir. Yalnızca bitmiş aylar ödenebilir; her ajans her ay bir kez.</p>
+        <table>
+          <thead><tr><th>Ajans</th><th class="num">Yayıncı</th><th class="num">Yayıncı kazancı</th><th class="num">Oran</th><th class="num">Komisyon</th><th></th></tr></thead>
+          <tbody>${rows.map((r) => `
+            <tr>
+              <td><b>🏢 ${esc(r.agency_name)}</b></td>
+              <td class="num">${r.member_count}</td>
+              <td class="num">💎 ${formatCoins(r.host_diamonds)}</td>
+              <td class="num">%${r.commission_percent}</td>
+              <td class="num"><b>💎 ${formatCoins(r.commission_diamonds)}</b></td>
+              <td>${r.settled ? `<span class="tag">Ödendi · ${dateTime(r.created_at)}</span>` : `<button class="btn btn-primary btn-sm" data-settle="${r.agency_id}">Öde</button>`}</td>
+            </tr>`).join('') || '<tr><td colspan="6" class="empty">Ajans yok</td></tr>'}</tbody>
+        </table>
+      </div>`;
+    main.querySelector('#settle-month').addEventListener('change', (event) => { month = event.target.value; render(); });
+  }
+  main.addEventListener('click', async (event) => {
+    const button = event.target.closest('[data-settle]');
+    if (!button || !confirmTap(button)) return;
+    try {
+      const result = await api.adminSettleAgency(Number(button.dataset.settle), month);
+      toast(`${result.agency_name}: +${formatCoins(result.commission_diamonds)} elmas ödendi`, 'success');
+      await render();
+    } catch (error) {
+      toast(error.message, 'error');
+    }
+  });
+  await render();
+}
+
 async function broadcastPage(main) {
   main.innerHTML = `
     <form class="card" id="broadcast-form" style="max-width:640px"><h2>Bütün kullanıcılara duyuru</h2>
@@ -704,6 +811,7 @@ async function activityPage(main) {
 const RENDERERS = {
   overview: overviewPage, finance: financePage, transactions: transactionsPage, users: usersPage, messages: messagesPage,
   rooms: roomsPage, reports: reportsPage, catalog: catalogPage, agencies: agenciesPage, broadcast: broadcastPage,
+  settlements: settlementsPage, hosts: hostsPage,
   staff: staffPage, activity: activityPage,
 };
 

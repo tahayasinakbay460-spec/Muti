@@ -26,6 +26,8 @@ PERMISSIONS: dict[str, str] = {
     "messages.read": "Özel mesaj ve oda sohbeti okuma",
     "catalog.manage": "Hediye ve coin paketi fiyatları",
     "agencies.manage": "Ajans kurma",
+    "agencies.settle": "Ajans ay sonu komisyonunu ödeme",
+    "hosts.review": "Yayıncı başvurularını onaylama / reddetme, yayıncılığı geri alma",
     "broadcast.send": "Bütün kullanıcılara duyuru",
     "staff.manage": "Personel rolü verme / alma",
     "staff.audit": "Personel işlem kaydını görme",
@@ -37,9 +39,10 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
     # Topluluk güvenliği: şikâyet, ban, oda kapatma. Paraya dokunamaz.
     "moderator": frozenset({
         "dashboard.view", "users.view", "users.ban", "reports.manage", "rooms.manage", "messages.read",
+        "hosts.review",
     }),
     # Para tarafı: gelir raporları, para hareketleri, bakiye düzeltme. Kimseyi banlayamaz.
-    "finance": frozenset({"dashboard.view", "finance.view", "users.view", "users.balance"}),
+    "finance": frozenset({"dashboard.view", "finance.view", "users.view", "users.balance", "agencies.settle"}),
 }
 
 ROLE_LABELS: dict[str, str] = {"admin": "Yönetici", "moderator": "Moderatör", "finance": "Finans"}

@@ -21,7 +21,7 @@ from app.core.security import (
 from app.core.timefmt import as_utc
 from app.models import Follow, RefreshToken, Room, User
 from app.schemas.auth import ChangePasswordRequest, LoginRequest, RegisterRequest, TokenResponse
-from app.services import user_service, wallet_service
+from app.services import media_service, user_service, wallet_service
 
 # Olmayan bir kullanıcı adıyla giriş denendiğinde de bir parola kontrolü yapabilmek
 # için hazır tutulan sahte hash (neden gerektiği `login` içinde anlatılıyor).
@@ -80,6 +80,7 @@ async def register(db: AsyncSession, data: RegisterRequest) -> TokenResponse:
         email=email,
         password_hash=await hash_password(data.password),
         display_name=data.username,   # ekranda yazıldığı haliyle (büyük/küçük harf korunur)
+        country=data.country.upper() if data.country else None,
     )
     await _create_user(db, user)
     audit("user_registered", new_user_id=user.id, username=username)
@@ -268,5 +269,8 @@ async def delete_account(db: AsyncSession, user: User, password: str | None) -> 
     user.age = None
     user.city = None
     user.is_active = False
+    # Fotoğrafları da sil (KVKK: silinen hesabın kişisel verisi kalmasın). Dosyalar commit'ten sonra.
+    removed_files = await media_service.forget_public_uploads(db, user.id)
     await _revoke_all(db, user.id)   # commit eder
+    await media_service.delete_files(removed_files)
     audit("account_deleted", deleted_user_id=user.id)

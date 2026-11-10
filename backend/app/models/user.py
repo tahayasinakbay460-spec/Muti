@@ -3,7 +3,7 @@ Kullanıcıyla ilgili tablolar: users, follows, refresh_tokens.
 """
 from datetime import date, datetime
 
-from sqlalchemy import BigInteger, Boolean, CheckConstraint, Date, DateTime, ForeignKey, Integer, String
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, Date, DateTime, ForeignKey, Integer, String, false
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base, BigIntPk, utcnow
@@ -38,6 +38,9 @@ class User(Base):
     display_name: Mapped[str] = mapped_column(String(40))
     age: Mapped[int | None] = mapped_column(Integer)
     city: Mapped[str | None] = mapped_column(String(60))
+    # Ülke, ISO 3166 iki harfli kod ("TR", "DE"). Odalar > Keşfet'teki bayrak filtresi
+    # oda sahibinin ülkesine bakar. Kayıtta tarayıcının dilinden tahmin edilir, profilden değişir.
+    country: Mapped[str | None] = mapped_column(String(2), index=True)
     avatar_url: Mapped[str | None] = mapped_column(String(500))
     cover_url: Mapped[str | None] = mapped_column(String(500))
     bio: Mapped[str] = mapped_column(String(300), default="")
@@ -55,6 +58,9 @@ class User(Base):
     level: Mapped[int] = mapped_column(Integer, default=1)
     experience: Mapped[int] = mapped_column(BigInteger, default=0)
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Onaylı yayıncı (bkz. models/host.py). Ajansa katılmak için gerekir.
+    is_host: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    host_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     # ── Cüzdan ────────────────────────────────────────────────────────────────
     # coin: gerçek parayla alınır, hediye göndermek için harcanır.

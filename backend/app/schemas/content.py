@@ -10,3 +10,5 @@ class DemoLogin(BaseModel):
 class AppInfo(BaseModel):
     # Doluysa giriş ekranı "Demo hesabı: ..." ipucunu gösterir (yalnızca demo/vitrin yayınında).
     demo_login: DemoLogin | None = None
+    # Müşteri hizmetleri hesabı (ajans olmak isteyenler buraya yazar). Yoksa tuş gizlenir.
+    support_user_id: int | None = None

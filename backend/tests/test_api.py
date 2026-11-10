@@ -642,10 +642,12 @@ def test_app_info_shows_demo_login_only_with_sample_data(client, monkeypatch):
     from app.core.config import settings
 
     # Testler örnek veriyle (DEMO_MODE) çalışır: giriş ekranı hazır hesabı gösterir
-    assert client.get(f"{API}/app-info").json() == {"demo_login": {"username": "muti", "password": "demo1234"}}
+    info = client.get(f"{API}/app-info").json()
+    assert info["demo_login"] == {"username": "muti", "password": "demo1234"}
+    assert info["support_user_id"] == 1   # müşteri hizmetleri: demo yönetici hesabı
     monkeypatch.setattr(settings, "demo_mode", False)
     monkeypatch.setattr(settings, "showcase_data", True)
     assert client.get(f"{API}/app-info").json()["demo_login"]["username"] == "muti"
     # Gerçek yayında (örnek veri yok) hiçbir hesap bilgisi verilmez
     monkeypatch.setattr(settings, "showcase_data", False)
-    assert client.get(f"{API}/app-info").json() == {"demo_login": None}
+    assert client.get(f"{API}/app-info").json()["demo_login"] is None

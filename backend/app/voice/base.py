@@ -59,6 +59,13 @@ class VoiceProvider(ABC):
     async def join_info(self, room_id: int, user_id: int, display_name: str, can_publish: bool) -> VoiceJoinInfo:
         """İstemcinin bu odanın sesine bağlanması için gerekenler."""
 
+    @abstractmethod
+    async def call_join_info(self, call_id: int, user_id: int, display_name: str) -> VoiceJoinInfo:
+        """
+        Birebir aramanın (özel mesajdaki sesli / görüntülü arama) bağlantı bilgisi.
+        Odadan ayrı bir kanaldır ("call-<id>"); iki taraf da konuşabilir ve görüntü gönderebilir.
+        """
+
     async def sync_publishers(self, room_id: int, publisher_ids: set[int]) -> None:
         """Koltuklar değişti: şu an konuşma izni olanlar bunlar (koltukta ve engelsiz)."""
 

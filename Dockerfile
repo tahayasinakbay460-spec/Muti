@@ -19,11 +19,14 @@ COPY frontend/ /app/frontend/
 
 # Root (yönetici) olmayan bir kullanıcıyla çalış: kod bir açık yüzünden ele geçirilse bile
 # sunucunun geri kalanına dokunamasın.
-RUN useradd --create-home muti && chown -R muti /app
+# /data/media: sesli mesaj dosyaları. Sunucuda kalıcı bir volume bağlanır (deploy/docker-compose.yml);
+# klasörü burada muti'ye ait açıyoruz ki volume ilk bağlandığında yazma izni olsun.
+RUN useradd --create-home muti && mkdir -p /data/media && chown -R muti /app /data/media
 USER muti
 
 ENV ENVIRONMENT=production \
     FRONTEND_DIR=/app/frontend \
+    MEDIA_DIR=/data/media \
     DEMO_MODE=false \
     ADMIN_CAN_READ_MESSAGES=false \
     LOG_JSON=true

@@ -12,6 +12,8 @@ class RegisterRequest(BaseModel):
     email: EmailStr
     # bcrypt en fazla 72 baytı dikkate alır; üst sınır bu yüzden var.
     password: str = Field(min_length=6, max_length=64)
+    # İsteğe bağlı: istemci tarayıcının dilinden tahmin eder ("tr-TR" → "TR"); profilden değişir.
+    country: str | None = Field(default=None, pattern=r"^[A-Za-z]{2}$")
 
 
 class LoginRequest(BaseModel):

@@ -36,7 +36,7 @@ export async function renderNotifications(root) {
 
   root.innerHTML = `
     <header class="topbar">
-      <a class="icon-btn icon-btn-plain" href="#/home" aria-label="Geri">${icon('chevron-left', 22)}</a>
+      <a class="icon-btn icon-btn-plain" href="#/home" data-back aria-label="Geri">${icon('chevron-left', 22)}</a>
       <h1 class="page-title">Bildirimler</h1>
       <span></span>
     </header>

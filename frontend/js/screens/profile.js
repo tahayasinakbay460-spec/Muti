@@ -99,7 +99,7 @@ export async function renderProfile(root, { params }) {
   root.innerHTML = `
     <div class="profile-ig">
       <header class="topbar">
-        ${user.is_me ? '<span></span>' : `<button class="icon-btn icon-btn-plain" data-action="back" aria-label="Geri">${icon('chevron-left', 22)}</button>`}
+        ${user.is_me ? '<span></span>' : `<a class="icon-btn icon-btn-plain" href="#/home" data-back aria-label="Geri">${icon('chevron-left', 22)}</a>`}
         <button class="profile-handle" data-action="copy-id">@${esc(user.username)} <small>ID ${user.id} ${icon('copy', 12)}</small></button>
         <button class="icon-btn icon-btn-plain" data-action="menu" aria-label="Menü">${icon('more', 20)}</button>
       </header>
@@ -116,7 +116,7 @@ export async function renderProfile(root, { params }) {
       </div>
 
       <div class="profile-bio-block">
-        <h1>${esc(user.display_name)} ${user.is_verified ? `<span class="verified">${icon('verified', 16)}</span>` : ''}</h1>
+        <h1>${esc(user.display_name)} ${user.is_verified ? `<span class="verified">${icon('verified', 16)}</span>` : ''}${user.is_host ? '<span class="host-badge" title="Onaylı yayıncı">🎙️ Yayıncı</span>' : ''}</h1>
         <div class="profile-badges">${vipBadge(user.vip_level)}${levelBadge(user.level)}${user.family ? `<a class="family-chip" href="#/family/${user.family.id}">${esc(user.family.badge)} ${esc(user.family.name)}</a>` : ''}</div>
         ${user.bio ? `<p class="profile-bio">${esc(user.bio)}</p>` : ''}
         <p class="profile-meta">${esc(joinParts([user.age && `${user.age} yaş`, user.city, `${user.joined_days} gündür Muti'de`]))}</p>
@@ -359,10 +359,7 @@ export async function renderProfile(root, { params }) {
     if (!action) return;
     const button = event.target.closest('[data-action]');
 
-    if (action === 'back') {
-      if (history.length > 1) history.back();
-      else location.hash = '#/home';
-    } else if (action === 'menu') {
+    if (action === 'menu') {
       openMenu();
     } else if (action === 'copy-id') {
       navigator.clipboard?.writeText(String(user.id)).catch(() => {});

@@ -17,6 +17,9 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    volumes:
+      # Sesli mesaj dosyaları: güncellemede kutu (container) yenilense de silinmesin
+      - media_data:/data/media
     # Oda durumu bellekte (Redis yok): bu servis TEK kopya çalışmalı, ölçeklenmez.
     logging: &logs
       driver: json-file
@@ -59,5 +62,6 @@ services:
 
 volumes:
   db_data:
+  media_data:
   caddy_data:
   caddy_config:

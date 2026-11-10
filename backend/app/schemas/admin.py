@@ -137,11 +137,29 @@ class AgencyMemberOut(BaseModel):
     tier_index: int = 0       # AGENCY_TIERS içindeki sırası (bu ayki elmasına göre)
 
 
+class AgencySettlementOut(BaseModel):
+    """Ajansın bir ayki komisyon hesabı. settled=False: ay henüz kapatılmadı, sayı şu anki hesap."""
+    agency_id: int
+    agency_name: str
+    month: str
+    host_diamonds: int
+    commission_percent: int
+    commission_diamonds: int
+    member_count: int
+    settled: bool
+    created_at: datetime | None = None
+
+
+class AgencySettleRequest(BaseModel):
+    month: str = Field(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")
+
+
 class AgencyDashboard(BaseModel):
     agency: AgencyOut
     members: list[AgencyMemberOut]
     month_diamonds: int       # aktif üyelerin bu ay toplam kazancı
-    estimated_commission: int # DEMO: yalnızca hesap, ödeme yok
+    estimated_commission: int # bu ayın tahmini komisyonu (ay bitince panelden ödenir)
+    settlements: list[AgencySettlementOut] = []   # ödenmiş geçmiş aylar
 
 
 class MyAgency(BaseModel):

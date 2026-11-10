@@ -16,7 +16,14 @@ export function startInbox() {
   channel = connectUser();
   channel.on('message:new', handleNewMessage);
   channel.on('notification:new', handleNewNotification);
+  // Gelen arama hangi ekranda olunursa olsun çalar. Arama ekranı ilk aramada yüklenir.
+  channel.on('call:incoming', (call) => import('./call.js').then(({ showIncomingCall }) => showIncomingCall(call)));
   refreshUnread();
+}
+
+// Kişiye özel kanaldan sunucuya mesaj (yalnızca aramadaki bağlantı mesajları, `call:signal`)
+export function sendInbox(event, payload) {
+  channel?.send(event, payload);
 }
 
 export function stopInbox() {

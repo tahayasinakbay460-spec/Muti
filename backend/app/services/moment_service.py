@@ -15,7 +15,7 @@ from app.core.timefmt import as_utc
 from app.demo import content
 from app.models import Follow, Moment, MomentComment, MomentLike, User, UserBlock
 from app.schemas.moment import MomentCommentOut, MomentCreateRequest, MomentLikeResult, MomentOut
-from app.services import notification_service, user_service
+from app.services import media_service, notification_service, user_service
 
 PAGE_SIZE = 30
 COMMENT_PAGE_SIZE = 100
@@ -84,8 +84,9 @@ async def create_moment(db: AsyncSession, user: User, data: MomentCreateRequest)
     # Misafir hesaplar paylaşım yapamaz: kimliği belirsiz hesaplardan gelen istenmeyen içerik (spam) azalır.
     if user.is_guest:
         raise ForbiddenError("Anı paylaşmak için hesap oluştur.", code="guest_cannot_post")
-    # Görseller yalnızca hazır listeden: profile/akışa dışarıdan rastgele adres yazılamaz.
-    if data.image_url is not None and data.image_url not in content.MOMENT_IMAGE_CHOICES:
+    # Görsel hazır listeden ya da kişinin anı için yüklediği fotoğraftan: dışarıdan rastgele adres yazılamaz.
+    if data.image_url is not None and data.image_url not in content.MOMENT_IMAGE_CHOICES \
+            and not await media_service.is_own_upload(db, user.id, data.image_url, ("moment",)):
         raise AppError("Bu görsel seçilemez.", code="invalid_image")
     moment = Moment(user_id=user.id, text=data.text, image_url=data.image_url)
     db.add(moment)

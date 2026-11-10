@@ -56,6 +56,12 @@ USERS = [
     (2015, "naz", "Naz", 24, "İstanbul", "w9", "night", "Gece kuşu 🌙", 6, 35, True, True, 400, 4300, 190, 95, 39),
 ]
 
+# Örnek hesapların ülkesi: çoğu Türkiye; Keşfet'teki bayrak filtresi görünsün diye iki yayıncı başka ülkede.
+DEMO_COUNTRIES = {2010: "DE", 2005: "AZ"}
+# Onaylı yayıncılar: oda sahipleri ve ajans üyeleri. Ana kullanıcı yayıncı değil: demoda "Yayıncı ol"
+# başvurusu gösterilebilsin.
+DEMO_HOSTS = {2001, 2002, 2003, 2005, 2007, 2008, 2009, 2010, 2012, 2015}
+
 # (id, title, category, cover, is_live, demo dinleyici sayısı, host_id, announcement,
 #  koltuklar: sırayla oturan kullanıcı id'si | None=boş | "locked"=kilitli;  eksi id = mikrofonu kapalı)
 ROOMS = [
@@ -160,7 +166,8 @@ async def seed_database(db: AsyncSession, with_admin: bool = True) -> None:
         vip = 0 if uid == MAIN_USER_ID or not vip else 1 if vip <= 2 else 2 if vip <= 5 else 3
         db.add(User(
             id=uid, username=username, email=f"{username}@demo.local", password_hash=password_hash,
-            display_name=name, age=age, city=city,
+            display_name=name, age=age, city=city, country=DEMO_COUNTRIES.get(uid, "TR"),
+            is_host=uid in DEMO_HOSTS, host_since=now - timedelta(days=joined_days // 2) if uid in DEMO_HOSTS else None,
             avatar_url=f"assets/avatars/{avatar}.jpg", cover_url=f"assets/covers/{cover}.jpg",
             bio=bio, vip_level=vip, level=level, is_verified=verified,
             followers_count=followers, following_count=following, friends_count=friends, visitors_count=visitors,

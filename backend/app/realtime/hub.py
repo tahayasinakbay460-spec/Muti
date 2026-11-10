@@ -150,6 +150,10 @@ class UserHub:
         if not sockets:
             del self._connections[user_id]
 
+    def is_connected(self, user_id: int) -> bool:
+        """Kişinin şu an açık bir /ws/me bağlantısı var mı (uygulama açık mı)?"""
+        return bool(self._connections.get(user_id))
+
     async def disconnect(self, user_id: int, code: int) -> None:
         """Kişinin kişiye özel bağlantılarının hepsini kapatır (ör. uygulamadan banlandı)."""
         for websocket in list(self._connections.get(user_id, ())):

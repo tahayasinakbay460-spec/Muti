@@ -39,7 +39,7 @@ function howItWorks() {
   const steps = [
     { emoji: '🤝', title: 'Ajansa bağlan', text: 'Bir ajans seni davet eder ya da sen ajans numarasıyla başvurursun.' },
     { emoji: '🎯', title: 'Aylık hedefini tuttur', text: 'Ajans sana aylık elmas hedefi koyar; odanda aldığın her hediye hedefe sayılır.' },
-    { emoji: '💰', title: 'Seviye bonusu kazan', text: 'Ay sonunda topladığın elmasa göre seviyen belirlenir, seviyenin bonusu kazancına eklenir. Ajans da payını komisyon olarak alır.' },
+    { emoji: '💰', title: 'Seviye bonusu kazan', text: 'Ay sonunda topladığın elmasa göre seviyen belirlenir. Ajansın komisyonunu uygulama öder; senin kazancından kesilmez.' },
   ];
   return `
     <section class="section">
@@ -80,8 +80,9 @@ function ownerView(d, tiers) {
       <div class="family-stats">
         <span><b>${d.agency.member_count}</b><small>Yayıncı</small></span>
         <span><b>💎 ${formatCoins(d.month_diamonds)}</b><small>Bu ay kazanç</small></span>
-        <span><b>💎 ${formatCoins(d.estimated_commission)}</b><small>Tahmini komisyon (%${d.agency.commission_percent})</small></span>
+        <span><b>💎 ${formatCoins(d.estimated_commission)}</b><small>Bu ayın tahmini komisyonu (%${d.agency.commission_percent})</small></span>
       </div>
+      <small class="agency-note">Komisyon ay bitince hesabına elmas olarak geçer; yayıncılarının kazancından kesilmez.</small>
     </section>
     ${applications.length ? `
       <section class="section">
@@ -96,8 +97,17 @@ function ownerView(d, tiers) {
     </section>
     <section class="section">
       <div class="section-head"><h2>Yayıncılar</h2><small>Bu ayki elmas / hedef</small></div>
-      ${others.map((m) => memberRow(m, tiers)).join('') || '<p class="member-empty">Henüz yayıncı yok. ID ile davet et ya da başvuru bekle.</p>'}
+      ${others.map((m) => memberRow(m, tiers)).join('') || '<p class="member-empty">Henüz yayıncı yok. ID ile davet et ya da başvuru bekle. Yalnızca onaylı yayıncılar davet edilebilir.</p>'}
     </section>
+    ${d.settlements?.length ? `
+      <section class="section">
+        <div class="section-head"><h2>Ödenen komisyonlar</h2></div>
+        ${d.settlements.map((s) => `
+          <div class="agency-member">
+            <span class="member-info"><b>${esc(s.month)}</b><small>${s.member_count} yayıncı · 💎 ${formatCoins(s.host_diamonds)} kazanç · %${s.commission_percent}</small></span>
+            <b>+💎 ${formatCoins(s.commission_diamonds)}</b>
+          </div>`).join('')}
+      </section>` : ''}
     ${tierTable(tiers, -1, 0)}`;
 }
 
@@ -117,7 +127,7 @@ function memberView(state) {
     ${tierTable(state.tiers, state.my_tier_index, state.my_month_diamonds)}`;
 }
 
-function noneView(state, agencies) {
+function noneView(state, agencies, isHost) {
   let status = '';
   if (state.invite) {
     status = `
@@ -146,7 +156,17 @@ function noneView(state, agencies) {
         <p>Ajanslar yayıncıları destekler, aylık hedef koyar; sen de topladığın elmasa göre seviye atlayıp bonus kazanırsın.</p>
       </section>`;
   }
-  const canApply = !state.invite && !state.application;
+  // Ajansa yalnızca onaylı yayıncılar katılır (başvuru Odalar > Ben > "Yayıncı ol")
+  if (!isHost && !state.invite) {
+    status = `
+      <section class="agency-hero">
+        <span class="family-badge family-badge-lg">🎙️</span>
+        <h2>Önce yayıncı ol</h2>
+        <p>Ajanslara yalnızca onaylı yayıncılar katılabilir. Odalar › Ben sekmesinden "Yayıncı ol" başvurusu yap.</p>
+        <a class="btn btn-primary" href="#/rooms?tab=mine">Yayıncı ol</a>
+      </section>`;
+  }
+  const canApply = isHost && !state.invite && !state.application;
   return `
     ${status}
     ${howItWorks()}
@@ -173,15 +193,15 @@ function agencyList(agencies) {
 
 export async function renderAgency(root) {
   async function render() {
-    const state = await api.getMyAgency();
-    const agencies = state.role === null && !state.invite && !state.application ? await api.listAgencies() : [];
+    const [state, me] = await Promise.all([api.getMyAgency(), api.getMe()]);
+    const agencies = me.is_host && state.role === null && !state.invite && !state.application ? await api.listAgencies() : [];
     root.innerHTML = `
       <header class="topbar">
-        <a class="icon-btn icon-btn-plain" href="#/home" aria-label="Geri">${icon('chevron-left', 22)}</a>
+        <a class="icon-btn icon-btn-plain" href="#/home" data-back aria-label="Geri">${icon('chevron-left', 22)}</a>
         <h1 class="page-title">Ajans</h1>
         <span></span>
       </header>
-      ${state.role === 'owner' ? ownerView(state.dashboard, state.tiers) : state.role === 'member' ? memberView(state) : noneView(state, agencies)}`;
+      ${state.role === 'owner' ? ownerView(state.dashboard, state.tiers) : state.role === 'member' ? memberView(state) : noneView(state, agencies, me.is_host)}`;
     return state;
   }
   let state = await render();

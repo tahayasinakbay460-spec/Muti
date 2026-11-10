@@ -271,7 +271,7 @@ export function bindMomentActions(root, { getList, onChange }) {
   });
 }
 
-// Paylaşma paneli: yazı + hazır görsellerden biri (görsel yükleme henüz yok)
+// Paylaşma paneli: yazı + telefondan fotoğraf (ya da hazır görsellerden biri)
 export async function openComposer(onCreated) {
   const [me, { images }] = await Promise.all([api.getMe(), api.getMomentImageOptions()]);
   let image = null;
@@ -286,6 +286,7 @@ export async function openComposer(onCreated) {
       <div class="field">
         <span>Görsel ekle (isteğe bağlı)</span>
         <div class="image-picker">
+          <button type="button" class="image-picker-upload" data-upload-image aria-label="Telefondan fotoğraf seç">📷<small>Fotoğraf</small></button>
           ${images.map((url) => `<button type="button" data-image="${esc(url)}"><img src="${esc(url)}" alt="" loading="lazy" /></button>`).join('')}
         </div>
       </div>
@@ -302,8 +303,25 @@ export async function openComposer(onCreated) {
     preview.hidden = !image;
     if (image) preview.querySelector('img').src = image;
   };
-  form.addEventListener('click', (event) => {
+  form.addEventListener('click', async (event) => {
     if (event.target.closest('[data-clear-image]')) { image = null; paintImage(); return; }
+    const uploadButton = event.target.closest('[data-upload-image]');
+    if (uploadButton) {
+      // Seçilen fotoğraf küçültülüp (konum bilgisi silinerek) yüklenir; dönen adres anıya bağlanır
+      try {
+        const { pickAndShrink } = await import('../image-picker.js');
+        const blob = await pickAndShrink();
+        if (!blob) return;
+        uploadButton.disabled = true;
+        image = (await api.uploadImage(blob, 'moment')).url;
+        paintImage();
+      } catch (error) {
+        toast(error.message, 'error');
+      } finally {
+        uploadButton.disabled = false;
+      }
+      return;
+    }
     const button = event.target.closest('[data-image]');
     if (!button) return;
     image = image === button.dataset.image ? null : button.dataset.image;

@@ -32,10 +32,10 @@ from app import models  # noqa: F401  (tablolar SQLAlchemy'ye tanıtılsın diye
 from app.demo import seed
 from app.realtime import room_socket, user_socket
 from app.realtime.state import room_state
-from app.services import admin_service, auth_service, catalog_service
+from app.services import admin_service, auth_service, call_service, catalog_service
 from app.routers import (
-    activities, admin, agency, auth, content, conversations, diagnostics, economy, engagement, moments, rooms, social,
-    store, users,
+    activities, admin, agency, auth, calls, content, conversations, diagnostics, economy, engagement, hosts, media,
+    moments, rooms, social, store, users,
 )
 
 
@@ -75,6 +75,8 @@ async def lifespan(_app: FastAPI):
         await db.commit()
         await auth_service.ensure_admin_account(db)
         await admin_service.load_bans(db)
+    # Önceki çalışmadan açık kalmış aramalar (zamanlayıcıları bellekteydi, kayboldu).
+    await call_service.close_stale_calls()
 
     logger.info(
         "Server started (environment=%s, demo_mode=%s, showcase_data=%s)",
@@ -111,7 +113,7 @@ app.add_middleware(RequestLogMiddleware)
 api_v1 = APIRouter(prefix="/api/v1")
 for module in (
     auth, users, rooms, activities, economy, store, engagement, agency, admin, conversations, social, content,
-    diagnostics, moments,
+    diagnostics, moments, calls, hosts, media,
 ):
     api_v1.include_router(module.router)
 app.include_router(api_v1)

@@ -26,7 +26,8 @@ const MIC_RESTART_WINDOW_MS = 10000;
 // Bu sebeplerle düşen kişiyi Agora bilerek çıkarmıştır; otomatik denemek iki cihazı birbirine atar
 const BANNED_REASONS = new Set(['UID_BANNED', 'IP_BANNED', 'CHANNEL_BANNED']);
 
-function loadSdk() {
+// Birebir arama da (call-media.js) aynı kütüphaneyi kullanır; bir kez yüklenir.
+export function loadSdk() {
   sdkLoading ||= new Promise((resolve, reject) => {
     if (window.AgoraRTC) return resolve(window.AgoraRTC);
     const script = document.createElement('script');

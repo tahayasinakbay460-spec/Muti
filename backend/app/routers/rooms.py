@@ -7,7 +7,7 @@ from fastapi import APIRouter, Path, Query, Response, status
 
 from app.core.deps import CurrentUserId, DbSession
 from app.schemas.room import (
-    ChatMuteRequest, MyRoomStats, RoomCreateRequest, RoomFollowResult, RoomMemberOut, RoomOut, RoomRoleRequest,
+    ChatMuteRequest, CountryRoomCount, MyRoomStats, RoomCreateRequest, RoomFollowResult, RoomMemberOut, RoomOut, RoomRoleRequest,
     RoomUpdateRequest,
 )
 from app.schemas.user import UserOut
@@ -26,9 +26,13 @@ async def list_rooms(
     query: Annotated[str, Query(max_length=60)] = "",
     limit: Annotated[int, Query(ge=1, le=50)] = 30,
     offset: Annotated[int, Query(ge=0)] = 0,
+    country: Annotated[str, Query(pattern=r"^([A-Za-z]{2})?$")] = "",
 ):
-    """Odaları listeler. `category` ile filtrelenir, `query` ile oda adında aranır."""
-    return await room_service.list_rooms(db, user_id, category, query, limit, offset)
+    """
+    Odaları listeler. `category` ile filtrelenir (`pk`: PK'si sürenler, `live`: mikrofonunda biri
+    olanlar), `query` ile oda adında aranır, `country` ile oda sahibinin ülkesine göre süzülür.
+    """
+    return await room_service.list_rooms(db, user_id, category, query, limit, offset, country)
 
 
 @router.post("", response_model=RoomOut, status_code=status.HTTP_201_CREATED)
@@ -42,6 +46,18 @@ async def create_room(data: RoomCreateRequest, user_id: CurrentUserId, db: DbSes
 async def list_followed_rooms(user_id: CurrentUserId, db: DbSession):
     """Takip ettiğim odalar (ana sayfadaki "Takip" sekmesi)."""
     return await room_service.list_followed_rooms(db, user_id)
+
+
+@router.get("/recent", response_model=list[RoomOut])
+async def list_recent_rooms(user_id: CurrentUserId, db: DbSession):
+    """Son girdiğim odalar (Odalar > Ben)."""
+    return await room_service.list_recent_rooms(db, user_id)
+
+
+@router.get("/countries", response_model=list[CountryRoomCount])
+async def list_room_countries(_user_id: CurrentUserId, db: DbSession):
+    """Açık odası olan ülkeler ve oda sayıları (Keşfet'teki bayrak çipleri)."""
+    return await room_service.list_room_countries(db)
 
 
 @router.get("/mine", response_model=list[MyRoomStats])

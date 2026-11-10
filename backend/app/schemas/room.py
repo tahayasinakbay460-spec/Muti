@@ -44,6 +44,12 @@ class RoomOut(BaseModel):
     has_pk: bool = False
 
 
+class CountryRoomCount(BaseModel):
+    """Keşfet'teki bayrak çipi: ülke kodu ve o ülkeden yayıncıların açık oda sayısı."""
+    country: str
+    room_count: int
+
+
 class RoomMemberOut(BaseModel):
     """Odada şu an bulunan bir kişi (dinleyici listesi)."""
     user: UserOut

@@ -5,17 +5,18 @@ Bir odanın bilgisi iki yerden gelir ve burada birleştirilir:
   - kalıcı bilgiler (ad, sahip, kategori)      → veritabanı (models/room.py)
   - canlı bilgiler (koltuklar, dinleyici sayısı) → canlı durum deposu (realtime/state.py)
 """
-from sqlalchemy import case, delete, func, or_, select
+from sqlalchemy import case, delete, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.database import SessionLocal, utcnow
 from app.core.errors import ConflictError, ForbiddenError, NotFoundError
 from app.core.timefmt import period_start
-from app.models import Room, RoomFollow, RoomMember, Transaction, User
+from app.models import Room, RoomFollow, RoomMember, RoomVisit, Transaction, User
 from app.realtime import events
 from app.realtime.hub import room_hub
 from app.realtime.state import room_state
-from app.schemas.room import MyRoomStats, RoomCreateRequest, RoomOut, SeatOut
+from app.schemas.room import CountryRoomCount, MyRoomStats, RoomCreateRequest, RoomOut, SeatOut
 from app.schemas.user import UserOut
 from app.services import user_service
 from app.voice import VoiceJoinInfo, voice_provider
@@ -149,10 +150,40 @@ async def present_rooms(db: AsyncSession, rooms: list[Room], viewer_id: int | No
     ]
 
 
+# Odalar > Canlı sekmesinde en fazla kaç aday oda taranır (bkz. _live_room_ids).
+LIVE_SCAN_LIMIT = 500
+
+
+async def _live_room_ids(candidate_ids: list[int]) -> list[int]:
+    """
+    "Canlı" = koltuğunda (mikrofonda) en az bir kişi olan oda; kalabalıktan tenhaya sıralı.
+    Koltuklar veritabanında değil canlı depoda durduğu için filtre burada, Python'da yapılır.
+    DEMO KISAYOLU: aday odaları tek tek tarıyoruz; canlıda Redis'te "mikrofonu dolu odalar"
+    sıralı kümesi (sorted set) tutulur ve sayfa doğrudan oradan okunur.
+    """
+    if not candidate_ids:
+        return []
+    seats = await room_state.get_seats(candidate_ids)
+    counts = await room_state.listener_counts(candidate_ids)
+    live = [rid for rid in candidate_ids if any(seat.user_id is not None for seat in seats.get(rid, []))]
+    return sorted(live, key=lambda rid: counts.get(rid, 0), reverse=True)
+
+
 async def list_rooms(
     db: AsyncSession, viewer_id: int, category: str = "", query: str = "", limit: int = 30, offset: int = 0,
+    country: str = "",
 ) -> list[RoomOut]:
     statement = select(Room).where(Room.is_active)
+    # Ülke filtresi oda sahibinin ülkesine bakar ("Türkiye'deki yayıncılar"). Boşsa Genel: hepsi.
+    if country:
+        statement = statement.join(User, User.id == Room.host_id).where(User.country == country.upper())
+    if category == "live":
+        candidates = list(await db.scalars(statement.order_by(Room.id.desc()).limit(LIVE_SCAN_LIMIT)))
+        for room in candidates:
+            await room_state.ensure_room(room.id, room.seat_count)
+        by_id = {room.id: room for room in candidates}
+        page_ids = (await _live_room_ids(list(by_id)))[offset:offset + limit]
+        return await present_rooms(db, [by_id[rid] for rid in page_ids], viewer_id)
     # "for_you" gerçek bir kategori değil, "hepsi" demek. "pk" de kategori değil: PK'si süren odalar.
     if category == "pk":
         statement = statement.where(Room.id.in_(_running_pk_room_ids() or {0}))
@@ -220,6 +251,55 @@ async def toggle_room_follow(db: AsyncSession, user_id: int, room_id: int) -> bo
         # Aynı anda gelen ikinci istek (çift tıklama) satırı bizden önce eklemiş; sonuç yine "takipte".
         await db.rollback()
     return True
+
+
+async def list_room_countries(db: AsyncSession) -> list[CountryRoomCount]:
+    """Açık odası olan ülkeler, en çok odası olan en başta (Keşfet'teki bayrak çipleri)."""
+    rows = await db.execute(
+        select(User.country, func.count(Room.id))
+        .join(User, User.id == Room.host_id)
+        .where(Room.is_active, User.country.is_not(None))
+        .group_by(User.country)
+        .order_by(func.count(Room.id).desc(), User.country)
+    )
+    return [CountryRoomCount(country=code, room_count=count) for code, count in rows]
+
+
+# ── Son girdiğim odalar ───────────────────────────────────────────────────────
+
+RECENT_ROOMS_LIMIT = 20
+
+
+async def record_visit(user_id: int, room_id: int) -> None:
+    """
+    Kişi odaya girince çağrılır (oda WebSocket'i). İlk girişte satır eklenir, sonrakilerde
+    yalnızca zaman güncellenir. WebSocket'in açık veritabanı oturumu olmadığı için kendi
+    oturumunu açar.
+    """
+    async with SessionLocal() as db:
+        now = utcnow()
+        touched = await db.execute(
+            update(RoomVisit).where(RoomVisit.user_id == user_id, RoomVisit.room_id == room_id).values(visited_at=now)
+        )
+        if not touched.rowcount:
+            db.add(RoomVisit(user_id=user_id, room_id=room_id, visited_at=now))
+        try:
+            await db.commit()
+        except IntegrityError:
+            # Aynı kişi aynı anda iki sekmeden girdi: satırı öteki ekledi, yeterli.
+            await db.rollback()
+
+
+async def list_recent_rooms(db: AsyncSession, user_id: int) -> list[RoomOut]:
+    """En son girdiğim açık odalar, en yeni en üstte. Kendi odalarım "Odam" bölümünde, burada yok."""
+    rooms = await db.scalars(
+        select(Room)
+        .join(RoomVisit, RoomVisit.room_id == Room.id)
+        .where(RoomVisit.user_id == user_id, Room.is_active, Room.host_id != user_id)
+        .order_by(RoomVisit.visited_at.desc())
+        .limit(RECENT_ROOMS_LIMIT)
+    )
+    return await present_rooms(db, list(rooms), user_id)
 
 
 async def list_followed_rooms(db: AsyncSession, user_id: int, limit: int = 50) -> list[RoomOut]:

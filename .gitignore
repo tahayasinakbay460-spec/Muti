@@ -3,6 +3,9 @@ backend/venv/
 __pycache__/
 *.pyc
 
+# Yüklenen dosyalar (sesli mesajlar)
+backend/media/
+
 # Yerel veritabanı ve sırlar
 *.db
 *.db.bak

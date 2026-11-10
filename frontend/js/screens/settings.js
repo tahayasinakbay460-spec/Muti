@@ -8,7 +8,7 @@ export async function renderSettings(root) {
 
   root.innerHTML = `
     <header class="topbar">
-      <a class="icon-btn icon-btn-plain" href="#/profile" aria-label="Geri">${icon('chevron-left', 22)}</a>
+      <a class="icon-btn icon-btn-plain" href="#/profile" data-back aria-label="Geri">${icon('chevron-left', 22)}</a>
       <h1 class="page-title">Ayarlar</h1>
       <span></span>
     </header>

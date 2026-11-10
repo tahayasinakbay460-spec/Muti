@@ -38,7 +38,9 @@ class ApiError extends Error {
   }
 }
 
-async function send(path, { method = 'GET', body, headers = {} } = {}) {
+// `rawBody`: gövde JSON değil, olduğu gibi gider (ses dosyası); türü headers'taki Content-Type.
+// `asBlob`: cevap JSON değil dosyadır (sesli mesajı çalmak için).
+async function send(path, { method = 'GET', body, headers = {}, rawBody, asBlob = false } = {}) {
   const token = localStorage.getItem(STORAGE_KEYS.accessToken);
   const isAdmin = path.startsWith('/admin/');
   const staffToken = isAdmin ? staffStorage.get() : null;
@@ -52,13 +54,14 @@ async function send(path, { method = 'GET', body, headers = {} } = {}) {
         ...(staffToken ? { 'X-Staff-Token': staffToken } : {}),
         ...headers,
       },
-      body: body ? JSON.stringify(body) : undefined,
+      body: rawBody ?? (body ? JSON.stringify(body) : undefined),
     });
   } catch {
     throw new ApiError('network_error', 'Sunucuya ulaşılamıyor. Backend çalışıyor mu?');
   }
   const renewedStaffToken = isAdmin && response.headers.get('X-Staff-Token');
   if (renewedStaffToken) staffStorage.set(renewedStaffToken);
+  if (asBlob && response.ok) return response.blob();
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     const error = new ApiError(data.code || 'request_failed', data.detail || 'İstek başarısız oldu.');
@@ -124,8 +127,8 @@ export const api = {
     storeTokens(data);
     return data;
   },
-  async register({ username, email, password }) {
-    const data = await send('/auth/register', { method: 'POST', body: { username, email, password } });
+  async register({ username, email, password, country }) {
+    const data = await send('/auth/register', { method: 'POST', body: { username, email, password, country } });
     storeTokens(data);
     return data;
   },
@@ -190,10 +193,13 @@ export const api = {
   listFollowedRooms: () => request('/rooms/followed'),
   // Giriş yapmadan okunur: örnek veri yüklüyse giriş ekranında demo hesabı gösterilir
   getAppInfo: () => request('/app-info'),
-  // category: oda türü ya da 'pk' (PK'si sürenler); limit/offset: aşağı indikçe sayfa sayfa yükleme
-  listRooms: ({ category = '', query = '', limit = 30, offset = 0 } = {}) => request(
-    `/rooms?category=${encodeURIComponent(category)}&query=${encodeURIComponent(query)}&limit=${limit}&offset=${offset}`,
+  // category: oda türü, 'pk' (PK'si sürenler) ya da 'live' (mikrofonunda biri olanlar);
+  // country: oda sahibinin ülkesi ("TR"), boş = Genel; limit/offset: aşağı indikçe sayfa sayfa yükleme
+  listRooms: ({ category = '', query = '', limit = 30, offset = 0, country = '' } = {}) => request(
+    `/rooms?category=${encodeURIComponent(category)}&query=${encodeURIComponent(query)}&limit=${limit}&offset=${offset}&country=${encodeURIComponent(country)}`,
   ),
+  listRecentRooms: () => request('/rooms/recent'),
+  listRoomCountries: () => request('/rooms/countries'),
   getRoom: (id) => request(`/rooms/${id}`),
   createRoom: (payload) => request('/rooms', { method: 'POST', body: payload }),
   takeSeat: (roomId, seatIndex) => request(`/rooms/${roomId}/seats/${seatIndex}`, { method: 'POST' }),
@@ -296,6 +302,11 @@ export const api = {
   adminRooms: () => request('/admin/rooms'),
   adminCloseRoom: (id) => request(`/admin/rooms/${id}`, { method: 'DELETE' }),
   adminAgencies: () => request('/admin/agencies'),
+  adminAgencySettlements: (month = '') => request(`/admin/agency-settlements${month ? `?month=${encodeURIComponent(month)}` : ''}`),
+  adminSettleAgency: (agencyId, month) => request(`/admin/agencies/${agencyId}/settle`, { method: 'POST', body: { month } }),
+  adminHostApplications: (status = 'pending') => request(`/admin/host-applications?status=${status}`),
+  adminReviewHost: (id, approve, note = '') => request(`/admin/host-applications/${id}/review`, { method: 'POST', body: { approve, note } }),
+  adminRevokeHost: (userId, note = '') => request(`/admin/hosts/${userId}/revoke`, { method: 'POST', body: { note } }),
   adminCreateAgency: (payload) => request('/admin/agencies', { method: 'POST', body: payload }),
   getMyAgency: () => request('/agencies/me'),
   listAgencies: (query = '') => request(`/agencies?query=${encodeURIComponent(query)}`),
@@ -316,5 +327,32 @@ export const api = {
   openConversationWith: async (userId) => (await request('/conversations', { method: 'POST', body: { user_id: userId } })).id,
   sendMessage: (id, text) => request(`/conversations/${id}/messages`, { method: 'POST', body: { text } }),
   markConversationRead: (id) => request(`/conversations/${id}/read`, { method: 'POST' }),
+  // Sesli mesaj: gövde kaydın kendisi (Blob), süre saniye
+  sendVoiceMessage: (id, blob, seconds) => request(`/conversations/${id}/voice?duration=${seconds}`, {
+    method: 'POST', rawBody: blob, headers: { 'Content-Type': blob.type || 'audio/webm' },
+  }),
+  // Sesli mesaj dosyası token ister; <audio> etiketi başlık gönderemediği için dosya burada çekilir
+  getMessageMedia: (mediaUrl) => request(mediaUrl, { asBlob: true }),
+  sendConversationImage: (id, blob) => request(`/conversations/${id}/image`, {
+    method: 'POST', rawBody: blob, headers: { 'Content-Type': blob.type || 'image/jpeg' },
+  }),
+  // Fotoğraf yükleme (profil, kapak, anı, oda kapağı). Cevaptaki url ilgili forma yazılır.
+  // kind: 'avatar' | 'cover' | 'moment' | 'room_cover'
+  uploadImage: (blob, kind) => request(`/media?kind=${kind}`, {
+    method: 'POST', rawBody: blob, headers: { 'Content-Type': blob.type || 'image/jpeg' },
+  }),
+  // Yayıncılık
+  getHostStatus: () => request('/hosts/me'),
+  applyHost: (payload) => request('/hosts/apply', { method: 'POST', body: payload }),
+  sendConversationGift: (id, giftId, quantity) => request(`/conversations/${id}/gift`, {
+    method: 'POST', body: { gift_id: giftId, quantity }, headers: idempotencyHeader(),
+  }),
+  // Birebir arama (ücretli; bkz. backend services/call_service.py)
+  getCallPrices: () => request('/calls/prices'),
+  startCall: (calleeId, kind) => request('/calls', { method: 'POST', body: { callee_id: calleeId, kind } }),
+  acceptCall: (id) => request(`/calls/${id}/accept`, { method: 'POST' }),
+  declineCall: (id) => request(`/calls/${id}/decline`, { method: 'POST' }),
+  endCall: (id) => request(`/calls/${id}/end`, { method: 'POST' }),
+  getCallJoin: (id) => request(`/calls/${id}/join`),
   getUnreadCount: async () => (await request('/conversations/unread-count')).unread_count,
 };

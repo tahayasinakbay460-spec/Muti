@@ -8,19 +8,20 @@ Her uç iki şey ister (bkz. core/deps.py Staff):
 """
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Response, status
 
 from app.core.deps import CurrentStaff, CurrentUser, DbSession, Staff, require_recent_auth
 from app.core.errors import ForbiddenError
 from app.core.ratelimit import limit_auth_attempts
 from app.schemas.admin import (
     AdminConversationOut, AdminMessageOut, AdminReportOut, AdminRoomOut, AdminStats, AdminTransactionOut, AdminUserOut,
-    AgencyCreateRequest, AgencyOut, BalanceAdjustRequest, BalanceAdjustResult, BanRequest, BroadcastRequest,
+    AgencyCreateRequest, AgencyOut, AgencySettlementOut, AgencySettleRequest, BalanceAdjustRequest, BalanceAdjustResult, BanRequest, BroadcastRequest,
     BroadcastResult, CatalogGiftOut, CatalogGiftUpdate, CatalogPackageOut, CatalogPackageUpdate, FinanceSummary,
     GrantVipRequest, ReportResolveRequest, StaffActionOut, StaffMemberOut, StaffRoleUpdate, StaffSessionOut,
     StaffSessionRequest,
 )
-from app.services import admin_service, agency_service, staff_service
+from app.schemas.host import HostApplicationAdminOut, HostReviewRequest, HostRevokeRequest
+from app.services import admin_service, agency_service, host_service, staff_service
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -217,3 +218,43 @@ async def list_staff_actions(
 ):
     """Personel işlem kaydı: kim, ne zaman, kime, ne yaptı (yeniden eskiye)."""
     return await staff_service.list_actions(db, actor_id, before_id, limit)
+
+
+# ── Yayıncı başvuruları ───────────────────────────────────────────────────────
+
+@router.get("/host-applications", response_model=list[HostApplicationAdminOut])
+async def list_host_applications(
+    _staff: Staff("hosts.review"), db: DbSession,
+    status_filter: Annotated[Literal["pending", "approved", "rejected"], Query(alias="status")] = "pending",
+):
+    return await host_service.list_applications(db, status_filter)
+
+
+@router.post("/host-applications/{application_id}/review", response_model=HostApplicationAdminOut)
+async def review_host_application(application_id: int, data: HostReviewRequest, staff: Staff("hosts.review"), db: DbSession):
+    """Başvuruyu onaylar ya da reddeder (ret sebebi kişiye bildirilir)."""
+    return await host_service.review(db, staff.user.id, application_id, data.approve, data.note)
+
+
+@router.post("/hosts/{user_id}/revoke", status_code=status.HTTP_204_NO_CONTENT)
+async def revoke_host(user_id: int, data: HostRevokeRequest, staff: Staff("hosts.review"), db: DbSession):
+    """Yayıncılığı geri alır; kişi ajansından da çıkar."""
+    await host_service.revoke(db, staff.user.id, user_id, data.note)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# ── Ajans ay sonu komisyonu ───────────────────────────────────────────────────
+
+@router.get("/agency-settlements", response_model=list[AgencySettlementOut])
+async def agency_settlements(
+    _staff: Staff("agencies.settle"), db: DbSession,
+    month: Annotated[str | None, Query(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")] = None,
+):
+    """Seçilen ayda her ajansın komisyon durumu (varsayılan: geçen ay)."""
+    return await agency_service.month_overview(db, month or agency_service.last_month())
+
+
+@router.post("/agencies/{agency_id}/settle", response_model=AgencySettlementOut)
+async def settle_agency(agency_id: int, data: AgencySettleRequest, staff: Staff("agencies.settle", recent_auth=True), db: DbSession):
+    """Ajansın bitmiş bir ayını kapatır ve komisyonu ajans sahibine elmas olarak öder (her ay bir kez)."""
+    return await agency_service.settle_month(db, staff.user.id, agency_id, data.month)

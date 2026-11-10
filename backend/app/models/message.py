@@ -39,6 +39,15 @@ class Conversation(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+# Mesaj türleri:
+#   text  → düz yazı
+#   voice → sesli mesaj (ses dosyası diskte, bkz. services/media_storage.py)
+#   gift  → sohbette gönderilen hediye (para hareketi transactions defterinde)
+#   call  → biten / cevapsız aramanın sohbetteki izi ("📞 Sesli arama · 3 dk")
+#   image → fotoğraf (dosya diskte; yalnızca sohbetin iki üyesine verilir)
+MESSAGE_KINDS = ("text", "voice", "gift", "call", "image")
+
+
 class Message(Base):
     __tablename__ = "messages"
     # "Bu sohbetin son 50 mesajı" sorgusunu hızlandırır.
@@ -47,7 +56,17 @@ class Message(Base):
     id: Mapped[int] = mapped_column(BigIntPk, primary_key=True)
     conversation_id: Mapped[int] = mapped_column(ForeignKey("conversations.id", ondelete="CASCADE"))
     sender_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    # Yazılı mesajda metnin kendisi; diğer türlerde boş kalır (önizleme yazısı sohbet satırında).
     text: Mapped[str] = mapped_column(String(1000))
+    kind: Mapped[str] = mapped_column(String(8), default="text", server_default="text")
+    # voice: depodaki dosyanın adı. Dışarıya hiçbir zaman doğrudan açılmaz; yalnızca sohbetin
+    # iki üyesine, yetki kontrolünden sonra verilir.
+    media_path: Mapped[str | None] = mapped_column(String(200))
+    # voice: kaydın süresi; call: konuşulan dakika.
+    duration_seconds: Mapped[int | None] = mapped_column(Integer)
+    gift_id: Mapped[int | None] = mapped_column(ForeignKey("gifts.id", ondelete="SET NULL"))
+    quantity: Mapped[int | None] = mapped_column(Integer)
+    call_id: Mapped[int | None] = mapped_column(ForeignKey("calls.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 

@@ -39,7 +39,7 @@ export async function renderEvents(root) {
   const events = await api.listEvents();
   root.innerHTML = `
     <header class="topbar">
-      <a class="icon-btn icon-btn-plain" href="#/home" aria-label="Geri">${icon('chevron-left', 22)}</a>
+      <a class="icon-btn icon-btn-plain" href="#/home" data-back aria-label="Geri">${icon('chevron-left', 22)}</a>
       <h1 class="page-title">Etkinlikler</h1>
       <span></span>
     </header>
@@ -63,7 +63,7 @@ export async function renderEvent(root, { params }) {
   const unit = event.metric === 'gifts_received' ? '💎' : '🪙';
   root.innerHTML = `
     <header class="topbar">
-      <a class="icon-btn icon-btn-plain" href="#/events" aria-label="Geri">${icon('chevron-left', 22)}</a>
+      <a class="icon-btn icon-btn-plain" href="#/events" data-back aria-label="Geri">${icon('chevron-left', 22)}</a>
       <h1 class="page-title">Etkinlik</h1>
       <span></span>
     </header>

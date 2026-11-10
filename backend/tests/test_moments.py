@@ -2,6 +2,7 @@
 Anılar, ziyaretçiler, takipçiler (arkadaşlık istekleri), profil başarıları, yayın odam ve ajans başvurusu.
 """
 from tests.conftest import API, auth_headers
+from tests.test_admin import make_host
 from tests.test_social import register
 
 
@@ -204,6 +205,7 @@ def test_agency_application_flow(client):
     assert client.get(f"{API}/agencies?query={agency_id}", headers=owner).json()[0]["id"] == agency_id
 
     host = register(client, "agencyapplicant")
+    make_host(client, host)
     host_id = client.get(f"{API}/users/me", headers=host).json()["id"]
     state = client.get(f"{API}/agencies/me", headers=host).json()
     assert state["role"] is None and state["tiers"][0]["min_diamonds"] == 0 and state["my_tier_index"] == 0

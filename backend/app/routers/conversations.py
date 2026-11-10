@@ -3,14 +3,19 @@
 """
 from typing import Annotated
 
-from fastapi import APIRouter, Query, Response, status
+from fastapi import APIRouter, Header, Query, Request, Response, status
+from fastapi.responses import FileResponse
 
+from app.core.config import settings
 from app.core.deps import CurrentUserId, DbSession
+from app.core.uploads import read_limited_body
 from app.schemas.message import (
-    ConversationDetail, ConversationOpenRequest, ConversationOpenResult,
-    ConversationSummary, MessageOut, MessageSendRequest, UnreadCount,
+    ConversationDetail, ConversationGiftRequest, ConversationGiftResult, ConversationOpenRequest,
+    ConversationOpenResult, ConversationSummary, MessageOut, MessageSendRequest, UnreadCount,
 )
 from app.services import message_service
+
+IdempotencyKey = Annotated[str | None, Header(alias="Idempotency-Key", min_length=8, max_length=64)]
 
 router = APIRouter(prefix="/conversations", tags=["conversations"])
 
@@ -55,3 +60,48 @@ async def mark_read(conversation_id: int, user_id: CurrentUserId, db: DbSession)
 @router.post("/{conversation_id}/messages", response_model=MessageOut, status_code=status.HTTP_201_CREATED)
 async def send_message(conversation_id: int, data: MessageSendRequest, user_id: CurrentUserId, db: DbSession):
     return await message_service.send_message(db, user_id, conversation_id, data.text)
+
+
+@router.post("/{conversation_id}/voice", response_model=MessageOut, status_code=status.HTTP_201_CREATED)
+async def send_voice(
+    conversation_id: int,
+    request: Request,
+    user_id: CurrentUserId,
+    db: DbSession,
+    duration: Annotated[int, Query(ge=1, le=600)],
+    content_type: Annotated[str, Header()] = "",
+):
+    """
+    Sesli mesaj gönderir. Gövde ses dosyasının kendisidir (form değil), türü `Content-Type`
+    başlığında (audio/webm, audio/ogg, audio/mp4), süresi `duration` (saniye) parametresinde.
+    """
+    data = await read_limited_body(request, settings.voice_message_max_bytes, "Ses kaydı çok büyük.", "audio_too_large")
+    return await message_service.send_voice(db, user_id, conversation_id, content_type, data, duration)
+
+
+@router.post("/{conversation_id}/image", response_model=MessageOut, status_code=status.HTTP_201_CREATED)
+async def send_image(
+    conversation_id: int, request: Request, user_id: CurrentUserId, db: DbSession,
+    content_type: Annotated[str, Header()] = "",
+):
+    """Sohbette fotoğraf gönderir. Gövde dosyanın kendisidir; fotoğraf herkese açık adresten verilmez."""
+    data = await read_limited_body(request, settings.image_max_bytes, "Fotoğraf çok büyük.", "image_too_large")
+    return await message_service.send_image(db, user_id, conversation_id, content_type, data)
+
+
+@router.get("/{conversation_id}/messages/{message_id}/media")
+async def get_voice_file(conversation_id: int, message_id: int, user_id: CurrentUserId, db: DbSession):
+    """Sesli mesajın / fotoğrafın dosyası. Yalnızca sohbetin iki üyesi alabilir; önbellek kişiye özel."""
+    path, media_type = await message_service.voice_file(db, user_id, conversation_id, message_id)
+    return FileResponse(path, media_type=media_type, headers={
+        "Cache-Control": "private, max-age=86400", "X-Content-Type-Options": "nosniff",
+    })
+
+
+@router.post("/{conversation_id}/gift", response_model=ConversationGiftResult)
+async def send_gift(
+    conversation_id: int, data: ConversationGiftRequest, user_id: CurrentUserId, db: DbSession,
+    idempotency_key: IdempotencyKey = None,
+):
+    """Sohbetteki kişiye hediye gönderir; sohbete hediye mesajı düşer."""
+    return await message_service.send_gift(db, user_id, conversation_id, data, idempotency_key)

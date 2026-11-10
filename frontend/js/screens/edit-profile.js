@@ -1,5 +1,7 @@
 // "Profili Düzenle" paneli: avatar, kapak, görünen ad, hakkımda, yaş, şehir
 import { api } from '../api.js';
+import { COUNTRY_CODES, countryName, flagEmoji } from '../countries.js';
+import { pickAndShrink } from '../image-picker.js';
 import { esc, openSheet, toast } from '../ui.js';
 
 // Kaydedilince onSaved(güncel kullanıcı) çağrılır; ekran kendini yeniden çizer.
@@ -7,6 +9,9 @@ export async function openEditProfileSheet(user, onSaved) {
   const options = await api.getMediaOptions();
   let avatarUrl = user.avatar_url;
   let coverUrl = user.cover_url;
+  // Kendi yüklediği (hazır listede olmayan) görsel de satırda seçili görünsün
+  const withOwn = (list, current) => (current && !list.includes(current) ? [current, ...list] : list);
+  const uploadTile = (kind) => `<button type="button" class="picker-${kind === 'avatar' ? 'avatar' : 'cover'} picker-upload" data-upload="${kind}" aria-label="Fotoğraf yükle">📷<small>Yükle</small></button>`;
 
   const sheet = openSheet(`
     <h2 class="sheet-title">Profili Düzenle</h2>
@@ -14,7 +19,8 @@ export async function openEditProfileSheet(user, onSaved) {
       <div class="field">
         <span>Avatar</span>
         <div class="picker-row" data-picker="avatar">
-          ${options.avatars.map((url) => `
+          ${uploadTile('avatar')}
+          ${withOwn(options.avatars, avatarUrl).map((url) => `
             <button type="button" class="picker-avatar ${url === avatarUrl ? 'is-active' : ''}" data-url="${esc(url)}">
               <img src="${esc(url)}" alt="" loading="lazy" />
             </button>`).join('')}
@@ -23,7 +29,8 @@ export async function openEditProfileSheet(user, onSaved) {
       <div class="field">
         <span>Kapak</span>
         <div class="picker-row" data-picker="cover">
-          ${options.covers.map((url) => `
+          ${uploadTile('cover')}
+          ${withOwn(options.covers, coverUrl).map((url) => `
             <button type="button" class="picker-cover ${url === coverUrl ? 'is-active' : ''}" data-url="${esc(url)}">
               <img src="${esc(url)}" alt="" loading="lazy" />
             </button>`).join('')}
@@ -47,6 +54,16 @@ export async function openEditProfileSheet(user, onSaved) {
           <input name="city" maxlength="60" value="${esc(user.city || '')}" placeholder="Örn. İzmir" />
         </label>
       </div>
+      <label class="field">
+        <span>Ülke</span>
+        <select name="country">
+          <option value="">Seçilmedi</option>
+          ${[...new Set([...(user.country ? [user.country] : []), ...COUNTRY_CODES])]
+            .map((code) => ({ code, name: countryName(code) }))
+            .sort((a, b) => a.name.localeCompare(b.name, 'tr'))
+            .map(({ code, name }) => `<option value="${code}" ${code === user.country ? 'selected' : ''}>${flagEmoji(code)} ${esc(name)}</option>`).join('')}
+        </select>
+      </label>
       <button class="btn btn-primary btn-block" type="submit">Kaydet</button>
     </form>`);
 
@@ -54,7 +71,26 @@ export async function openEditProfileSheet(user, onSaved) {
   sheet.el.querySelectorAll('[data-picker]').forEach((row) => {
     const active = row.querySelector('.is-active');
     if (active) row.scrollLeft = active.offsetLeft - (row.clientWidth - active.clientWidth) / 2;
-    row.addEventListener('click', (event) => {
+    row.addEventListener('click', async (event) => {
+      const uploadButton = event.target.closest('[data-upload]');
+      if (uploadButton) {
+        // Telefondan fotoğraf seç → küçült (konum bilgisi silinir) → yükle → satırın başına ekle ve seç
+        const kind = uploadButton.dataset.upload;
+        try {
+          const blob = await pickAndShrink(kind === 'avatar' ? 640 : 1280);
+          if (!blob) return;
+          uploadButton.disabled = true;
+          const { url } = await api.uploadImage(blob, kind);
+          uploadButton.insertAdjacentHTML('afterend', `
+            <button type="button" class="picker-${kind === 'avatar' ? 'avatar' : 'cover'}" data-url="${esc(url)}"><img src="${esc(url)}" alt="" /></button>`);
+          uploadButton.nextElementSibling.click();
+        } catch (error) {
+          toast(error.message, 'error');
+        } finally {
+          uploadButton.disabled = false;
+        }
+        return;
+      }
       const item = event.target.closest('[data-url]');
       if (!item) return;
       row.querySelectorAll('[data-url]').forEach((el) => el.classList.toggle('is-active', el === item));
@@ -73,6 +109,7 @@ export async function openEditProfileSheet(user, onSaved) {
       bio: data.get('bio').trim(),
       age: age ? Number(age) : null,
       city: data.get('city').trim() || null,
+      country: data.get('country') || null,
       avatar_url: avatarUrl,
       cover_url: coverUrl,
     };

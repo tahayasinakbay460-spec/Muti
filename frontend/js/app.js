@@ -1,13 +1,14 @@
 // Uygulama girişi: hash tabanlı yönlendirme ve alt sekme çubuğu (Muti · Anılar · Odalar · Mesajlar · Profil).
 import { api } from './api.js';
-import { APP_NAME } from './config.js';
-import { esc, icon, closeAllSheets, toast } from './ui.js';
+import { API_BASE_URL, APP_NAME } from './config.js';
+import { esc, icon, closeAllSheets, goBack, toast } from './ui.js';
 import { startInbox, stopInbox, refreshUnread, paintUnreadBadge } from './inbox.js';
 import { renderAuth } from './screens/auth.js';
 import { renderHome } from './screens/home.js';
 import { renderExplore } from './screens/explore.js';
 import { renderRoom, roomSession } from './screens/room.js';
-import { renderMessages, renderChat, renderRequests, renderVisitors } from './screens/messages.js';
+import { renderMessages, renderRequests, renderVisitors } from './screens/messages.js';
+import { renderChat } from './screens/chat.js';
 import { renderMoments } from './screens/moments.js';
 import { renderMyRooms } from './screens/my-rooms.js';
 import { renderRooms } from './screens/rooms.js';
@@ -103,7 +104,8 @@ roomBubbleEl.addEventListener('click', (event) => {
 roomSession.exit = () => {
   const wasParked = isRoomParked();
   closeRoom();
-  if (!wasParked) location.hash = '#/home';
+  // Odadan çıkınca odaya girmeden önceki sayfaya dönülür (ör. Odalar listesi)
+  if (!wasParked) goBack('#/rooms');
 };
 
 function renderTabbar(activeTab) {
@@ -191,5 +193,43 @@ async function handleRoute() {
   }
 }
 
-window.addEventListener('hashchange', handleRoute);
+// ── Yüklenen fotoğraflar (yalnızca geliştirmede) ─────────────────────────────
+// Yüklenen fotoğrafların adresi "/api/v1/media/images/..." biçimindedir. Canlıda sayfa ve API aynı
+// adreste olduğu için doğrudan açılır. Geliştirmede sayfa 5500'den, API 8000'den açıldığından ilk
+// deneme boşa düşer; düşen resmi bir kez API adresinden yeniden isteriz.
+if (!API_BASE_URL.startsWith(location.origin)) {
+  const apiOrigin = new URL(API_BASE_URL).origin;
+  document.addEventListener('error', (event) => {
+    const img = event.target;
+    if (img?.tagName !== 'IMG' || img.dataset.retried) return;
+    const url = new URL(img.src, location.href);
+    if (url.origin !== location.origin || !url.pathname.startsWith('/api/v1/media/')) return;
+    img.dataset.retried = '1';
+    img.src = apiOrigin + url.pathname;
+  }, true);   // resim hataları kabarcık (bubble) yapmaz; yakalama (capture) aşamasında dinlenir
+}
+
+// ── Geri tuşu ────────────────────────────────────────────────────────────────
+// Ekranlardaki geri tuşları (data-back) bir önceki sayfaya döner: tarayıcının kendi geçmişi.
+// Her sayfaya geçmişte bir "derinlik" numarası yazılır. Derinlik 1 ise uygulama bu sayfadan açılmış
+// demektir (bağlantıyla geldi, sayfa yenilendi): geri gidince uygulamadan çıkmasın diye tuşun kendi
+// adresine (href, ör. #/home) gidilir.
+let navDepth = 0;
+
+function rememberDepth() {
+  const known = history.state?.depth;
+  // Geçmişte zaten numarası olan sayfaya (geri/ileri ile) dönüldü: o numarayı kullan
+  navDepth = known || navDepth + 1;
+  if (!known) history.replaceState({ ...(history.state || {}), depth: navDepth }, '');
+}
+
+document.addEventListener('click', (event) => {
+  const back = event.target.closest('[data-back]');
+  if (!back) return;
+  event.preventDefault();
+  goBack(back.getAttribute('href') || '#/home');
+});
+
+window.addEventListener('hashchange', () => { rememberDepth(); handleRoute(); });
+rememberDepth();
 handleRoute();

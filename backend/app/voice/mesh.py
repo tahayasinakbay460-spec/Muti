@@ -25,3 +25,7 @@ class MeshVoiceProvider(VoiceProvider):
 
     async def join_info(self, room_id: int, user_id: int, display_name: str, can_publish: bool) -> VoiceJoinInfo:
         return VoiceJoinInfo(provider=self.name, can_publish=can_publish, ice_servers=ice_servers_for(user_id))
+
+    async def call_join_info(self, call_id: int, user_id: int, display_name: str) -> VoiceJoinInfo:
+        # Aramada sinyal oda kanalı yerine kişiye özel kanaldan (/ws/me, `call:signal`) taşınır.
+        return VoiceJoinInfo(provider=self.name, can_publish=True, ice_servers=ice_servers_for(user_id))

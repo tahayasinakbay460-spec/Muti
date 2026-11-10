@@ -58,7 +58,7 @@ export async function renderFamilies(root) {
   const mine = await api.getMyFamily();
   root.innerHTML = `
     <header class="topbar">
-      <a class="icon-btn icon-btn-plain" href="#/home" aria-label="Geri">${icon('chevron-left', 22)}</a>
+      <a class="icon-btn icon-btn-plain" href="#/home" data-back aria-label="Geri">${icon('chevron-left', 22)}</a>
       <h1 class="page-title">Aileler</h1>
       <a class="icon-btn icon-btn-plain" href="#/leaderboard?kind=families" aria-label="Aile sıralaması">${icon('trophy', 20)}</a>
     </header>
@@ -179,7 +179,7 @@ export async function renderFamily(root, { params }) {
   async function render() {
     root.innerHTML = `
       <header class="topbar">
-        <a class="icon-btn icon-btn-plain" href="#/families" aria-label="Geri">${icon('chevron-left', 22)}</a>
+        <a class="icon-btn icon-btn-plain" href="#/families" data-back aria-label="Geri">${icon('chevron-left', 22)}</a>
         <h1 class="page-title">Aile</h1>
         <span></span>
       </header>

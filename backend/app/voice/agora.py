@@ -46,10 +46,15 @@ KICK_MINUTES = 60                    # atılan kişi elindeki token ile bu süre
 _SERVICE_RTC = 1
 _PRIVILEGE_JOIN = 1
 _PRIVILEGE_PUBLISH_AUDIO = 2
+_PRIVILEGE_PUBLISH_VIDEO = 3
 
 
 def agora_channel_name(room_id: int) -> str:
     return f"room-{room_id}"
+
+
+def agora_call_channel_name(call_id: int) -> str:
+    return f"call-{call_id}"
 
 
 # Agora token'ı ikili (binary) bir paket: sayılar küçük uçlu (little-endian), metinler
@@ -69,6 +74,7 @@ def _string(value: bytes) -> bytes:
 def build_rtc_token(
     app_id: str, app_certificate: str, channel: str, uid: int, can_publish: bool,
     ttl: int = TOKEN_TTL_SECONDS, issued_at: int | None = None, salt: int | None = None,
+    can_publish_video: bool = False,
 ) -> str:
     """
     Agora AccessToken2 üretir. `issued_at` ve `salt` yalnızca testte sabitlenir.
@@ -80,6 +86,9 @@ def build_rtc_token(
     privileges = {_PRIVILEGE_JOIN: ttl}
     if can_publish:
         privileges[_PRIVILEGE_PUBLISH_AUDIO] = ttl
+    if can_publish_video:
+        # Görüntülü arama: kamera yayını izni (odalarda görüntü yok, orada hiç verilmez).
+        privileges[_PRIVILEGE_PUBLISH_VIDEO] = ttl
     service = _uint16(_SERVICE_RTC) + _uint16(len(privileges))
     for key in sorted(privileges):
         service += _uint16(key) + _uint32(privileges[key])
@@ -117,6 +126,11 @@ class AgoraVoiceProvider(VoiceProvider):
         return VoiceJoinInfo(
             provider=self.name, can_publish=can_publish, app_id=self.app_id, channel=channel, token=token,
         )
+
+    async def call_join_info(self, call_id: int, user_id: int, display_name: str) -> VoiceJoinInfo:
+        channel = agora_call_channel_name(call_id)
+        token = build_rtc_token(self.app_id, self.app_certificate, channel, user_id, True, can_publish_video=True)
+        return VoiceJoinInfo(provider=self.name, can_publish=True, app_id=self.app_id, channel=channel, token=token)
 
     async def _kick(self, room_id: int, user_id: int | None) -> None:
         """

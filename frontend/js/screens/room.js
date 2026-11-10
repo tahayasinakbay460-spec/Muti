@@ -4,11 +4,11 @@ import { connectRoom } from '../realtime.js';
 import { joinVoice } from '../voice/index.js';
 import { openReportSheet } from './report.js';
 import { mountRoomActivities } from './room-activities.js';
+import { openGiftSheet as openGiftPicker } from './gift-sheet.js';
 import { CATEGORY_LABELS } from '../config.js';
-import { esc, icon, avatarImg, framedAvatar, formatCoins, vipBadge, levelBadge, toast, openSheet, joinParts } from '../ui.js';
+import { esc, icon, avatarImg, framedAvatar, formatCoins, vipBadge, levelBadge, toast, openSheet, joinParts, goBack } from '../ui.js';
 
 const MAX_CHAT_LINES = 60;
-const QUANTITIES = [1, 5, 10, 99];
 const DICE_FACES = ['⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
 const DICE_SPIN_MS = 900;
 const DICE_COOLDOWN_MS = 1600;
@@ -433,54 +433,15 @@ export async function renderRoom(root, { params }) {
   function openGiftSheet(preselectedReceiverId) {
     const receivers = room.seats.filter((s) => s.user && s.user.id !== me.id).map((s) => s.user);
     if (!receivers.length) return toast('Koltukta hediye gönderebileceğin kimse yok.');
-    let receiverId = preselectedReceiverId || receivers[0].id;
-    let giftId = gifts[0].id;
-    let quantity = 1;
-
-    const sheet = openSheet(`
-      <div class="gift-sheet-head">
-        <h2 class="sheet-title">Hediye Gönder</h2>
-        <a class="coin-pill" href="#/wallet"><span class="coin"></span><b id="gift-balance">${formatCoins(me.coin_balance)}</b><span class="coin-plus">+</span></a>
-      </div>
-      <div class="receiver-row" id="receivers">
-        ${receivers.map((u) => `<button class="receiver ${u.id === receiverId ? 'is-active' : ''}" data-receiver="${u.id}">${avatarImg(u, 'avatar-md')}<small>${esc(u.display_name)}</small></button>`).join('')}
-      </div>
-      <div class="gift-grid" id="gift-grid">
-        ${gifts.map((g) => `
-          <button class="gift-item ${g.id === giftId ? 'is-active' : ''}" data-gift="${g.id}">
-            ${g.is_lucky ? '<span class="lucky-tag">Şanslı</span>' : ''}<i>${g.emoji}</i><b>${esc(g.name)}</b><small><span class="coin coin-sm"></span>${formatCoins(g.price)}</small>
-          </button>`).join('')}
-      </div>
-      <div class="gift-sheet-foot">
-        <div class="quantity" id="quantities">
-          ${QUANTITIES.map((q) => `<button class="${q === quantity ? 'is-active' : ''}" data-quantity="${q}">x${q}</button>`).join('')}
-        </div>
-        <button class="btn btn-primary" id="gift-send">Gönder</button>
-      </div>`, { className: 'sheet-dark' });
-
-    const select = (selector, attr, value) => sheet.el.querySelectorAll(selector).forEach((el) => el.classList.toggle('is-active', el.dataset[attr] === String(value)));
-
-    sheet.el.addEventListener('click', async (event) => {
-      const receiver = event.target.closest('[data-receiver]');
-      const giftBtn = event.target.closest('[data-gift]');
-      const quantityBtn = event.target.closest('[data-quantity]');
-      if (receiver) { receiverId = Number(receiver.dataset.receiver); select('[data-receiver]', 'receiver', receiverId); }
-      if (giftBtn) { giftId = Number(giftBtn.dataset.gift); select('[data-gift]', 'gift', giftId); }
-      if (quantityBtn) { quantity = Number(quantityBtn.dataset.quantity); select('[data-quantity]', 'quantity', quantity); }
-
-      if (event.target.closest('#gift-send')) {
-        try {
-          const result = await api.sendGift({ room_id: room.id, receiver_id: receiverId, gift_id: giftId, quantity });
-          me.coin_balance = result.coin_balance;
-          sheet.el.querySelector('#gift-balance').textContent = formatCoins(result.coin_balance);
-          // Hediye animasyonunu odaya sunucu yayınlar (`gift:sent`), burada tetiklenmez
-          if (result.lucky_win) toast(`🍀 x${result.lucky_multiplier} yakaladın! +${formatCoins(result.lucky_win)} coin`, 'success');
-          // Büyük hediyede panel kapanır ki tam ekran animasyon görünsün
-          if (result.gift.price * quantity >= GIFT_BIG_FROM) sheet.close();
-        } catch (error) {
-          toast(error.code === 'insufficient_balance' ? 'Coin bakiyen yetersiz. Cüzdandan coin alabilirsin.' : error.message, 'error');
-        }
-      }
+    openGiftPicker({
+      gifts, balance: me.coin_balance, receivers, preselectedReceiverId,
+      async send({ receiverId, giftId, quantity }) {
+        const result = await api.sendGift({ room_id: room.id, receiver_id: receiverId, gift_id: giftId, quantity });
+        me.coin_balance = result.coin_balance;
+        // Hediye animasyonunu odaya sunucu yayınlar (`gift:sent`), burada tetiklenmez.
+        // Büyük hediyede panel kapanır ki tam ekran animasyon görünsün.
+        return { ...result, closeSheet: result.gift.price * quantity >= GIFT_BIG_FROM };
+      },
     });
   }
 
@@ -836,7 +797,8 @@ export async function renderRoom(root, { params }) {
         <div class="field">
           <span>Kapak</span>
           <div class="picker-row" data-picker="cover">
-            ${covers.map((url) => `
+            <button type="button" class="picker-cover picker-upload" data-upload-cover aria-label="Fotoğraf yükle">📷<small>Yükle</small></button>
+            ${(coverUrl && !covers.includes(coverUrl) ? [coverUrl, ...covers] : covers).map((url) => `
               <button type="button" class="picker-cover ${url === coverUrl ? 'is-active' : ''}" data-url="${esc(url)}">
                 <img src="${esc(url)}" alt="" loading="lazy" />
               </button>`).join('')}
@@ -856,7 +818,25 @@ export async function renderRoom(root, { params }) {
       category = chip.dataset.category;
       chip.parentElement.querySelectorAll('.chip').forEach((el) => el.classList.toggle('is-active', el === chip));
     });
-    sheet.el.querySelector('[data-picker="cover"]').addEventListener('click', (event) => {
+    sheet.el.querySelector('[data-picker="cover"]').addEventListener('click', async (event) => {
+      const uploadButton = event.target.closest('[data-upload-cover]');
+      if (uploadButton) {
+        // Kendi fotoğrafını oda kapağı yap: küçültülür, yüklenir, satırın başına eklenip seçilir
+        try {
+          const { pickAndShrink } = await import('../image-picker.js');
+          const blob = await pickAndShrink();
+          if (!blob) return;
+          uploadButton.disabled = true;
+          const { url } = await api.uploadImage(blob, 'room_cover');
+          uploadButton.insertAdjacentHTML('afterend', `<button type="button" class="picker-cover" data-url="${esc(url)}"><img src="${esc(url)}" alt="" /></button>`);
+          uploadButton.nextElementSibling.click();
+        } catch (error) {
+          toast(error.message, 'error');
+        } finally {
+          uploadButton.disabled = false;
+        }
+        return;
+      }
       const item = event.target.closest('[data-url]');
       if (!item) return;
       coverUrl = item.dataset.url;
@@ -1011,7 +991,8 @@ export async function renderRoom(root, { params }) {
     const { action } = button.dataset;
 
     if (action === 'leave') roomSession.exit();
-    else if (action === 'minimize') location.hash = '#/home';
+    // Küçült: oda arka planda açık kalır, önceki sayfaya dönülür
+    else if (action === 'minimize') goBack('#/rooms');
     else if (action === 'more') openMoreSheet();
     else if (action === 'gift') openGiftSheet();
     else if (action === 'game') openGameSheet();

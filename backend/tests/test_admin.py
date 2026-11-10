@@ -1,6 +1,8 @@
 """
 Yönetim paneli ve ajans testleri.
 """
+from datetime import date
+
 import pytest
 
 from tests.conftest import API, auth_headers
@@ -16,6 +18,24 @@ def staff_headers(client, username: str) -> dict:
     session = client.post(f"{API}/admin/session", headers=headers, json={"password": "demo1234"})
     assert session.status_code == 200, session.text
     return {**headers, "X-Staff-Token": session.json()["staff_token"]}
+
+
+def adult_birth_date() -> str:
+    return date(date.today().year - 25, 1, 15).isoformat()
+
+
+def make_host(client, headers) -> None:
+    """Kişiyi başvuru + panel onayıyla yayıncı yapar (ajansa yalnızca yayıncılar katılır)."""
+    applied = client.post(f"{API}/hosts/apply", headers=headers, json={
+        "birth_date": adult_birth_date(), "intro": "Akşamları sohbet odası açıyorum.", "accept_rules": True,
+    })
+    assert applied.status_code == 200, applied.text
+    moderator = staff_headers(client, "moderator")
+    pending = client.get(f"{API}/admin/host-applications", headers=moderator).json()
+    application = next(a for a in pending if a["user"]["id"] == me(client, headers)["id"])
+    reviewed = client.post(f"{API}/admin/host-applications/{application['id']}/review", headers=moderator,
+                           json={"approve": True})
+    assert reviewed.status_code == 200, reviewed.text
 
 
 @pytest.fixture
@@ -119,8 +139,9 @@ def test_admin_room_list_and_close(client, admin, guest):
 # ── Ajans ─────────────────────────────────────────────────────────────────────
 
 def test_agency_flow(client, admin):
-    owner, host, other, fan = new_guest(client), new_guest(client), new_guest(client), new_guest(client)
+    owner, host, other, fan = new_guest(client), register(client, "ajans_akis_yayincisi"), new_guest(client), new_guest(client)
     owner_id, host_id = me(client, owner)["id"], me(client, host)["id"]
+    make_host(client, host)
 
     agency = client.post(f"{API}/admin/agencies", headers=admin,
                          json={"name": "Test Ajans", "owner_id": owner_id, "commission_percent": 20}).json()

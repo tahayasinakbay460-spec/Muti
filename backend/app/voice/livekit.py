@@ -69,6 +69,14 @@ class LiveKitVoiceProvider(VoiceProvider):
         )
         return VoiceJoinInfo(provider=self.name, can_publish=can_publish, url=self.url, token=token)
 
+    async def call_join_info(self, call_id: int, user_id: int, display_name: str) -> VoiceJoinInfo:
+        token = self._token(
+            identity=str(user_id), name=display_name,
+            grant={"room": f"call-{call_id}", "roomJoin": True, "canPublish": True, "canSubscribe": True,
+                   "canPublishData": False},
+        )
+        return VoiceJoinInfo(provider=self.name, can_publish=True, url=self.url, token=token)
+
     async def _call(self, method: str, room_id: int, body: dict) -> None:
         """LiveKit yönetim API'si (Twirp: JSON gövdeli POST)."""
         room = livekit_room_name(room_id)

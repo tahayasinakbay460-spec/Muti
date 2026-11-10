@@ -54,6 +54,11 @@ const ICON_PATHS = {
   building: '<path d="M4 21V5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v16M15 9h4a1 1 0 0 1 1 1v11M3 21h18M8 8h3M8 12h3M8 16h3"/>',
   trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
   calendar: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M8 14h.01M12 14h.01M16 14h.01"/>',
+  phone: '<path d="M5 4h3.500l1.500 4.500-2 1.500a11 11 0 0 0 6 6l1.500-2 4.500 1.500V19a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/>',
+  video: '<rect x="3" y="6" width="12" height="12" rx="2.500"/><path d="m15 10.500 6-3.500v10l-6-3.500"/>',
+  play: '<path d="M7 4.500v15l12.500-7.500z" fill="currentColor"/>',
+  pause: '<path d="M8 5v14M16 5v14" stroke-width="3.200"/>',
+  stop: '<rect x="6" y="6" width="12" height="12" rx="2.500" fill="currentColor"/>',
   verified: '<path d="m12 2 2.400 2.200 3.200-.400.800 3.100 2.800 1.600-1.300 3 1.300 3-2.800 1.600-.800 3.100-3.200-.400L12 21l-2.400-2.200-3.200.400-.800-3.100-2.800-1.600 1.300-3-1.300-3 2.800-1.600.800-3.100 3.200.400z" fill="currentColor" stroke="none"/><path d="m8.500 12 2.500 2.500 4.500-5" stroke="#fff"/>',
 };
 
@@ -147,3 +152,10 @@ export function closeAllSheets() {
 
 // Süreli eşya/üyelik için kalan gün (en az 1 gösterilir). Mağaza, VIP ve profil ortak kullanır.
 export const daysLeft = (iso) => Math.max(1, Math.ceil((new Date(iso) - Date.now()) / 86400000));
+
+// Bir önceki sayfaya dön. Uygulama bu sayfadan açıldıysa (geride uygulama sayfası yoksa) `fallback`'e git.
+// Geçmişteki "derinlik" numarasını app.js her sayfa değişiminde yazar.
+export function goBack(fallback = '#/home') {
+  if ((history.state?.depth || 1) > 1) history.back();
+  else location.hash = fallback;
+}

@@ -192,6 +192,12 @@ async def room_socket(websocket: WebSocket, room_id: int, token: str = "", resum
     is_returning = _cancel_departure(room_id, user_id)
     room_hub.add(room_id, websocket, user_id)
     is_first_connection = await room_state.add_listener(room_id, user_id)
+    if is_first_connection and not is_returning:
+        # "Son girdiğim odalar" listesi için. Kopup dönen (resume) yeniden kaydedilmez.
+        try:
+            await room_service.record_visit(user_id, room_id)
+        except Exception:  # noqa: BLE001 — kayıt düşmezse odaya giriş bozulmasın
+            logger.exception("Room visit could not be recorded")
     # Aynı hesapla tek cihaz odada kalır: ses sağlayıcısı da aynı kullanıcıyla iki bağlantı
     # tutmuyor, eski cihaz odada görünür ama sessiz kalırdı.
     await room_hub.disconnect_other_connections(room_id, user_id, websocket, events.CLOSE_REPLACED)

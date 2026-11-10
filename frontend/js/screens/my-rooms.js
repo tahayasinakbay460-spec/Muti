@@ -41,7 +41,7 @@ export async function renderMyRooms(root) {
 
   root.innerHTML = `
     <header class="topbar">
-      <a class="icon-btn icon-btn-plain" href="#/home" aria-label="Geri">${icon('chevron-left', 22)}</a>
+      <a class="icon-btn icon-btn-plain" href="#/home" data-back aria-label="Geri">${icon('chevron-left', 22)}</a>
       <h1 class="page-title">Yayın odam</h1>
       <button class="icon-btn icon-btn-plain" data-action="create-room" aria-label="Yeni oda aç">${icon('plus', 22)}</button>
     </header>

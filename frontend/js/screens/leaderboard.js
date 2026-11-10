@@ -60,7 +60,7 @@ export async function renderLeaderboard(root, { query }) {
 
   root.innerHTML = `
     <header class="topbar">
-      <a class="icon-btn icon-btn-plain" href="#/home" aria-label="Geri">${icon('chevron-left', 22)}</a>
+      <a class="icon-btn icon-btn-plain" href="#/home" data-back aria-label="Geri">${icon('chevron-left', 22)}</a>
       <h1 class="page-title">Sıralama</h1>
       <a class="icon-btn icon-btn-plain" href="#/events" aria-label="Etkinlikler">${icon('trophy', 20)}</a>
     </header>

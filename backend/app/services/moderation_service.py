@@ -25,7 +25,7 @@ from app.realtime.duels import duels
 from app.realtime.hub import room_hub
 from app.realtime.state import room_state
 from app.schemas.room import RoomMemberOut, RoomOut, RoomUpdateRequest
-from app.services import activity_service, notification_service, room_service, treasure_service, user_service
+from app.services import activity_service, media_service, notification_service, room_service, treasure_service, user_service
 from app.services.room_service import ADMIN, HOST, LISTENER, ROLE_RANK
 from app.voice import voice_provider
 
@@ -279,7 +279,8 @@ async def update_room(db: AsyncSession, actor_id: int, room_id: int, data: RoomU
     changes = data.model_dump(exclude_unset=True)
     # `null` gönderilen alanları yok say: bu alanların hiçbiri boş bırakılamaz.
     changes = {field: value for field, value in changes.items() if value is not None}
-    if "cover_url" in changes and changes["cover_url"] not in COVER_CHOICES:
+    if "cover_url" in changes and changes["cover_url"] not in COVER_CHOICES \
+            and not await media_service.is_own_upload(db, actor_id, changes["cover_url"], ("room_cover",)):
         raise AppError("Bu kapak seçilemez.", code="invalid_cover")
     for field, value in changes.items():
         setattr(room, field, value)

@@ -1,6 +1,7 @@
 // Giriş / kayıt ekranı
 import { api } from '../api.js';
 import { APP_NAME } from '../config.js';
+import { guessCountry } from '../countries.js';
 import { toast, icon } from '../ui.js';
 
 export function renderAuth(root) {
@@ -71,7 +72,8 @@ export function renderAuth(root) {
     submitBtn.disabled = true;
     try {
       if (mode === 'login') await api.login(data);
-      else await api.register(data);
+      // Ülke tarayıcının dilinden tahmin edilir (Odalar > Keşfet'teki bayrak); profilden değişir
+      else await api.register({ ...data, country: guessCountry() });
       location.hash = '#/home';
     } catch (error) {
       toast(error.message, 'error');

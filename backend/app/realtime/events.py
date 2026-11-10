@@ -43,6 +43,14 @@ NOTIFICATION_NEW = "notification:new"          # { id, type, text, actor, data, 
 FAMILY_MESSAGE = "family:message"              # { family_id, message }  (aile üyelerine)
 COUPLE_UPDATED = "couple:updated"              # {}  (CP teklifi geldi / kabul edildi / ayrılık; istemci yeniden yükler)
 PING = "ping"                                  # istemci → sunucu: "hâlâ buradayım" (çevrimiçi durumu)
+# Birebir arama (bkz. services/call_service.py)
+CALL_INCOMING = "call:incoming"                # { call }  (arananın ekranında çalar)
+CALL_ACCEPTED = "call:accepted"                # { call, voice }  (arayana: karşı taraf açtı, bağlan)
+CALL_CHARGED = "call:charged"                  # { call_id, billed_minutes, coins_spent, coin_balance, low_balance }
+CALL_ENDED = "call:ended"                      # { call_id, status, reason, billed_minutes }
+# Mesh'te iki tarayıcının bağlantı mesajları. İstemci → sunucu: { call_id, description?, candidate? }
+# Sunucu → karşı taraf: { call_id, from, description?, candidate? }
+CALL_SIGNAL = "call:signal"
 
 # ── WebSocket kapanış kodları ─────────────────────────────────────────────────
 # 4000-4999 arası uygulamalara ayrılmıştır. İstemci koda bakıp ne yapacağına karar verir.
@@ -95,6 +103,13 @@ class IceCandidate(BaseModel):
     sdpMid: str | None = Field(default=None, max_length=32)
     sdpMLineIndex: int | None = Field(default=None, ge=0, le=16)
     usernameFragment: str | None = Field(default=None, max_length=64)
+
+
+class CallSignalIn(BaseModel):
+    """Aramada karşı tarafa iletilecek bağlantı mesajı (mesh). Alıcıyı sunucu aramadan bulur."""
+    call_id: int
+    description: SessionDescription | None = None
+    candidate: IceCandidate | None = None
 
 
 class VoiceSignalIn(BaseModel):

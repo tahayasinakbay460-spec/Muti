@@ -7,12 +7,14 @@ Oda WebSocket'inden farkı: oda hattı yalnızca o odadayken açıktır; bu hat 
 uygulama açık olduğu sürece açıktır. Özel mesaj gibi "nerede olursan ol sana
 ulaşması gereken" olaylar buradan gelir.
 
-İstemci bu hatta yalnızca `ping` gönderir (birkaç dakikada bir). Sunucu bununla
-kişiyi "çevrimiçi" sayar. Asıl işlemler (mesaj gönderme) REST ile yapılır.
+İstemci bu hatta `ping` gönderir (birkaç dakikada bir); sunucu bununla kişiyi "çevrimiçi" sayar.
+Bir de birebir aramada (mesh) tarayıcılar arası bağlantı mesajı `call:signal` gönderilir.
+Asıl işlemler (mesaj gönderme, aramayı açma) REST ile yapılır.
 """
 import json
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from pydantic import ValidationError
 
 from app.core.database import SessionLocal
 from app.core.errors import AppError
@@ -21,6 +23,8 @@ from app.models import User
 from app.realtime import events
 from app.realtime.hub import user_hub
 from app.realtime.state import room_state
+from app.services import call_service
+from app.realtime.room_socket import RateLimiter
 
 router = APIRouter()
 
@@ -42,19 +46,29 @@ async def user_socket(websocket: WebSocket, token: str = "") -> None:
 
     user_hub.add(user_id, websocket)
     await room_state.touch_presence(user_id)
+    # Bağlantı kurulurken onlarca küçük mesaj gider; sınır yalnızca kötüye kullanımı keser.
+    signal_limiter = RateLimiter(limit=300, period=10)
     try:
         while True:
             raw = await websocket.receive_text()
-            # Gelen her mesaj "buradayım" demektir; içeriği yalnızca ping olabilir, başka bir şey işlenmez.
+            # Gelen her mesaj "buradayım" demektir.
             await room_state.touch_presence(user_id)
             try:
-                is_ping = json.loads(raw).get("event") == events.PING
+                message = json.loads(raw)
+                event = message.get("event")
             except (ValueError, AttributeError):
-                is_ping = False
-            if not is_ping:
-                await websocket.send_text(json.dumps({
-                    "event": events.ERROR, "payload": {"code": "unknown_event", "detail": "Bilinmeyen olay."},
-                }))
+                message, event = {}, None
+            if event == events.PING:
+                continue
+            if event == events.CALL_SIGNAL and signal_limiter.allow():
+                try:
+                    await call_service.relay_signal(user_id, events.CallSignalIn.model_validate(message.get("payload")))
+                except ValidationError:
+                    pass
+                continue
+            await websocket.send_text(json.dumps({
+                "event": events.ERROR, "payload": {"code": "unknown_event", "detail": "Bilinmeyen olay."},
+            }))
     except WebSocketDisconnect:
         pass
     finally:

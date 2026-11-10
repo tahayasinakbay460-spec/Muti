@@ -19,6 +19,8 @@ _test_dir = Path(tempfile.mkdtemp(prefix="muti_tests_"))
 os.environ["DATABASE_URL"] = (
     os.environ.get("TEST_DATABASE_URL") or f"sqlite+aiosqlite:///{(_test_dir / 'test.db').as_posix()}"
 )
+# Sesli mesaj dosyaları da geçici klasöre
+os.environ["MEDIA_DIR"] = str(_test_dir / "media")
 os.environ["SECRET_KEY"] = "test-secret-key-that-is-long-enough-for-hs256"
 os.environ["ENVIRONMENT"] = "development"
 os.environ["DEMO_MODE"] = "true"

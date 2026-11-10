@@ -73,7 +73,7 @@ export async function renderTasks(root) {
     const [status, tasks] = await Promise.all([api.getCheckin(), api.listTasks()]);
     root.innerHTML = `
       <header class="topbar">
-        <a class="icon-btn icon-btn-plain" href="#/home" aria-label="Geri">${icon('chevron-left', 22)}</a>
+        <a class="icon-btn icon-btn-plain" href="#/home" data-back aria-label="Geri">${icon('chevron-left', 22)}</a>
         <h1 class="page-title">Görevler</h1>
         <span></span>
       </header>

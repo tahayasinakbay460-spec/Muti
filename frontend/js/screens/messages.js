@@ -3,7 +3,7 @@
 // İkisi de kişiye özel kanaldaki `message:new` olayını dinler: yeni mesaj sayfa yenilemeden görünür.
 import { api } from '../api.js';
 import { esc, icon, avatarImg, formatCount, timeAgo, openSheet, toast, vipBadge, levelBadge } from '../ui.js';
-import { onInbox, setOpenConversation, refreshUnread, getUnreadNotificationCount } from '../inbox.js';
+import { onInbox, getUnreadNotificationCount } from '../inbox.js';
 import { openReportSheet } from './report.js';
 
 // Yuvarlak kısayol: renkli daire içinde simge, sağ üstte sayı rozeti, altında ad
@@ -74,7 +74,7 @@ export async function renderMessages(root) {
 }
 
 // Üç nokta menüsü (sohbet listesinde ve sohbet ekranında aynı): profili gör, engelle / engeli kaldır, şikâyet et
-function openPeerMenu(user) {
+export function openPeerMenu(user) {
   const sheet = openSheet(`
     <div class="menu-list">
       <a href="#/profile/${user.id}" data-close>${icon('user', 20)} Profili gör</a>
@@ -99,72 +99,6 @@ function openPeerMenu(user) {
   });
 }
 
-export async function renderChat(root, { params }) {
-  const conversation = await api.getConversation(params[0]);
-  const { user } = conversation;
-
-  // data-id: aynı mesaj hem POST cevabı hem de kanal üzerinden (diğer sekmeler için) gelebilir; iki kez basılmasın
-  const bubble = (m) => `<div class="bubble ${m.from_me ? 'is-mine' : ''}" ${m.id ? `data-id="${m.id}"` : ''}><p>${esc(m.text)}</p><small>${esc(m.time)}</small></div>`;
-
-  root.innerHTML = `
-    <div class="chat-screen">
-      <header class="topbar topbar-solid">
-        <a class="icon-btn" href="#/messages" aria-label="Geri">${icon('chevron-left', 22)}</a>
-        <a class="chat-peer" href="#/profile/${user.id}">
-          ${avatarImg(user, 'avatar-sm')}
-          <span><b>${esc(user.display_name)}</b><small>${user.is_online ? 'Çevrimiçi' : 'Çevrimdışı'}</small></span>
-        </a>
-        <button class="icon-btn icon-btn-plain" data-action="chat-menu" aria-label="Seçenekler">${icon('more', 20)}</button>
-      </header>
-      <div class="chat-thread" id="thread">${conversation.messages.map(bubble).join('')}</div>
-      <form class="composer" id="composer">
-        <input name="text" placeholder="Mesaj yaz..." autocomplete="off" maxlength="300" />
-        <button class="icon-btn icon-btn-primary" type="submit" aria-label="Gönder">${icon('send', 18)}</button>
-      </form>
-    </div>`;
-
-  const thread = root.querySelector('#thread');
-  const scrollDown = () => { thread.scrollTop = thread.scrollHeight; };
-  scrollDown();
-
-  const appendMessage = (message) => {
-    if (message.id && thread.querySelector(`[data-id="${message.id}"]`)) return;
-    thread.insertAdjacentHTML('beforeend', bubble(message));
-    scrollDown();
-  };
-
-  root.querySelector('[data-action="chat-menu"]').addEventListener('click', () => openPeerMenu(user));
-
-  // Bu sohbet açıkken gelen mesaj anında görünür ve okundu sayılır (bildirim çıkmaz)
-  setOpenConversation(conversation.id);
-  refreshUnread();
-  const stopListening = onInbox('message:new', ({ conversation_id: conversationId, message }) => {
-    if (conversationId !== conversation.id) return;
-    appendMessage(message);
-    if (!message.from_me) api.markConversationRead(conversation.id).catch(() => {});
-  });
-
-  root.querySelector('#composer').addEventListener('submit', async (event) => {
-    event.preventDefault();
-    const input = event.target.elements.text;
-    const text = input.value.trim();
-    if (!text) return;
-    input.value = '';
-    try {
-      // Karşı tarafın cevabı kişiye özel kanaldan (`message:new`) gelir
-      appendMessage(await api.sendMessage(conversation.id, text));
-    } catch (error) {
-      input.value = text;
-      toast(error.message, 'error');
-    }
-  });
-
-  return () => {
-    stopListening();
-    setOpenConversation(null);
-  };
-}
-
 // ── Arkadaşlık istekleri ve ziyaretçiler ──────────────────────────────────────
 
 function personRow(user, side) {
@@ -180,7 +114,7 @@ function personRow(user, side) {
 
 const backHeader = (title) => `
   <header class="topbar">
-    <a class="icon-btn icon-btn-plain" href="#/messages" aria-label="Geri">${icon('chevron-left', 22)}</a>
+    <a class="icon-btn icon-btn-plain" href="#/messages" data-back aria-label="Geri">${icon('chevron-left', 22)}</a>
     <h1 class="page-title">${title}</h1>
     <span></span>
   </header>`;

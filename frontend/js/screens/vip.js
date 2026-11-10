@@ -53,7 +53,7 @@ export async function renderVip(root) {
   function render() {
     root.innerHTML = `
       <header class="topbar">
-        <a class="icon-btn icon-btn-plain" href="#/profile" aria-label="Geri">${icon('chevron-left', 22)}</a>
+        <a class="icon-btn icon-btn-plain" href="#/profile" data-back aria-label="Geri">${icon('chevron-left', 22)}</a>
         <h1 class="page-title">VIP merkezi</h1>
         <a class="coin-pill topbar-actions" href="#/wallet"><span class="coin"></span><b>${formatCoins(me.coin_balance)}</b><span class="coin-plus">+</span></a>
       </header>

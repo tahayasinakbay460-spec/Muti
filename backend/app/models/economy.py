@@ -74,7 +74,8 @@ class Transaction(Base):
     # Bakiyesi değişen kullanıcı.
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     # purchase | gift_sent | gift_received | reward | exchange | store_purchase | vip_purchase
-    # | vip_daily | lucky_win | chest_reward
+    # | vip_daily | lucky_win | chest_reward | call_charge (arayanın dakika ücreti)
+    # | call_income (arananın elmas payı) | agency_commission (ajansın ay sonu komisyonu)
     type: Mapped[str] = mapped_column(String(32))
     # coin | diamond
     currency: Mapped[str] = mapped_column(String(16))

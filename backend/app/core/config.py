@@ -119,6 +119,32 @@ class Settings(BaseSettings):
     # Şanslı hediyede alıcının payı. Gönderen coin geri kazanabildiği için normal hediyeden düşük.
     lucky_gift_receiver_share_percent: int = Field(default=10, ge=0, le=100)
 
+    # ── Birebir arama (özel mesajlarda) ───────────────────────────────────────
+    # Arayan dakika başı öder; her dakikanın başında peşin düşülür. Aranan, ödenen coinin
+    # bu yüzdesini elmas olarak kazanır (hediyedeki gibi).
+    call_voice_price_per_minute: int = Field(default=30, ge=0)
+    call_video_price_per_minute: int = Field(default=60, ge=0)
+    call_receiver_share_percent: int = Field(default=50, ge=0, le=100)
+    # Aranan bu kadar saniye içinde açmazsa arama "cevapsız" olur.
+    call_ring_seconds: int = Field(default=30, ge=5)
+
+    # ── Medya dosyaları (sesli mesaj) ─────────────────────────────────────────
+    # Yüklenen dosyaların klasörü. Boşsa backend/media. Docker'da kalıcı bir volume'a bağlanır,
+    # yoksa her güncellemede sesli mesajlar silinir.
+    media_dir: str = ""
+    # Sesli mesaj sınırları: en uzun süre (saniye) ve en büyük dosya (bayt).
+    voice_message_max_seconds: int = Field(default=60, ge=1)
+    voice_message_max_bytes: int = Field(default=1_000_000, ge=1000)
+    # Fotoğraf: en büyük dosya (bayt). Uygulama yüklemeden önce küçültür; bu sınır kaba güvencedir.
+    image_max_bytes: int = Field(default=5_000_000, ge=1000)
+    # Bir kişi bir saatte en fazla kaç fotoğraf yükleyebilir (diski doldurmaya çalışana karşı).
+    image_uploads_per_hour: int = Field(default=60, ge=1)
+
+    # ── Müşteri hizmetleri ────────────────────────────────────────────────────
+    # "Müşteri hizmetlerine yaz" tuşu bu kullanıcı adıyla sohbet açar (ajans olmak isteyenler vb.).
+    # Boşsa ADMIN_USERNAME kullanılır; o da yoksa tuş görünmez.
+    support_username: str = ""
+
     # ── Hazine sandığı (oda içi) ──────────────────────────────────────────────
     # Odada gönderilen hediyelerin coin toplamı bu sayıya ulaşınca sandık açılır.
     chest_target_coins: int = Field(default=10_000, ge=1)

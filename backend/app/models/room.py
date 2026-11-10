@@ -1,5 +1,5 @@
 """
-Oda tabloları: rooms, room_follows, room_members.
+Oda tabloları: rooms, room_follows, room_members, room_visits.
 
 DİKKAT: Burada yalnızca odanın KALICI bilgileri durur (adı, sahibi, kategorisi).
 "Şu an hangi koltukta kim oturuyor, kaç kişi dinliyor" gibi saniyede defalarca
@@ -8,7 +8,7 @@ depoda (ileride Redis) tutulur.
 """
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base, BigIntPk, utcnow
@@ -74,3 +74,17 @@ class RoomMember(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True, index=True)
     role: Mapped[str] = mapped_column(String(16))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class RoomVisit(Base):
+    """
+    Kim hangi odaya en son ne zaman girdi. Odalar > Ben'deki "Son girdiğim odalar" bu tablodan dolar.
+    Kişi başına oda başına tek satır: tekrar girince yeni satır açılmaz, `visited_at` güncellenir
+    (tablo şişmez, liste "en son girilen en üstte" sıralanır).
+    """
+    __tablename__ = "room_visits"
+    __table_args__ = (Index("ix_room_visits_user_id_visited_at", "user_id", "visited_at"),)
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    room_id: Mapped[int] = mapped_column(ForeignKey("rooms.id", ondelete="CASCADE"), primary_key=True)
+    visited_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
