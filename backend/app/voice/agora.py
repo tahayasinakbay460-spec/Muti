@@ -33,6 +33,7 @@ from hashlib import sha256
 
 import httpx
 
+from app.core.config import settings
 from app.voice.base import VoiceJoinInfo, VoiceProvider
 
 logger = logging.getLogger(__name__)
@@ -51,6 +52,11 @@ _PRIVILEGE_PUBLISH_VIDEO = 3
 
 def agora_channel_name(room_id: int) -> str:
     return f"room-{room_id}"
+
+
+def agora_live_channel_name(room_id: int) -> str:
+    """Kameralı yayının görüntü kanalı (ses kanalı room-<id> ile karışmasın)."""
+    return f"live-{room_id}"
 
 
 def agora_call_channel_name(call_id: int) -> str:
@@ -87,8 +93,9 @@ def build_rtc_token(
     if can_publish:
         privileges[_PRIVILEGE_PUBLISH_AUDIO] = ttl
     if can_publish_video:
-        # Görüntülü arama: kamera yayını izni (odalarda görüntü yok, orada hiç verilmez).
+        # Görüntülü arama ve kameralı yayın: kamera yayını izni (sesli oda kanalında hiç verilmez).
         privileges[_PRIVILEGE_PUBLISH_VIDEO] = ttl
+    # Not: kameralı yayında yalnızca yayıncıya verilir; izleyicinin token'ı ile görüntü gönderilemez.
     service = _uint16(_SERVICE_RTC) + _uint16(len(privileges))
     for key in sorted(privileges):
         service += _uint16(key) + _uint32(privileges[key])
@@ -132,7 +139,19 @@ class AgoraVoiceProvider(VoiceProvider):
         token = build_rtc_token(self.app_id, self.app_certificate, channel, user_id, True, can_publish_video=True)
         return VoiceJoinInfo(provider=self.name, can_publish=True, app_id=self.app_id, channel=channel, token=token)
 
-    async def _kick(self, room_id: int, user_id: int | None) -> None:
+    async def live_join_info(self, room_id: int, user_id: int, is_streamer: bool) -> VoiceJoinInfo:
+        channel = agora_live_channel_name(room_id)
+        # Görüntü kanalında ses yok (can_publish=False): yayıncının sesi oda ses kanalından gider.
+        token = build_rtc_token(self.app_id, self.app_certificate, channel, user_id, False, can_publish_video=is_streamer)
+        return VoiceJoinInfo(
+            provider=self.name, can_publish=is_streamer, app_id=self.app_id, channel=channel, token=token,
+            video_profile=settings.live_video_profile,
+        )
+
+    async def stop_live(self, room_id: int, user_id: int) -> None:
+        await self._kick(room_id, user_id, channel=agora_live_channel_name(room_id))
+
+    async def _kick(self, room_id: int, user_id: int | None, channel: str | None = None) -> None:
         """
         Agora'nın "kanaldan çıkarma kuralı" API'si. user_id yoksa kanaldaki herkes çıkarılır.
         Agora'ya ulaşılamazsa oda işlemi bozulmasın diye hata yalnızca loglanır.
@@ -140,7 +159,7 @@ class AgoraVoiceProvider(VoiceProvider):
         if not (self.customer_id and self.customer_secret):
             return
         body = {
-            "appid": self.app_id, "cname": agora_channel_name(room_id),
+            "appid": self.app_id, "cname": channel or agora_channel_name(room_id),
             "time": KICK_MINUTES, "privileges": ["join_channel"],
         }
         if user_id is not None:
@@ -158,3 +177,4 @@ class AgoraVoiceProvider(VoiceProvider):
 
     async def close_room(self, room_id: int) -> None:
         await self._kick(room_id, None)
+        await self._kick(room_id, None, channel=agora_live_channel_name(room_id))

@@ -92,7 +92,8 @@ def test_agency_month_settlement_pays_once(client):
     before = me(client, owner_headers)["diamond_balance"]
 
     paid = client.post(f"{API}/admin/agencies/{agency_id}/settle", headers=finance, json={"month": month}).json()
-    assert paid["settled"] and paid["commission_diamonds"] == paid["host_diamonds"] * paid["commission_percent"] // 100
+    # Ödenen = ayın hediye anında yazılmış ajans kazançlarının toplamı (kapatmadan önce gösterilen hesap)
+    assert paid["settled"] and paid["commission_diamonds"] == row["commission_diamonds"] > 0
     assert me(client, owner_headers)["diamond_balance"] == before + paid["commission_diamonds"]
     # İkinci kez ödenmez
     assert client.post(f"{API}/admin/agencies/{agency_id}/settle", headers=finance,

@@ -7,15 +7,14 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.core.errors import AppError, NotFoundError
 from app.models import Gift, Room, Transaction, User
 from app.realtime import events
 from app.realtime.hub import room_hub
 from app.schemas.economy import GiftOut, GiftSendRequest, GiftSendResult
 from app.services import (
-    activity_service, engagement_service, level_service, notification_service, treasure_service, user_service,
-    wallet_service,
+    activity_service, engagement_service, level_service, notification_service, revenue_service, treasure_service,
+    user_service, wallet_service,
 )
 
 # ŞANSLI HEDİYE ÇARPAN TABLOSU: (çarpan, 1000 çekilişte kaç kez çıkar)
@@ -95,9 +94,11 @@ async def send_gift(
         raise NotFoundError("Oda bulunamadı.")
 
     total_coins = gift.price * data.quantity
-    share_percent = settings.lucky_gift_receiver_share_percent if gift.is_lucky else settings.gift_receiver_share_percent
-    # Alıcının kazancı. `//` tamsayı bölmesidir: küsurat çıkmaz, float kullanılmaz.
-    receiver_diamonds = total_coins * share_percent // 100
+    # Alıcının kazancı ve (ajans yayıncısıysa) ajansın payı: bağımsız %50, ajans yayıncısı %60 + ajans
+    # komisyonu. Oranların tek yeri revenue_service.
+    source = "lucky_gift" if gift.is_lucky else "gift"
+    split = await revenue_service.split_income(db, receiver.id, total_coins, source)
+    receiver_diamonds = split.host_diamonds
     # Şanslı hediyede sonucu SUNUCU çeker; istemci sonucu etkileyemez.
     lucky_win, lucky_multiplier = draw_lucky_win(gift.price, data.quantity) if gift.is_lucky else (0, 0)
 
@@ -135,6 +136,8 @@ async def send_gift(
                 db, user_id=sender_id, currency="coin", delta=lucky_win, type="lucky_win",
                 label=f"Şanslı hediye: {gift.name} x{lucky_multiplier}", gift_id=gift.id, room_id=data.room_id,
             )
+        # Ajansın payı hediyeyle aynı transaction'da kayda geçer (ay sonu panelden ödenir).
+        revenue_service.record_agency_share(db, split, receiver.id, total_coins, source)
         # Günlük görev sayacı ("3 kez hediye gönder") hediyeyle birlikte kalıcı olur.
         await engagement_service.record(db, sender_id, engagement_service.METRIC_GIFT_SENT)
         # Harcanan her coin 1 deneyim puanı: seviye hediyeyle aynı transaction'da artar.

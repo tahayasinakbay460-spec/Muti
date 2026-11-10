@@ -24,6 +24,8 @@ from abc import ABC, abstractmethod
 
 from pydantic import BaseModel
 
+from app.core.errors import UnavailableError
+
 
 class IceServer(BaseModel):
     """
@@ -46,6 +48,11 @@ class VoiceJoinInfo(BaseModel):
     token: str | None = None           # SFU: kısa ömürlü giriş anahtarı
     app_id: str | None = None          # agora: projenin herkese açık kimliği (gizli değil)
     channel: str | None = None         # agora: odanın ses kanalı adı
+    # Yalnızca kameralı yayının görüntü kanalında (live_join_info): yayıncının id'si, görüntü
+    # kalitesi ve (mesh) yayıncının en fazla kaç izleyiciye görüntü göndereceği.
+    streamer_id: int | None = None
+    video_profile: str | None = None
+    max_viewers: int | None = None
 
 
 class VoiceProvider(ABC):
@@ -65,6 +72,19 @@ class VoiceProvider(ABC):
         Birebir aramanın (özel mesajdaki sesli / görüntülü arama) bağlantı bilgisi.
         Odadan ayrı bir kanaldır ("call-<id>"); iki taraf da konuşabilir ve görüntü gönderebilir.
         """
+
+    async def live_join_info(self, room_id: int, user_id: int, is_streamer: bool) -> VoiceJoinInfo:
+        """
+        Kameralı yayının GÖRÜNTÜ kanalı ("live-<oda id>"). Ses kanalından ayrıdır: yayıncının sesi
+        her zamanki gibi oda sesinden (koltuktan) gider, burada yalnızca kamera görüntüsü taşınır.
+        Neden ayrı? Sesli oda kodu (yeniden bağlanma, koltuk izinleri) hiç değişmeden kalsın; görüntü
+        koparsa ses etkilenmesin. Bedeli: ses ve görüntü iki ayrı akış olduğu için aralarında çok küçük
+        bir kayma olabilir (dudak senkronu). Yalnızca yayıncı (is_streamer) görüntü gönderebilir.
+        """
+        raise UnavailableError("Kameralı yayın bu ses sağlayıcısında henüz yok.", code="live_unsupported")
+
+    async def stop_live(self, room_id: int, user_id: int) -> None:
+        """Yayın panelden kapatıldı: yayıncının görüntü kanalı bağlantısı da kesilmeli (SFU'da)."""
 
     async def sync_publishers(self, room_id: int, publisher_ids: set[int]) -> None:
         """Koltuklar değişti: şu an konuşma izni olanlar bunlar (koltukta ve engelsiz)."""

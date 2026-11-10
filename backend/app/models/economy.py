@@ -76,8 +76,10 @@ class Transaction(Base):
     # purchase | gift_sent | gift_received | reward | exchange | store_purchase | vip_purchase
     # | vip_daily | lucky_win | chest_reward | call_charge (arayanın dakika ücreti)
     # | call_income (arananın elmas payı) | agency_commission (ajansın ay sonu komisyonu)
+    # | dealer_stock (bayiye toptan stok, dealer_coin) | dealer_sale (bayinin sattığı, dealer_coin)
+    # | dealer_topup (kullanıcının bayiden aldığı coin)
     type: Mapped[str] = mapped_column(String(32))
-    # coin | diamond
+    # coin | diamond | dealer_coin (bayinin satılık stoğu)
     currency: Mapped[str] = mapped_column(String(16))
     # İşaretli tutar: bakiye arttıysa artı, azaldıysa eksi.
     amount: Mapped[int] = mapped_column(BigInteger)

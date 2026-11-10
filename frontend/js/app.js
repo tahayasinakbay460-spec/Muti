@@ -14,6 +14,7 @@ import { renderMyRooms } from './screens/my-rooms.js';
 import { renderRooms } from './screens/rooms.js';
 import { renderProfile } from './screens/profile.js';
 import { renderWallet } from './screens/wallet.js';
+import { renderDealer } from './screens/dealer.js';
 import { renderStore } from './screens/store.js';
 import { renderVip } from './screens/vip.js';
 import { renderTasks } from './screens/tasks.js';
@@ -39,6 +40,7 @@ const routes = [
   { pattern: /^\/profile$/, render: renderProfile, tab: 'profile' },
   { pattern: /^\/profile\/(\d+)$/, render: renderProfile },
   { pattern: /^\/wallet$/, render: renderWallet, tab: 'profile' },
+  { pattern: /^\/dealer$/, render: renderDealer, tab: 'profile' },
   { pattern: /^\/store$/, render: renderStore, tab: 'profile' },
   { pattern: /^\/vip$/, render: renderVip, tab: 'profile' },
   { pattern: /^\/tasks$/, render: renderTasks, tab: 'rooms' },

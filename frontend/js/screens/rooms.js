@@ -33,7 +33,8 @@ const POPULAR_SIZE = 3;
 const PAGE_SIZE = 20;
 
 export const seatedAvatars = (room, max = 4) => room.seats.filter((s) => s.user).slice(0, max).map((s) => avatarImg(s.user, 'avatar-xs')).join('');
-export const statusPill = (room) => (room.has_pk ? '<span class="pill pill-pk">PK</span>' : room.is_live ? '<span class="pill pill-live">CANLI</span>' : '');
+export const statusPill = (room) => (room.camera_user_id ? '<span class="pill pill-live">🎥 CANLI</span>'
+  : room.has_pk ? '<span class="pill pill-pk">PK</span>' : room.is_live ? '<span class="pill pill-live">CANLI</span>' : '');
 export const listenerCount = (room) => `<span class="eq"><i></i><i></i><i></i></span>${formatCount(room.listener_count)}`;
 
 // Satır: solda kare kapak, ortada ad + duyuru + yayıncı, sağda PK rozeti ve kişi sayısı
@@ -49,6 +50,7 @@ function roomRow(room) {
         <span class="room-row-meta">${avatarImg(room.host, 'avatar-xs')}<span>${esc(room.host.display_name)}</span>${levelBadge(room.host.level)}<span class="room-tag">${esc(CATEGORY_LABELS[room.category] || 'Sohbet')}</span></span>
       </span>
       <span class="room-row-side">
+        ${room.camera_user_id ? '<span class="pill pill-live">🎥</span>' : ''}
         ${room.has_pk ? '<span class="pill pill-pk">PK</span>' : ''}
         <span class="room-row-count">${listenerCount(room)}</span>
       </span>
@@ -63,6 +65,7 @@ function liveCard(room) {
       <span class="live-card-cover">
         <img src="${esc(room.cover_url)}" alt="" loading="lazy" />
         ${room.has_pk ? '<span class="pill pill-pk live-card-pk">PK</span>' : ''}
+        ${room.camera_user_id ? '<span class="pill pill-live live-card-camera">🎥 Kamera</span>' : ''}
         <span class="live-card-heat">${icon('flame', 13)}${formatCount(room.listener_count)}</span>
         <span class="live-card-mic">${icon('mic', 12)}${speakers}</span>
       </span>

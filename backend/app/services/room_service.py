@@ -75,6 +75,12 @@ async def get_room_row(db: AsyncSession, room_id: int) -> Room:
     return room
 
 
+def _camera_user_ids() -> dict[int, int]:
+    # live_service de bu dosyayı içe aktarıyor; döngü olmasın diye çağrı anında alıyoruz.
+    from app.services import live_service
+    return live_service.camera_user_ids()
+
+
 def _running_pk_room_ids() -> set[int]:
     # activity_service bu dosyayı içe aktarıyor; döngü olmasın diye burada, çağrı anında alıyoruz.
     from app.services import activity_service
@@ -112,6 +118,7 @@ async def present_rooms(db: AsyncSession, rooms: list[Room], viewer_id: int | No
         member_ids.setdefault((room_id, role), []).append(member_id)
 
     pk_room_ids = _running_pk_room_ids()
+    cameras = _camera_user_ids()
 
     # Bakan kişinin bu odalardan hangilerini takip ettiği (tek sorgu).
     followed_ids: set[int] = set()
@@ -145,6 +152,7 @@ async def present_rooms(db: AsyncSession, rooms: list[Room], viewer_id: int | No
             free_seating=room.free_seating,
             is_following=room.id in followed_ids,
             has_pk=room.id in pk_room_ids,
+            camera_user_id=cameras.get(room.id),
         )
         for room in rooms
     ]
@@ -156,7 +164,8 @@ LIVE_SCAN_LIMIT = 500
 
 async def _live_room_ids(candidate_ids: list[int]) -> list[int]:
     """
-    "Canlı" = koltuğunda (mikrofonda) en az bir kişi olan oda; kalabalıktan tenhaya sıralı.
+    "Canlı" = koltuğunda (mikrofonda) en az bir kişi olan oda. Kamerası açık odalar (kameralı yayın)
+    en üstte, sonra kalabalıktan tenhaya.
     Koltuklar veritabanında değil canlı depoda durduğu için filtre burada, Python'da yapılır.
     DEMO KISAYOLU: aday odaları tek tek tarıyoruz; canlıda Redis'te "mikrofonu dolu odalar"
     sıralı kümesi (sorted set) tutulur ve sayfa doğrudan oradan okunur.
@@ -165,8 +174,9 @@ async def _live_room_ids(candidate_ids: list[int]) -> list[int]:
         return []
     seats = await room_state.get_seats(candidate_ids)
     counts = await room_state.listener_counts(candidate_ids)
-    live = [rid for rid in candidate_ids if any(seat.user_id is not None for seat in seats.get(rid, []))]
-    return sorted(live, key=lambda rid: counts.get(rid, 0), reverse=True)
+    cameras = _camera_user_ids()
+    live = [rid for rid in candidate_ids if rid in cameras or any(seat.user_id is not None for seat in seats.get(rid, []))]
+    return sorted(live, key=lambda rid: (rid in cameras, counts.get(rid, 0)), reverse=True)
 
 
 async def list_rooms(

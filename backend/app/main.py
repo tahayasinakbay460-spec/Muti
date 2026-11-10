@@ -34,8 +34,8 @@ from app.realtime import room_socket, user_socket
 from app.realtime.state import room_state
 from app.services import admin_service, auth_service, call_service, catalog_service
 from app.routers import (
-    activities, admin, agency, auth, calls, content, conversations, diagnostics, economy, engagement, hosts, media,
-    moments, rooms, social, store, users,
+    activities, admin, agency, auth, calls, content, conversations, dealers, diagnostics, economy, engagement, hosts,
+    media, moments, rooms, social, store, users,
 )
 
 
@@ -113,7 +113,7 @@ app.add_middleware(RequestLogMiddleware)
 api_v1 = APIRouter(prefix="/api/v1")
 for module in (
     auth, users, rooms, activities, economy, store, engagement, agency, admin, conversations, social, content,
-    diagnostics, moments, calls, hosts, media,
+    diagnostics, moments, calls, hosts, media, dealers,
 ):
     api_v1.include_router(module.router)
 app.include_router(api_v1)

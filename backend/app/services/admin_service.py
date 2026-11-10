@@ -33,8 +33,8 @@ from app.schemas.admin import (
 )
 from app.schemas.economy import TransactionOut
 from app.services import (
-    agency_service, auth_service, leaderboard_service, moderation_service, notification_service, staff_service,
-    store_service, user_service, vip_service, wallet_service,
+    agency_service, auth_service, leaderboard_service, live_service, moderation_service, notification_service,
+    staff_service, store_service, user_service, vip_service, wallet_service,
 )
 
 _banned_ids: set[int] = set()
@@ -267,12 +267,27 @@ async def list_rooms(db: AsyncSession) -> list[AdminRoomOut]:
     rooms = list(await db.scalars(select(Room).where(Room.is_active).order_by(Room.id.desc()).limit(100)))
     counts = await room_state.listener_counts([room.id for room in rooms])
     hosts = await user_service.load_users_out(db, {room.host_id for room in rooms}, viewer_id=None)
+    cameras = live_service.camera_user_ids()
     out = [
         AdminRoomOut(id=room.id, title=room.title, host=hosts.get(room.host_id), listener_count=counts.get(room.id, 0),
-                     is_live=room.is_live, created_at=as_utc(room.created_at))
+                     is_live=room.is_live, created_at=as_utc(room.created_at), has_camera=room.id in cameras)
         for room in rooms
     ]
-    return sorted(out, key=lambda r: -r.listener_count)
+    # Kameralı yayınlar en üstte: görüntüde moderasyon önce gelir
+    return sorted(out, key=lambda r: (not r.has_camera, -r.listener_count))
+
+
+async def stop_camera(db: AsyncSession, admin_id: int, room_id: int) -> None:
+    """Kameralı yayını panelden anında kapatır (uygunsuz görüntü). Oda açık kalır."""
+    room = await db.get(Room, room_id)
+    if room is None or not room.is_active:
+        raise NotFoundError("Oda bulunamadı.")
+    streamer_id = await live_service.stop_by_staff(room_id)
+    audit("live_camera_stopped_by_staff", room_id=room_id, streamer_id=streamer_id)
+    await staff_service.record(db, admin_id, "live_camera_stopped", "room", room_id, room.title)
+    await notification_service.notify(
+        db, streamer_id, "live_stopped", "🎥 Yayının kurallara aykırı bulunduğu için yönetim tarafından kapatıldı.",
+    )
 
 
 async def close_room(db: AsyncSession, admin_id: int, room_id: int, reason: str) -> None:

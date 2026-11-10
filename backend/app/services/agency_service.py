@@ -11,10 +11,11 @@ Kazançlar para defterinden (transactions, gift_received) hesaplanır: ayrı say
 
 YAYINCI ŞARTI: Ajansa yalnızca onaylı yayıncılar (User.is_host, bkz. host_service) katılabilir.
 
-AY SONU KOMİSYONU (settle_month): Komisyon BİZİM payımızdan ödenir, yayıncının kazancı düşmez.
-Ay bitince panelden "ayı kapat" denir: ajans sahibine, aktif yayıncılarının o ay hediyelerden
-kazandığı elmasın yüzde komisyonu kadar elmas eklenir. Her ajans her ay için bir kez (tablo
-kuralı + idempotency anahtarı). Henüz bitmemiş ay kapatılamaz.
+AY SONU KOMİSYONU (settle_month): Komisyon BİZİM payımızdan ödenir, yayıncının kazancı düşmez
+(ajans yayıncısı zaten bağımsızdan yüksek pay alır, bkz. revenue_service). Her hediyede ajansın payı
+`agency_earnings` tablosuna yazılır; ay bitince panelden "ayı kapat" denir ve o ayın satırlarının
+toplamı ajans sahibine elmas olarak eklenir. Her ajans her ay için bir kez (tablo kuralı +
+idempotency anahtarı). Henüz bitmemiş ay kapatılamaz.
 DEMO KISAYOLU: Ödeme elmas olarak; gerçek para (fatura, banka) elmas çekimiyle birlikte gelecek.
 """
 from datetime import date, datetime
@@ -25,10 +26,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import utcnow
 from app.core.errors import AppError, ConflictError, ForbiddenError, NotFoundError
 from app.core.logs import audit
-from app.core.timefmt import as_utc, local_day_start, local_today, period_start
-from app.models import Agency, AgencyMember, AgencySettlement, Transaction, User
+from app.core.timefmt import local_day_start, local_today, period_start
+from app.core.config import settings
+from app.models import Agency, AgencyEarning, AgencyMember, AgencySettlement, Transaction, User
 from app.schemas.admin import AgencyDashboard, AgencyMemberOut, AgencyOut, AgencySettlementOut, AgencyTier, MyAgency
-from app.services import host_service, notification_service, staff_service, user_service, wallet_service
+from app.services import host_service, notification_service, revenue_service, staff_service, user_service, wallet_service
 
 
 # Yayıncı seviyeleri (maaş tablosu): aylık elmasa göre. Sıra önemli, küçükten büyüğe.
@@ -77,7 +79,8 @@ async def _present_many(db: AsyncSession, agencies: list[Agency]) -> list[Agency
         .group_by(AgencyMember.agency_id)
     )).all())
     return [
-        AgencyOut(id=agency.id, name=agency.name, owner=owner, commission_percent=agency.commission_percent,
+        AgencyOut(id=agency.id, name=agency.name, owner=owner,
+                  commission_percent=revenue_service.effective_commission(agency),
                   member_count=counts.get(agency.id, 0))
         for agency, owner in zip(agencies, outs)
     ]
@@ -90,6 +93,9 @@ async def _present(db: AsyncSession, agency: Agency) -> AgencyOut:
 # ── Yönetici ──────────────────────────────────────────────────────────────────
 
 async def create_agency(db: AsyncSession, name: str, owner_id: int, commission_percent: int) -> AgencyOut:
+    if commission_percent > settings.agency_commission_max_percent:
+        raise AppError(f"Ajans komisyonu en fazla %{settings.agency_commission_max_percent} olabilir.",
+                       code="commission_too_high")
     await user_service.get_user(db, owner_id)
     if await db.scalar(select(AgencyMember.user_id).where(AgencyMember.user_id == owner_id, AgencyMember.status == "active")):
         raise ConflictError("Bu kişi başka bir ajansın yayıncısı.", code="owner_is_member")
@@ -135,8 +141,9 @@ async def _dashboard(db: AsyncSession, agency: Agency) -> AgencyDashboard:
     order = {"active": 0, "applied": 1, "invited": 2}
     members.sort(key=lambda m: (order[m.status], -m.month_diamonds))
     total = sum(diamonds.values())
+    _host_total, commission, _hosts = await _earnings(db, agency.id, period_start("month"), utcnow())
     return AgencyDashboard(agency=await _present(db, agency), members=members, month_diamonds=total,
-                           estimated_commission=total * agency.commission_percent // 100,
+                           estimated_commission=commission,
                            settlements=await my_settlements(db, agency))
 
 
@@ -317,24 +324,19 @@ def _month_range(month: str) -> tuple[datetime, datetime]:
     return local_day_start(first), local_day_start(following)
 
 
-async def _host_diamonds(db: AsyncSession, agency_id: int, month: str) -> tuple[int, int]:
+async def _earnings(db: AsyncSession, agency_id: int, start: datetime, end: datetime) -> tuple[int, int, int]:
     """
-    Ajansın aktif yayıncılarının o ay kazandığı elmas ve yayıncı sayısı.
-    Yalnızca yayıncının ajansa KATILDIKTAN sonraki kazancı sayılır. Yoksa ajans sahibi, ay kapanmadan
-    hemen önce o ay çok kazanmış birini ajansa alıp onun eski kazancından da komisyon alabilirdi.
+    Ajansın [start, end) arasındaki kazanç kayıtları: (yayıncıların elması, ajans komisyonu, yayıncı sayısı).
+    Kayıt hediye anında yazıldığı için yalnızca yayıncı ajanstayken gelen hediyeler sayılır: ay kapanmadan
+    hemen önce çok kazanmış birini ajansa alıp onun eski kazancından komisyon almak mümkün değil.
     """
-    start, end = _month_range(month)
-    members = list(await db.execute(select(AgencyMember.user_id, AgencyMember.joined_at).where(
-        AgencyMember.agency_id == agency_id, AgencyMember.status == "active")))
-    total = 0
-    for user_id, joined_at in members:
-        since = max(start, as_utc(joined_at)) if joined_at else start
-        total += int(await db.scalar(
-            select(func.coalesce(func.sum(Transaction.amount), 0))
-            .where(Transaction.user_id == user_id, Transaction.type == "gift_received",
-                   Transaction.created_at >= since, Transaction.created_at < end)
-        ))
-    return total, len(members)
+    host_total, commission, hosts = (await db.execute(
+        select(func.coalesce(func.sum(AgencyEarning.host_diamonds), 0),
+               func.coalesce(func.sum(AgencyEarning.commission_diamonds), 0),
+               func.count(func.distinct(AgencyEarning.host_id)))
+        .where(AgencyEarning.agency_id == agency_id, AgencyEarning.created_at >= start, AgencyEarning.created_at < end)
+    )).one()
+    return int(host_total), int(commission), int(hosts)
 
 
 def _settlement_out(row: AgencySettlement, agency: Agency) -> AgencySettlementOut:
@@ -356,30 +358,30 @@ async def month_overview(db: AsyncSession, month: str) -> list[AgencySettlementO
         if agency.id in settled:
             result.append(_settlement_out(settled[agency.id], agency))
             continue
-        diamonds, member_count = await _host_diamonds(db, agency.id, month)
+        diamonds, commission, member_count = await _earnings(db, agency.id, *_month_range(month))
         result.append(AgencySettlementOut(
             agency_id=agency.id, agency_name=agency.name, month=month, host_diamonds=diamonds,
-            commission_percent=agency.commission_percent,
-            commission_diamonds=diamonds * agency.commission_percent // 100, member_count=member_count, settled=False,
+            commission_percent=revenue_service.effective_commission(agency),
+            commission_diamonds=commission, member_count=member_count, settled=False,
         ))
     return result
 
 
 async def settle_month(db: AsyncSession, staff_id: int, agency_id: int, month: str) -> AgencySettlementOut:
     """
-    Ajansın bir ayını kapatır ve komisyonu ajans sahibine elmas olarak öder.
-    Kapatıldığı andaki aktif yayıncıların o ayki kazancı esas alınır.
+    Ajansın bir ayını kapatır ve komisyonu ajans sahibine elmas olarak öder: o ay hediye anında
+    yazılmış kazanç kayıtlarının (agency_earnings) toplamı.
     """
     agency = await db.get(Agency, agency_id)
     if agency is None:
         raise NotFoundError("Ajans bulunamadı.")
-    start, _end = _month_range(month)
+    start, end = _month_range(month)
     if start >= period_start("month"):
         raise AppError("Yalnızca bitmiş aylar kapatılabilir.", code="month_not_finished")
-    diamonds, member_count = await _host_diamonds(db, agency.id, month)
-    commission = diamonds * agency.commission_percent // 100
+    diamonds, commission, member_count = await _earnings(db, agency.id, start, end)
     row = AgencySettlement(
-        agency_id=agency.id, month=month, host_diamonds=diamonds, commission_percent=agency.commission_percent,
+        agency_id=agency.id, month=month, host_diamonds=diamonds,
+        commission_percent=revenue_service.effective_commission(agency),
         commission_diamonds=commission, member_count=member_count, settled_by=staff_id,
     )
     db.add(row)

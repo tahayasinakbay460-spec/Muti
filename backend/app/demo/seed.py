@@ -26,7 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import sync_id_sequences, utcnow
 from app.core.security import hash_password
 from app.models import (
-    Agency, AgencyMember, Report, Conversation, Couple, Event, Family, FamilyMember, FamilyMessage, Follow, Message, Moment,
+    Agency, AgencyEarning, AgencyMember, Report, Conversation, Couple, Event, Family, FamilyMember, FamilyMessage, Follow, Message, Moment,
     MomentLike, ProfileVisit, Room, RoomFollow, RoomMessage, StoreItem, Transaction, User,
 )
 from app.services import catalog_service, store_service, vip_service
@@ -255,6 +255,10 @@ async def seed_database(db: AsyncSession, with_admin: bool = True) -> None:
     rng = random.Random(42)
     packages = {pid: coins + bonus for pid, coins, bonus, *_ in catalog_service.COIN_PACKAGES}
     gift_prices = [price for _gid, _name, _emoji, price in catalog_service.GIFTS]
+    # Ajans yayıncısı → (ajans, oran): geçmiş hediyelerinden ajansa kazanç kaydı yazılsın
+    agency_hosts = {uid: (aid, commission) for aid, _n, _o, commission, members in AGENCIES
+                         for uid, status, _t in members if status == "active"}
+    seed_earnings = []
     for days_ago in range(1, HISTORY_DAYS):
         day = now - timedelta(days=days_ago)
         # Hafta sonu daha hareketli
@@ -270,9 +274,17 @@ async def seed_database(db: AsyncSession, with_admin: bool = True) -> None:
             at = day - timedelta(minutes=rng.randint(0, 600))
             db.add(Transaction(user_id=sender, type="gift_sent", currency="coin", amount=-price, balance_after=5000,
                                label="Hediye (örnek veri)", counterparty_id=receiver, created_at=at))
-            db.add(Transaction(user_id=receiver, type="gift_received", currency="diamond", amount=price // 2,
-                               balance_after=price // 2, label="Hediye alındı (örnek veri)", counterparty_id=sender,
+            agency_id, commission = agency_hosts.get(receiver, (None, 0))
+            # Ajans yayıncısı ajansa katıldıktan sonra (20 gün önce) daha yüksek pay alır, ajans da komisyon
+            joined = agency_id is not None and days_ago < 20
+            diamonds = price * (60 if joined else 50) // 100
+            db.add(Transaction(user_id=receiver, type="gift_received", currency="diamond", amount=diamonds,
+                               balance_after=diamonds, label="Hediye alındı (örnek veri)", counterparty_id=sender,
                                created_at=at))
+            if joined:
+                seed_earnings.append(AgencyEarning(
+                    agency_id=agency_id, host_id=receiver, source="gift", coins=price, host_diamonds=diamonds,
+                    commission_percent=commission, commission_diamonds=price * commission // 100, created_at=at))
         if rng.random() < 0.35:
             db.add(Transaction(user_id=rng.choice(HISTORY_USERS), type="vip_purchase", currency="coin",
                                amount=-rng.choice([3000, 8000]), balance_after=5000, label="VIP (örnek veri)",
@@ -292,6 +304,8 @@ async def seed_database(db: AsyncSession, with_admin: bool = True) -> None:
                          joined_at=now - timedelta(days=20) if status == "active" else None)
             for uid, status, target in members
         ])
+    await db.flush()
+    db.add_all(seed_earnings)
     db.add_all([
         Report(reporter_id=reporter, target_type=kind, target_id=target, reason=reason, details=details,
                created_at=now - timedelta(hours=index + 1))

@@ -24,7 +24,9 @@ from app.realtime.duels import duels
 from app.realtime.hub import room_hub
 from app.realtime.state import room_state
 from app.schemas.room import RoomMemberOut, RoomOut, RoomUpdateRequest
-from app.services import activity_service, media_service, notification_service, room_service, treasure_service, user_service
+from app.services import (
+    activity_service, live_service, media_service, notification_service, room_service, treasure_service, user_service,
+)
 from app.services.room_service import ADMIN, HOST, LISTENER, ROLE_RANK
 from app.voice import voice_provider
 
@@ -320,5 +322,6 @@ async def shut_down_room(db: AsyncSession, room: Room) -> None:
     await room_state.drop_room(room.id)
     treasure_service.drop_room(room.id)
     activity_service.drop_room(room.id)
+    live_service.drop_room(room.id)
     duels.drop_room(room.id)
     await voice_provider.close_room(room.id)

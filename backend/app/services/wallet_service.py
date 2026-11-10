@@ -17,19 +17,19 @@ from app.core.database import utcnow
 from app.core.errors import ConflictError, InsufficientBalanceError, NotFoundError, UnavailableError
 from app.core.logs import audit
 from app.core.timefmt import as_utc, time_ago_label
-from app.models import CoinPackage, StoreItem, Transaction, User
+from app.models import CoinDealer, CoinPackage, StoreItem, Transaction, User
 from app.schemas.economy import (
     CoinPackageOut, ExchangeResult, IncomeSummary, PurchaseResult, Supporter, TransactionOut,
 )
 from app.schemas.store import StoreItemBrief
-from app.services import user_service
+from app.services import revenue_service, user_service
 
 
 async def change_balance(
     db: AsyncSession,
     *,
     user_id: int,
-    currency: str,            # "coin" | "diamond"
+    currency: str,            # "coin" | "diamond" | "dealer_coin" (bayinin satılık stoğu)
     delta: int,               # artı: ekle, eksi: düş
     type: str,                # bkz. Transaction.type
     label: str,
@@ -58,9 +58,13 @@ async def change_balance(
     Veritabanı bu komutu bölünmez şekilde çalıştırır. Bakiye yetmiyorsa hiçbir satır
     değişmez; biz de bunu "yetersiz bakiye" olarak anlarız.
     """
-    column = User.coin_balance if currency == "coin" else User.diamond_balance
+    if currency == "dealer_coin":
+        # Bayi stoğu ayrı tabloda durur (bkz. models/dealer.py) ama kural aynı: tek komutla kontrol + düşme.
+        table, column, key = CoinDealer, CoinDealer.stock, CoinDealer.user_id
+    else:
+        table, column, key = User, User.coin_balance if currency == "coin" else User.diamond_balance, User.id
 
-    statement = update(User).where(User.id == user_id).values({column: column + delta}).returning(column)
+    statement = update(table).where(key == user_id).values({column: column + delta}).returning(column)
     if delta < 0:
         statement = statement.where(column >= -delta)
     # synchronize_session=False: bellekteki User nesnelerini güncellemeye uğraşma,
@@ -71,7 +75,7 @@ async def change_balance(
     if balance_after is None:
         if delta < 0:
             raise InsufficientBalanceError()
-        raise NotFoundError("Kullanıcı bulunamadı.")
+        raise NotFoundError("Bayi bulunamadı." if currency == "dealer_coin" else "Kullanıcı bulunamadı.")
 
     db.add(Transaction(
         user_id=user_id, type=type, currency=currency, amount=delta, balance_after=balance_after,
@@ -266,7 +270,10 @@ async def income_summary(db: AsyncSession, user_id: int) -> IncomeSummary:
     users = await user_service.load_users_out(db, {row.counterparty_id for row in rows}, user_id)
 
     _, diamond_balance = await _balances(db, user_id)
+    agency = await revenue_service.active_agency_of(db, user_id)
     return IncomeSummary(
+        share_percent=settings.agency_host_share_percent if agency else settings.gift_receiver_share_percent,
+        agency_name=agency.name if agency else None,
         diamond_balance=diamond_balance,
         today_diamonds=today,
         week_diamonds=week,

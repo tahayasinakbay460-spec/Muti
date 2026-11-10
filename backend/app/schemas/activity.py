@@ -72,9 +72,16 @@ class DuelOut(BaseModel):
     deadline: datetime | None = None         # bu süreye kadar hamle yapılmazsa sıradaki kaybeder
 
 
+class LiveCameraOut(BaseModel):
+    """Odada açık kamera (kameralı canlı yayın): kimin, ne zamandan beri. Bkz. services/live_service.py."""
+    user_id: int
+    started_at: datetime
+
+
 class RoomActivities(BaseModel):
     """Odaya girince bir kez alınan güncel durum (sonrası WebSocket olaylarıyla güncellenir)."""
     pk: PkOut | None
     media: MediaOut | None
     karaoke: KaraokeOut
     duels: list[DuelOut]
+    camera: LiveCameraOut | None = None

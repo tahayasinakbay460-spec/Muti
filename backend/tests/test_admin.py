@@ -143,8 +143,12 @@ def test_agency_flow(client, admin):
     owner_id, host_id = me(client, owner)["id"], me(client, host)["id"]
     make_host(client, host)
 
+    # Komisyon üst sınırı (.env AGENCY_COMMISSION_MAX_PERCENT = 15) aşılamaz.
+    too_high = client.post(f"{API}/admin/agencies", headers=admin,
+                           json={"name": "Test Ajans", "owner_id": owner_id, "commission_percent": 20})
+    assert too_high.json()["code"] == "commission_too_high"
     agency = client.post(f"{API}/admin/agencies", headers=admin,
-                         json={"name": "Test Ajans", "owner_id": owner_id, "commission_percent": 20}).json()
+                         json={"name": "Test Ajans", "owner_id": owner_id, "commission_percent": 10}).json()
     assert agency["owner"]["id"] == owner_id and agency["member_count"] == 0
     duplicate = client.post(f"{API}/admin/agencies", headers=admin, json={"name": "Başka", "owner_id": owner_id})
     assert duplicate.status_code == 409
@@ -161,16 +165,26 @@ def test_agency_flow(client, admin):
 
     # Yayıncı hediye aldıkça ajans paneli bu ayki kazancı ve tahmini komisyonu gösterir.
     client.put(f"{API}/agencies/me/members/{host_id}/target", headers=owner, json={"monthly_target": 1000})
-    client.post(f"{API}/gifts/send", headers=fan, json={"receiver_id": host_id, "gift_id": 6})   # 299 coin → 149 elmas
+    # 299 coin: ajans yayıncısı %60 → 179 elmas (bağımsız olsaydı %50 → 149); ajans %10 → 29 elmas
+    client.post(f"{API}/gifts/send", headers=fan, json={"receiver_id": host_id, "gift_id": 6})
     panel = client.get(f"{API}/agencies/me", headers=owner).json()
     assert panel["role"] == "owner"
     member = panel["dashboard"]["members"][0]
-    assert (member["month_diamonds"], member["monthly_target"], member["progress_percent"]) == (149, 1000, 14)
-    assert panel["dashboard"]["estimated_commission"] == 149 * 20 // 100
-    assert client.get(f"{API}/agencies/me", headers=host).json()["my_month_diamonds"] == 149
+    assert (member["month_diamonds"], member["monthly_target"], member["progress_percent"]) == (179, 1000, 17)
+    assert panel["dashboard"]["estimated_commission"] == 299 * 10 // 100
+    assert client.get(f"{API}/agencies/me", headers=host).json()["my_month_diamonds"] == 179
+    income = client.get(f"{API}/wallet/income", headers=host).json()
+    assert (income["share_percent"], income["agency_name"]) == (60, "Test Ajans")
 
     left = client.delete(f"{API}/agencies/me/membership", headers=host).json()
     assert left["role"] is None and client.delete(f"{API}/agencies/me/membership", headers=host).status_code == 400
+    # Ajanstan ayrılınca bağımsız pay (%50); ajansa yeni kazanç yazılmaz ama geçmiş kazancı durur.
+    client.post(f"{API}/admin/users/{me(client, fan)['id']}/balance", headers=admin,
+                json={"currency": "coin", "amount": 500, "reason": "Test coini"})
+    client.post(f"{API}/gifts/send", headers=fan, json={"receiver_id": host_id, "gift_id": 6})
+    assert client.get(f"{API}/agencies/me", headers=host).json()["my_month_diamonds"] == 179 + 149
+    assert client.get(f"{API}/agencies/me", headers=owner).json()["dashboard"]["estimated_commission"] == 29
+    assert client.get(f"{API}/wallet/income", headers=host).json()["share_percent"] == 50
 
     # Davet reddedilebilir ve sahibi daveti geri çekebilir.
     client.post(f"{API}/agencies/me/members/{host_id}", headers=owner)
@@ -178,6 +192,13 @@ def test_agency_flow(client, admin):
     client.post(f"{API}/agencies/me/members/{host_id}", headers=owner)
     assert client.delete(f"{API}/agencies/me/members/{host_id}", headers=owner).json()["members"] == []
     assert client.post(f"{API}/agencies/me/invite/accept", headers=host).status_code == 404
+
+
+def test_revenue_rates_are_public_to_users(client, guest):
+    rates = client.get(f"{API}/economy/rates", headers=guest).json()
+    assert (rates["independent_host_percent"], rates["agency_host_percent"], rates["agency_commission_max_percent"]) == (50, 60, 15)
+    # Ajans yayıncısı + en yüksek komisyon bile hediyenin tamamını almaz: sahte hediye döngüsü zarar ettirir
+    assert rates["agency_host_percent"] + rates["agency_commission_max_percent"] < 100
 
 
 def test_seeded_agency_invite_for_main_user(client, muti):

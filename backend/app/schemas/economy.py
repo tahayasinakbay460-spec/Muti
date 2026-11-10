@@ -82,8 +82,31 @@ class Supporter(BaseModel):
     diamonds: int             # bu kişinin hediyeleriyle kazandığım toplam elmas
 
 
+class RevenueRates(BaseModel):
+    """
+    Gelir paylaşım oranları (yüzde) ve coin fiyatı. GET /economy/rates.
+    Örnek: 100 coinlik hediyede bağımsız yayıncı 50 elmas alır; ajans yayıncısı 60 elmas alır,
+    ajansı da (oranı %10 ise) 10 elmas komisyon hak eder.
+    """
+    independent_host_percent: int
+    agency_host_percent: int
+    agency_commission_max_percent: int
+    lucky_gift_host_percent: int
+    call_host_percent: int
+    call_agency_host_percent: int
+    call_voice_price_per_minute: int
+    call_video_price_per_minute: int
+    diamond_to_coin_rate: int
+    coin_price_per_1000_kurus: int   # 3000 = 1000 coin 30,00 TL (liste fiyatı)
+    dealer_discount_percent: int
+    withdrawals_enabled: bool
+
+
 class IncomeSummary(BaseModel):
     """Yayıncı geliri: hediyelerden kazanılan elmaslar."""
+    # Bu kişinin şu anki payı (hediye değerinin yüzdesi) ve bağlı olduğu ajans
+    share_percent: int = 0
+    agency_name: str | None = None
     diamond_balance: int
     today_diamonds: int
     week_diamonds: int

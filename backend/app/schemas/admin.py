@@ -96,6 +96,7 @@ class AdminRoomOut(BaseModel):
     listener_count: int
     is_live: bool
     created_at: datetime
+    has_camera: bool = False   # kameralı yayın açık (panelde "Yayını kapat" tuşu)
 
 
 # ── Ajans ─────────────────────────────────────────────────────────────────────
@@ -103,6 +104,7 @@ class AdminRoomOut(BaseModel):
 class AgencyCreateRequest(BaseModel):
     name: str = Field(min_length=2, max_length=40)
     owner_id: int
+    # Hediye değerinin yüzdesi; üst sınır .env AGENCY_COMMISSION_MAX_PERCENT (servis kontrol eder).
     commission_percent: int = Field(default=10, ge=0, le=50)
 
     _strip_name = field_validator("name", mode="before")(_strip)

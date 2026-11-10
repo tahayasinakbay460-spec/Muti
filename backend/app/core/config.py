@@ -11,7 +11,7 @@ Kullanımı:
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # backend/ klasörünün tam yolu (bu dosya backend/app/core/config.py içinde)
@@ -109,8 +109,19 @@ class Settings(BaseSettings):
     # ── Ekonomi ───────────────────────────────────────────────────────────────
     # Yeni kayıt olan kullanıcıya verilen hoş geldin coini.
     signup_bonus_coins: int = 500
-    # Hediyenin coin değerinin yüzde kaçı alıcıya elmas (diamond) olarak geçer.
+    # ── Yayıncı geliri ve ajans payı (bkz. services/revenue_service.py) ──────
+    # Hediyenin coin değerinin yüzde kaçı alıcıya elmas (diamond) olarak geçer: BAĞIMSIZ yayıncı
+    # (ajansı olmayan) ve hediye alan sıradan kullanıcı.
     gift_receiver_share_percent: int = Field(default=50, ge=0, le=100)
+    # Ajansa bağlı yayıncının payı. Bağımsızdan yüksek: ajansa katılmak yayıncıya da kazandırır.
+    agency_host_share_percent: int = Field(default=60, ge=0, le=100)
+    # Ajans komisyonu HEDİYE DEĞERİ üzerinden hesaplanır ve yayıncının payından kesilmez (bizim
+    # payımızdan çıkar). Her ajansın oranını panel belirler; bu sayı üst sınırdır.
+    # Örnek (100 coin hediye, ajans %10): yayıncı 60, ajans 10, uygulama 30.
+    agency_commission_max_percent: int = Field(default=15, ge=0, le=50)
+    # Uygulamaya her hediyede en az bu kadar pay kalmalı. Ayarlar bunu bozarsa uygulama açılmaz
+    # (yoksa ajans kendi hesaplarından kendi yayıncısına hediye gönderip kâr edebilirdi).
+    platform_min_share_percent: int = Field(default=20, ge=0, le=100)
     # Yayıncı geliri: 1 elmas çevrilince kaç coin olur.
     diamond_to_coin_rate: int = Field(default=1, ge=1)
     # Elmasların gerçek paraya çevrilip çekilmesi. Ödeme altyapısı ve kimlik doğrulama
@@ -125,6 +136,8 @@ class Settings(BaseSettings):
     call_voice_price_per_minute: int = Field(default=30, ge=0)
     call_video_price_per_minute: int = Field(default=60, ge=0)
     call_receiver_share_percent: int = Field(default=50, ge=0, le=100)
+    # Aranan bir ajansın yayıncısıysa payı (hediyedeki gibi bağımsızdan yüksek; ajans komisyonu da eklenir).
+    call_agency_host_share_percent: int = Field(default=60, ge=0, le=100)
     # Aranan bu kadar saniye içinde açmazsa arama "cevapsız" olur.
     call_ring_seconds: int = Field(default=30, ge=5)
 
@@ -183,6 +196,34 @@ class Settings(BaseSettings):
     # DEMO KISAYOLU: "21:05" gibi saat etiketlerini sunucu üretiyor (Türkiye = UTC+3).
     # Mobil uygulamada istemci `created_at` alanını kendi saat dilimine çevirmeli.
     display_utc_offset_hours: int = 3
+
+    # ── Coin fiyatı ve bayiler ────────────────────────────────────────────────
+    # Coinin liste fiyatı: 1000 coin kaç kuruş (3000 = 30,00 TL). Tutarlar kuruş olarak tamsayı
+    # tutulur (float yok). Panel bu sayıyla hediyelerin ve payların TL karşılığını gösterir.
+    coin_price_per_1000_kurus: int = Field(default=3000, ge=1)
+    # Bayi (coin satıcısı) bizden coin'i liste fiyatından bu kadar indirimli alır; aradaki fark
+    # bayinin kazancıdır. Panel stok yüklerken önerilen tutarı bununla hesaplar.
+    dealer_discount_percent: int = Field(default=15, ge=0, le=90)
+    # Yeni bayinin varsayılan günlük satış sınırı (coin). Çalıntı kartla alınmış stoğun bir günde
+    # dağıtılmasını sınırlar; panel bayi başına değiştirebilir.
+    dealer_default_daily_limit: int = Field(default=500_000, ge=1)
+
+    # ── Kameralı canlı yayın ──────────────────────────────────────────────────
+    # Yayın görüntüsünün kalitesi (Agora ön ayarı). Yüksek kalite = yüksek ücret (bkz. YOL_HARITASI).
+    live_video_profile: str = "480p_1"
+    # Mesh (Agora'sız) kipte yayıncının telefonu görüntüyü her izleyiciye ayrı gönderir;
+    # bu kadar izleyiciden sonra yeni izleyici yalnızca sesi duyar.
+    live_mesh_max_viewers: int = Field(default=8, ge=1)
+
+    @model_validator(mode="after")
+    def _payouts_leave_platform_share(self) -> "Settings":
+        # Ajans komisyonu + ajans yayıncısının payı hediyenin tamamını yutmasın.
+        for host_share in (self.agency_host_share_percent, self.call_agency_host_share_percent):
+            if host_share + self.agency_commission_max_percent > 100 - self.platform_min_share_percent:
+                raise ValueError("Ajans yayıncısı payı + ajans komisyonu, uygulama payına yer bırakmıyor.")
+        if self.agency_host_share_percent < self.gift_receiver_share_percent:
+            raise ValueError("Ajans yayıncısının payı bağımsız yayıncıdan düşük olamaz.")
+        return self
 
     @field_validator("database_url")
     @classmethod

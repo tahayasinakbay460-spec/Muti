@@ -1,11 +1,32 @@
 // Cüzdan: "Coin" sekmesi (bakiye, paketler, geçmiş) ve "Gelir" sekmesi (hediyelerden kazanılan elmaslar)
 import { api } from '../api.js';
 import { esc, icon, avatarImg, formatCoins, toast } from '../ui.js';
+import { flagEmoji } from '../countries.js';
 
 const TX_ICONS = {
   gift_sent: 'gift', gift_received: 'gift', exchange: 'flame', lucky_win: 'flame', chest_reward: 'gift',
-  vip_purchase: 'crown', vip_daily: 'crown', store_purchase: 'crown',
+  vip_purchase: 'crown', vip_daily: 'crown', store_purchase: 'crown', dealer_topup: 'wallet',
 };
+
+// Resmi bayiler: kullanıcı bayiye mesaj atar, ödemeyi bayiyle yapar, bayi coin'i ID'sine gönderir
+function dealerSection(dealers) {
+  if (!dealers.length) return '';
+  return `
+    <section class="section">
+      <div class="section-head"><h2>Bayiden coin al</h2></div>
+      <p class="demo-note">Resmi bayilerimize yaz, ödemeyi onlarla yap; coin birkaç dakikada hesabına gelir.
+        <b>Yalnızca bu listedeki bayilere ödeme yap.</b> Kendini bayi diye tanıtan başka hesaplar dolandırıcıdır.</p>
+      ${dealers.map((d) => `
+        <div class="member-row">
+          ${avatarImg(d.user, 'avatar-md')}
+          <span class="member-info">
+            <b>${d.user.country ? `${flagEmoji(d.user.country)} ` : ''}${esc(d.user.display_name)} <span class="dealer-badge">Resmi bayi</span></b>
+            <small>${esc(d.note || `ID ${d.user.id}`)}</small>
+          </span>
+          <button class="btn btn-sm btn-primary" data-dealer-chat="${d.user.id}">Yaz</button>
+        </div>`).join('')}
+    </section>`;
+}
 
 // Hediye paketi: coinin yanında süreli bir mağaza eşyası verir
 function bundleCard(p) {
@@ -55,6 +76,11 @@ export async function renderWallet(root, { query }) {
 
   // ─── COIN ──────────────────────────────────────────────────────────────────
   async function renderCoins() {
+    // Bayi listesi ve (bayiysem) kendi panelim; biri gelmezse cüzdan yine açılır
+    const [dealers, myDealer] = await Promise.all([
+      api.listDealers().catch(() => []),
+      api.getMyDealerPanel().catch(() => null),
+    ]);
     panel.innerHTML = `
       <section class="balance-card">
         <small>Coin bakiyen</small>
@@ -65,6 +91,15 @@ export async function renderWallet(root, { query }) {
           <a class="btn btn-sm btn-glass" href="#/vip">👑 VIP</a>
         </div>
       </section>
+
+      ${myDealer ? `
+      <a class="dealer-entry" href="#/dealer">
+        <span>🪙</span>
+        <span><b>Bayi paneli</b><small>Stok: ${formatCoins(myDealer.stock)} coin${myDealer.status === 'suspended' ? ' · Askıda' : ''}</small></span>
+        ${icon('chevron-right', 18)}
+      </a>` : ''}
+
+      ${dealerSection(dealers)}
 
       ${bundles.length ? `
       <section class="section">
@@ -97,13 +132,16 @@ export async function renderWallet(root, { query }) {
 
   // ─── GELİR (yayıncı) ───────────────────────────────────────────────────────
   async function renderIncome() {
-    const [income, history] = await Promise.all([api.getIncome(), api.listTransactions('diamond')]);
+    const [income, history, rates] = await Promise.all([
+      api.getIncome(), api.listTransactions('diamond'), api.getRevenueRates().catch(() => null),
+    ]);
     panel.innerHTML = `
       <section class="balance-card balance-card-diamond">
         <small>Elmas bakiyen</small>
         <div class="balance-amount"><span class="diamond-lg">💎</span><b id="diamond-balance">${formatCoins(income.diamond_balance)}</b></div>
-        <p>Odada sana gönderilen her hediyenin değerinin bir kısmı elmas olarak hesabına geçer.</p>
+        <p>Sana gönderilen her hediyenin değerinin <b>%${income.share_percent}</b>'i elmas olarak hesabına geçer${income.agency_name ? ` (${esc(income.agency_name)} ajansı)` : ''}.</p>
       </section>
+      ${income.agency_name ? '' : `<p class="demo-note" id="agency-hint"></p>`}
 
       <div class="income-stats">
         <div><b>${formatCoins(income.today_diamonds)}</b><small>Bugün</small></div>
@@ -139,6 +177,10 @@ export async function renderWallet(root, { query }) {
         <div class="tx-list">${transactionRows(history, ' 💎')}</div>
       </section>`;
 
+    const hint = panel.querySelector('#agency-hint');
+    if (hint && rates) {
+      hint.innerHTML = `💡 Bir ajansa katılan yayıncılar hediyenin <b>%${rates.agency_host_percent}</b>'ini alır (şu an %${rates.independent_host_percent}). <a href="#/rooms?tab=mine">Ajanslara bak</a>`;
+    }
     const form = panel.querySelector('#exchange-form');
     panel.querySelector('[data-exchange-all]').addEventListener('click', () => {
       form.elements.diamonds.value = income.diamond_balance;
@@ -170,6 +212,18 @@ export async function renderWallet(root, { query }) {
   root.addEventListener('click', async (event) => {
     const tabButton = event.target.closest('[data-wallet-tab]');
     if (tabButton && tabButton.dataset.walletTab !== tab) return showTab(tabButton.dataset.walletTab);
+
+    const dealerChat = event.target.closest('[data-dealer-chat]');
+    if (dealerChat) {
+      dealerChat.disabled = true;
+      try {
+        location.hash = `#/chat/${await api.openConversationWith(Number(dealerChat.dataset.dealerChat))}`;
+      } catch (error) {
+        toast(error.message, 'error');
+        dealerChat.disabled = false;
+      }
+      return;
+    }
 
     const button = event.target.closest('[data-package]');
     if (!button || button.disabled) return;

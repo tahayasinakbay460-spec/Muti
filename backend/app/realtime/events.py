@@ -33,6 +33,7 @@ ROOM_CHEST_CLAIMED = "room:chest_claimed"      # { user, coins, coins_left }
 ROOM_PK_UPDATED = "room:pk_updated"            # { pk }  (başladı / puan değişti / bitti)
 ROOM_MEDIA_UPDATED = "room:media_updated"      # { media | null }  (birlikte izleme)
 ROOM_KARAOKE_UPDATED = "room:karaoke_updated"  # { karaoke: { singer, queue } }
+ROOM_CAMERA_UPDATED = "room:camera_updated"    # { camera: { user_id, started_at } | null, reason }  (kameralı yayın)
 GAME_DUEL_UPDATED = "game:duel_updated"        # { table }  (iki kişilik masa durumu)
 GAME_DUEL_CLOSED = "game:duel_closed"          # { table_id }
 ERROR = "error"                                # { code, detail }  (yalnızca hatayı yapan kişiye)
@@ -62,6 +63,9 @@ CLOSE_REPLACED = 4409       # aynı hesap başka cihazdan odaya girdi → yenide
 # Sesli görüşme (yalnızca mesh sağlayıcıda; bkz. app/voice/mesh.py).
 # İstemci → sunucu: { to, description?, candidate? }   Sunucu → alıcı: { from, description?, candidate? }
 VOICE_SIGNAL = "voice:signal"
+# Kameralı yayının görüntü bağlantısı (yalnızca mesh). Biçim voice:signal ile aynı; yalnızca yayıncı
+# ile bir izleyici arasında taşınır (bkz. room_socket._relay_live_signal).
+LIVE_SIGNAL = "live:signal"
 
 # "Kim konuşuyor" göstergesi sunucudan gelmez: her istemci duyduğu sesin şiddetinden kendisi hesaplar.
 

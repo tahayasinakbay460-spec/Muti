@@ -42,6 +42,8 @@ class RoomOut(BaseModel):
     is_following: bool = False
     # Odada şu an PK (hediye yarışı) sürüyor mu: listede "PK" rozeti için.
     has_pk: bool = False
+    # Kameralı canlı yayın: kamerası açık yayıncının id'si (yoksa null). Listede 🎥 rozeti için.
+    camera_user_id: int | None = None
 
 
 class CountryRoomCount(BaseModel):

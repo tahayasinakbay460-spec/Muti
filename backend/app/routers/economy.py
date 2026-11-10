@@ -11,9 +11,9 @@ from fastapi import APIRouter, Header, Query
 from app.core.deps import CurrentUserId, DbSession
 from app.schemas.economy import (
     CoinPackageOut, ExchangeRequest, ExchangeResult, GiftOut, GiftSendRequest, GiftSendResult, IncomeSummary,
-    PurchaseRequest, PurchaseResult, TransactionOut,
+    PurchaseRequest, PurchaseResult, RevenueRates, TransactionOut,
 )
-from app.services import gift_service, wallet_service
+from app.services import gift_service, revenue_service, wallet_service
 
 router = APIRouter(tags=["economy"])
 
@@ -32,6 +32,12 @@ async def list_gifts(_user_id: CurrentUserId, db: DbSession):
 async def send_gift(data: GiftSendRequest, user_id: CurrentUserId, db: DbSession, idempotency_key: IdempotencyKey = None):
     """Hediye gönderir. Bakiye yetmezse 402 `insufficient_balance` döner."""
     return await gift_service.send_gift(db, user_id, data, idempotency_key)
+
+
+@router.get("/economy/rates", response_model=RevenueRates)
+async def get_revenue_rates(_user_id: CurrentUserId):
+    """Hediye ve aramada yayıncı / ajans payları, coin liste fiyatı (Ajans ve Yayıncı ol ekranları için)."""
+    return revenue_service.rates()
 
 
 @router.get("/wallet/packages", response_model=list[CoinPackageOut])

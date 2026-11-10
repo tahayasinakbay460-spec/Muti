@@ -20,8 +20,13 @@ from app.schemas.admin import (
     GrantVipRequest, ReportResolveRequest, StaffActionOut, StaffMemberOut, StaffRoleUpdate, StaffSessionOut,
     StaffSessionRequest,
 )
+from app.schemas.dealer import (
+    DealerAdminDetail, DealerAdminOut, DealerCreateRequest, DealerStockRequest, DealerUpdateRequest,
+)
+from app.schemas.economy import RevenueRates
 from app.schemas.host import HostApplicationAdminOut, HostReviewRequest, HostRevokeRequest
-from app.services import admin_service, agency_service, host_service, staff_service
+from app.routers.economy import IdempotencyKey
+from app.services import admin_service, agency_service, dealer_service, host_service, revenue_service, staff_service
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -118,6 +123,12 @@ async def list_rooms(_staff: Staff("rooms.manage"), db: DbSession):
 @router.delete("/rooms/{room_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def close_room(room_id: int, staff: Staff("rooms.manage"), db: DbSession):
     await admin_service.close_room(db, staff.user.id, room_id, reason="admin_panel")
+
+
+@router.delete("/rooms/{room_id}/camera", status_code=status.HTTP_204_NO_CONTENT)
+async def stop_room_camera(room_id: int, staff: Staff("rooms.manage"), db: DbSession):
+    """Kameralı yayını anında kapatır; oda açık kalır, yayıncıya bildirim gider."""
+    await admin_service.stop_camera(db, staff.user.id, room_id)
 
 
 @router.get("/conversations", response_model=list[AdminConversationOut])
@@ -258,3 +269,43 @@ async def agency_settlements(
 async def settle_agency(agency_id: int, data: AgencySettleRequest, staff: Staff("agencies.settle", recent_auth=True), db: DbSession):
     """Ajansın bitmiş bir ayını kapatır ve komisyonu ajans sahibine elmas olarak öder (her ay bir kez)."""
     return await agency_service.settle_month(db, staff.user.id, agency_id, data.month)
+
+
+# ── Gelir oranları ve coin bayileri ───────────────────────────────────────────
+
+@router.get("/economy/rates", response_model=RevenueRates)
+async def revenue_rates(_staff: Staff("finance.view")):
+    """Yayıncı / ajans payları ve coin fiyatı (.env'den; değiştirmek için sunucu ayarı + yeniden başlatma)."""
+    return revenue_service.rates()
+
+
+@router.get("/dealers", response_model=list[DealerAdminOut])
+async def list_dealers(_staff: Staff("dealers.manage"), db: DbSession):
+    return await dealer_service.list_dealers(db)
+
+
+@router.post("/dealers", response_model=DealerAdminDetail, status_code=status.HTTP_201_CREATED)
+async def create_dealer(data: DealerCreateRequest, staff: Staff("dealers.manage", recent_auth=True), db: DbSession):
+    return await dealer_service.create_dealer(db, staff.user.id, data.user_id, data.daily_limit, data.note)
+
+
+@router.get("/dealers/{user_id}", response_model=DealerAdminDetail)
+async def get_dealer(user_id: int, _staff: Staff("dealers.manage"), db: DbSession):
+    return await dealer_service.dealer_detail(db, user_id)
+
+
+@router.patch("/dealers/{user_id}", response_model=DealerAdminDetail)
+async def update_dealer(user_id: int, data: DealerUpdateRequest, staff: Staff("dealers.manage", recent_auth=True), db: DbSession):
+    """Askıya alma (`status: suspended`) anında etkili: bayi bir sonraki satışta reddedilir."""
+    return await dealer_service.update_dealer(db, staff.user.id, user_id, data.status, data.daily_limit, data.note)
+
+
+@router.post("/dealers/{user_id}/stock", response_model=DealerAdminDetail)
+async def load_dealer_stock(
+    user_id: int, data: DealerStockRequest, staff: Staff("dealers.manage", recent_auth=True), db: DbSession,
+    idempotency_key: IdempotencyKey = None,
+):
+    """Bayinin bize yaptığı ödemeyi (kuruş + dekont no) kaydeder ve stoğu yükler. Eksi = stoktan geri alma."""
+    return await dealer_service.load_stock(
+        db, staff.user.id, user_id, data.coins, data.paid_kurus, data.payment_ref, idempotency_key,
+    )

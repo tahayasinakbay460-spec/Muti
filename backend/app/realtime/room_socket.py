@@ -39,7 +39,9 @@ from app.realtime.duels import duels
 from app.realtime.games import roulette
 from app.realtime.hub import room_hub
 from app.realtime.state import room_state
-from app.services import activity_service, engagement_service, message_service, room_service, user_service
+from app.services import (
+    activity_service, engagement_service, live_service, message_service, room_service, user_service,
+)
 from app.voice import voice_provider
 
 logger = logging.getLogger(__name__)
@@ -111,6 +113,22 @@ async def _relay_voice_signal(room_id: int, sender_id: int, signal: events.Voice
     })
 
 
+async def _relay_live_signal(room_id: int, sender_id: int, signal: events.VoiceSignalIn) -> None:
+    """
+    Kameralı yayının görüntü bağlantı mesajı (mesh). Yalnızca yayıncı ile odadaki bir izleyici arasında:
+    iki izleyici bu yoldan birbirine görüntü kanalı açamaz.
+    """
+    if signal.to == sender_id or not await room_state.is_in_room(room_id, signal.to):
+        return
+    if not (live_service.is_streamer(room_id, sender_id) or live_service.is_streamer(room_id, signal.to)):
+        return
+    await room_hub.send_to_user(room_id, signal.to, events.LIVE_SIGNAL, {
+        "from": sender_id,
+        "description": signal.description.model_dump() if signal.description else None,
+        "candidate": signal.candidate.model_dump() if signal.candidate else None,
+    })
+
+
 async def _complete_departure(room_id: int, user_id: int) -> None:
     """Kişi odadan gerçekten gitti: koltuğunu boşalt, odaya duyur, oyun ve karaoke sırasından çıkar."""
     if await room_state.leave_seat(room_id, user_id):
@@ -122,6 +140,8 @@ async def _complete_departure(room_id: int, user_id: int) -> None:
     # Odadan tamamen çıkan oyuncu masasında hükmen kaybeder, karaoke sırasından düşer.
     await duels.leave(room_id, user_id)
     await activity_service.leave_karaoke(user_id, room_id)
+    # Yayıncı gittiyse kameralı yayın da biter.
+    await live_service.on_departure(room_id, user_id)
 
 
 async def _depart_after_grace(room_id: int, user_id: int) -> None:
@@ -318,6 +338,17 @@ async def room_socket(websocket: WebSocket, room_id: int, token: str = "", resum
                     await _send_error(websocket, "invalid_signal", "Ses bağlantı mesajı hatalı.")
                     continue
                 await _relay_voice_signal(room_id, user_id, signal)
+
+            elif event == events.LIVE_SIGNAL and voice_provider.relays_signals:
+                # Ses sinyaliyle aynı hız sınırını paylaşır (bir kişi sinyalle sunucuyu boğamasın).
+                if not voice_limiter.allow():
+                    continue
+                try:
+                    signal = events.VoiceSignalIn.model_validate(payload)
+                except ValidationError:
+                    await _send_error(websocket, "invalid_signal", "Görüntü bağlantı mesajı hatalı.")
+                    continue
+                await _relay_live_signal(room_id, user_id, signal)
 
             elif event == events.GIFT_SENT:
                 # Bilerek yok sayılıyor. Hediye yayını yalnızca POST /gifts/send başarılı

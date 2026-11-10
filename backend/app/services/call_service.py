@@ -35,7 +35,7 @@ from app.models import Call
 from app.realtime import events
 from app.realtime.hub import user_hub
 from app.schemas.call import CallOut, CallStartRequest
-from app.services import message_service, user_service, wallet_service
+from app.services import message_service, revenue_service, user_service, wallet_service
 from app.voice import VoiceJoinInfo, voice_provider
 
 logger = logging.getLogger("muti.calls")
@@ -209,7 +209,9 @@ async def _charge_minute(db: AsyncSession, call: Call) -> bool:
     minute = call.billed_minutes + 1
     price = call.price_per_minute
     if price > 0:
-        income = price * settings.call_receiver_share_percent // 100
+        # Aranan ajans yayıncısıysa payı daha yüksek, ajans da komisyon hak eder (bkz. revenue_service).
+        split = await revenue_service.split_income(db, callee_id, price, "call")
+        income = split.host_diamonds
         key = f"call:{call_id}:{minute}"
 
         async def debit() -> int:
@@ -235,6 +237,7 @@ async def _charge_minute(db: AsyncSession, call: Call) -> bool:
             else:
                 await credit()
                 balance = await debit()
+            revenue_service.record_agency_share(db, split, callee_id, price, "call")
         except InsufficientBalanceError:
             await db.rollback()
             return False

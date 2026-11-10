@@ -15,6 +15,7 @@ SUNUCU MEDYAYA DOKUNAMAZ: mikrofon engeli ve koltuk kuralını istemciler uygula
 Dinleyiciler, koltukta olmayan ya da mikrofonu kapalı görünen birinin sesini kendi
 tarafında kısar; bu yüzden kuralı çiğneyen değiştirilmiş bir istemcinin sesi de duyulmaz.
 """
+from app.core.config import settings
 from app.voice.base import VoiceJoinInfo, VoiceProvider
 from app.voice.ice import ice_servers_for
 
@@ -29,3 +30,11 @@ class MeshVoiceProvider(VoiceProvider):
     async def call_join_info(self, call_id: int, user_id: int, display_name: str) -> VoiceJoinInfo:
         # Aramada sinyal oda kanalı yerine kişiye özel kanaldan (/ws/me, `call:signal`) taşınır.
         return VoiceJoinInfo(provider=self.name, can_publish=True, ice_servers=ice_servers_for(user_id))
+
+    async def live_join_info(self, room_id: int, user_id: int, is_streamer: bool) -> VoiceJoinInfo:
+        # Yayıncının tarayıcısı görüntüyü her izleyiciye ayrı gönderir (sinyal: oda kanalında `live:signal`).
+        # Telefonun yükleme hızı sınırlı olduğu için izleyici sayısı sınırlı (LIVE_MESH_MAX_VIEWERS).
+        return VoiceJoinInfo(
+            provider=self.name, can_publish=is_streamer, ice_servers=ice_servers_for(user_id),
+            max_viewers=settings.live_mesh_max_viewers,
+        )

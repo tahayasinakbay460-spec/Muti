@@ -1,7 +1,7 @@
 // Masaüstü yönetim paneli. Uygulamanın veri katmanını (api.js) kullanır: aynı giriş, aynı token.
 // Panele girerken şifre ayrıca sorulur (panel oturumu, 15 dk hareketsizlikte kilitlenir).
 // Menü personelin rolüne göre çizilir; asıl yetki kontrolü sunucuda (backend core/permissions.py).
-import { api, setStaffAuthHandler } from '../api.js';
+import { api, newIdempotencyKey, setStaffAuthHandler } from '../api.js';
 import { esc, formatCoins, formatCount } from '../ui.js';
 import { APP_URL, DEFAULT_AVATAR_URL } from '../config.js';
 import { REASONS } from '../screens/report.js';
@@ -20,6 +20,8 @@ const PAGES = [
   { id: 'catalog', label: 'Hediye & Paketler', icon: '🎁', perm: 'catalog.manage' },
   { id: 'agencies', label: 'Ajanslar', icon: '🏢', perm: 'agencies.manage' },
   { id: 'settlements', label: 'Ajans Komisyonu', icon: '💸', perm: 'agencies.settle' },
+  { id: 'revenue', label: 'Gelir Oranları', icon: '📐', perm: 'finance.view' },
+  { id: 'dealers', label: 'Coin Bayileri', icon: '🪙', perm: 'dealers.manage' },
   { id: 'hosts', label: 'Yayıncı Başvuruları', icon: '🎙️', perm: 'hosts.review' },
   { id: 'broadcast', label: 'Duyuru', icon: '📢', perm: 'broadcast.send' },
   { id: 'staff', label: 'Ekip', icon: '🛡️', perm: 'staff.manage' },
@@ -35,6 +37,8 @@ const STAFF_ACTION_LABELS = {
   package_updated: 'Paket düzenlendi', broadcast_sent: 'Duyuru gönderildi', agency_created: 'Ajans kuruldu',
   staff_role_changed: 'Personel rolü değişti', host_approved: 'Yayıncı onaylandı', host_rejected: 'Yayıncı reddedildi',
   host_revoked: 'Yayıncılık kaldırıldı', agency_month_settled: 'Ajans komisyonu ödendi',
+  dealer_created: 'Bayi tanımlandı', dealer_updated: 'Bayi güncellendi', dealer_stock_loaded: 'Bayiye stok yüklendi',
+  live_camera_stopped: 'Kameralı yayın kapatıldı',
 };
 
 // Para defterindeki işlem türlerinin Türkçe adları
@@ -44,6 +48,7 @@ const TX_LABELS = {
   chest_reward: 'Hazine sandığı', daily_checkin: 'Günlük giriş', task_reward: 'Görev ödülü', family_create: 'Aile kurma',
   cp_proposal: 'CP teklifi', cp_refund: 'CP iadesi', event_reward: 'Etkinlik ödülü', admin_adjustment: 'Yönetici düzeltmesi',
   reward: 'Ödül', call_charge: 'Arama ücreti', call_income: 'Arama geliri', agency_commission: 'Ajans komisyonu',
+  dealer_stock: 'Bayi stoğu', dealer_sale: 'Bayi satışı', dealer_topup: 'Bayiden coin',
 };
 const REASON_LABELS = Object.fromEntries(REASONS.map((r) => [r.id, r.label]));
 const ACTION_LABELS = { dismiss: 'Reddedildi', ban_user: 'Kullanıcı banlandı', close_room: 'Oda kapatıldı' };
@@ -442,9 +447,10 @@ async function roomsPage(main) {
         <thead><tr><th>Oda</th><th>Sahibi</th><th class="num">İçeride</th><th>Durum</th><th>Açılış</th><th></th></tr></thead>
         <tbody>${rooms.map((r) => `
           <tr><td><b>${esc(r.title)}</b><br /><small>ID ${r.id}</small></td><td>${userCell(r.host)}</td><td class="num">${r.listener_count}</td>
-          <td>${r.is_live ? '<span class="tag tag-red">CANLI</span>' : '<span class="tag">Açık</span>'}</td><td><small>${dateTime(r.created_at)}</small></td>
+          <td>${r.has_camera ? '<span class="tag tag-red">🎥 KAMERA</span>' : r.is_live ? '<span class="tag tag-red">CANLI</span>' : '<span class="tag">Açık</span>'}</td><td><small>${dateTime(r.created_at)}</small></td>
           <td class="num">${can('messages.read') ? `<button class="btn btn-sm" data-room-log="${r.id}" data-title="${esc(r.title)}">Sohbet geçmişi</button>` : ''}
             <a class="btn btn-sm" href="${APP_URL}/#/room/${r.id}" target="_blank" rel="noopener">Odaya git</a>
+            ${r.has_camera ? `<button class="btn btn-sm btn-danger" data-stop-camera="${r.id}">Yayını kapat</button>` : ''}
             <button class="btn btn-sm btn-danger" data-close-room="${r.id}">Kapat</button></td></tr>`).join('') || '<tr><td colspan="6" class="empty">Açık oda yok</td></tr>'}</tbody>
       </table></div>
       <div class="card" id="room-log" style="margin-top:16px" hidden></div>`;
@@ -457,6 +463,18 @@ async function roomsPage(main) {
       box.hidden = false;
       box.innerHTML = `<h2>${esc(log.dataset.title)} · sohbet geçmişi <small>${messages.length} mesaj · üstü çizili: odadan silinmiş</small></h2><div class="thread" style="max-height:460px">${threadHtml(messages)}</div>`;
       box.scrollIntoView({ behavior: 'smooth' });
+      return;
+    }
+    const stop = event.target.closest('[data-stop-camera]');
+    if (stop) {
+      if (!confirmTap(stop)) return;
+      try {
+        await api.adminStopCamera(Number(stop.dataset.stopCamera));
+        toast('Kameralı yayın kapatıldı; oda açık kaldı, yayıncıya bildirim gitti', 'success');
+        await render();
+      } catch (error) {
+        toast(error.message, 'error');
+      }
       return;
     }
     const button = event.target.closest('[data-close-room]');
@@ -808,10 +826,161 @@ async function activityPage(main) {
   await load();
 }
 
+// ─── Gelir oranları ───────────────────────────────────────────────────────────
+const tl = (kurus) => `${(kurus / 100).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} TL`;
+
+async function revenuePage(main) {
+  const r = await api.adminRevenueRates();
+  const coinTl = (coins) => tl(Math.round((coins * r.coin_price_per_1000_kurus) / 1000));
+  const sample = Math.min(10, r.agency_commission_max_percent);   // örnek ajans oranı
+  const row = (label, host, agency) => `
+    <tr><td>${label}</td><td class="num">%${host}</td><td class="num">${agency ? `%${agency}` : '—'}</td>
+      <td class="num"><b>%${100 - host - agency}</b></td><td class="num">${coinTl((1000 * (100 - host - agency)) / 100)}</td></tr>`;
+  main.innerHTML = `
+    <div class="card table-wrap">
+      <h2>1000 coinlik hediye kime gider?</h2>
+      <p style="color:var(--muted);margin-bottom:12px">1000 coin liste fiyatı ${coinTl(1000)}. Ajans oranı örnek olarak %${sample} (üst sınır %${r.agency_commission_max_percent}). Ajans komisyonu yayıncının payından kesilmez, uygulamanın payından çıkar.</p>
+      <table>
+        <thead><tr><th>Durum</th><th class="num">Yayıncı</th><th class="num">Ajans</th><th class="num">Uygulama</th><th class="num">Uygulamaya kalan</th></tr></thead>
+        <tbody>
+          ${row('Bağımsız yayıncı', r.independent_host_percent, 0)}
+          ${row('Ajans yayıncısı', r.agency_host_percent, sample)}
+          ${row('Ajans yayıncısı (en yüksek komisyon)', r.agency_host_percent, r.agency_commission_max_percent)}
+          ${row('Şanslı hediye', r.lucky_gift_host_percent, 0)}
+          ${row('Ücretli arama (bağımsız)', r.call_host_percent, 0)}
+          ${row('Ücretli arama (ajans)', r.call_agency_host_percent, sample)}
+        </tbody>
+      </table>
+    </div>
+    <div class="card" style="margin-top:16px">
+      <h2>Coin ayarları</h2>
+      <p>1000 coin liste fiyatı: <b>${tl(r.coin_price_per_1000_kurus)}</b> · Bayi indirimi: <b>%${r.dealer_discount_percent}</b> (bayiye 1000 coin ${tl((r.coin_price_per_1000_kurus * (100 - r.dealer_discount_percent)) / 100)})</p>
+      <p>Arama: sesli ${r.call_voice_price_per_minute} coin/dk · görüntülü ${r.call_video_price_per_minute} coin/dk · 1 elmas = ${r.diamond_to_coin_rate} coin · elmas çekimi ${r.withdrawals_enabled ? 'açık' : 'kapalı'}</p>
+      <p style="color:var(--muted)">Oranlar sunucu ayarında (.env): GIFT_RECEIVER_SHARE_PERCENT, AGENCY_HOST_SHARE_PERCENT, AGENCY_COMMISSION_MAX_PERCENT, COIN_PRICE_PER_1000_KURUS, DEALER_DISCOUNT_PERCENT. Değişiklik sunucu yeniden başlayınca geçerli olur. Uygulamaya PLATFORM_MIN_SHARE_PERCENT'ten az pay bırakan ayarla sunucu açılmaz.</p>
+    </div>`;
+}
+
+// ─── Coin bayileri ────────────────────────────────────────────────────────────
+async function dealersPage(main) {
+  let selected = null;
+
+  async function render() {
+    const dealers = await api.adminDealers();
+    main.innerHTML = `
+      <div class="card">
+        <h2>Yeni bayi</h2>
+        <form class="form-row" id="dealer-create">
+          <input class="input" name="user_id" type="number" placeholder="Kullanıcı ID" required />
+          <input class="input" name="daily_limit" type="number" min="1" placeholder="Günlük sınır (boş: varsayılan)" />
+          <input class="input" name="note" placeholder="Not (şehir, iletişim, sözleşme no)" maxlength="200" />
+          <button class="btn btn-primary">Bayi yap</button>
+        </form>
+      </div>
+      <div class="card table-wrap" style="margin-top:16px"><table>
+        <thead><tr><th>Bayi</th><th>Durum</th><th class="num">Stok</th><th class="num">Bugün / sınır</th><th class="num">Toplam yüklenen</th><th class="num">Bize ödenen</th><th></th></tr></thead>
+        <tbody>${dealers.map((d) => `
+          <tr><td>${userCell(d.user)}<small>${esc(d.note)}</small></td>
+            <td>${d.status === 'active' ? '<span class="tag">Aktif</span>' : '<span class="tag tag-red">Askıda</span>'}</td>
+            <td class="num">${formatCoins(d.stock)}</td><td class="num">${formatCoins(d.sold_today)} / ${formatCoins(d.daily_limit)}</td>
+            <td class="num">${formatCoins(d.total_loaded)}</td><td class="num">${tl(d.total_paid_kurus)}</td>
+            <td class="num"><button class="btn btn-sm" data-dealer="${d.user.id}">Aç</button></td></tr>`).join('') || '<tr><td colspan="7" class="empty">Bayi yok</td></tr>'}</tbody>
+      </table></div>
+      <div class="card" id="dealer-detail" style="margin-top:16px" hidden></div>`;
+    main.querySelector('#dealer-create').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const f = event.target.elements;
+      try {
+        const detail = await api.adminCreateDealer({
+          user_id: Number(f.user_id.value), daily_limit: f.daily_limit.value ? Number(f.daily_limit.value) : null, note: f.note.value,
+        });
+        toast(`${detail.dealer.user.display_name} artık bayi`, 'success');
+        selected = detail.dealer.user.id;
+        await render();
+      } catch (error) {
+        toast(error.message, 'error');
+      }
+    });
+    if (selected) await showDetail(selected);
+  }
+
+  async function showDetail(userId) {
+    selected = userId;
+    const { dealer: d, orders, sales, suggested_kurus_per_1000: suggested } = await api.adminDealer(userId);
+    const box = main.querySelector('#dealer-detail');
+    box.hidden = false;
+    // Form açılınca bir kez üretilir: "Stok yükle"ye iki kez basılsa da stok bir kez yüklenir
+    const stockKey = newIdempotencyKey();
+    box.innerHTML = `
+      <h2>${esc(d.user.display_name)} · stok ${formatCoins(d.stock)} coin</h2>
+      <form class="form-row" id="dealer-stock">
+        <input class="input" name="coins" type="number" placeholder="Coin (eksi: geri al)" required />
+        <input class="input" name="paid" type="number" step="0.01" min="0" placeholder="Bize ödenen (TL)" />
+        <input class="input" name="ref" placeholder="Dekont / fatura no" minlength="3" maxlength="100" required />
+        <button class="btn btn-primary">Stok yükle</button>
+      </form>
+      <p style="color:var(--muted)" id="suggest">Önerilen toptan fiyat: 1000 coin = ${tl(suggested)}</p>
+      <form class="form-row" id="dealer-update" style="margin-top:12px">
+        <input class="input" name="daily_limit" type="number" min="1" value="${d.daily_limit}" />
+        <input class="input" name="note" value="${esc(d.note)}" maxlength="200" />
+        <button class="btn">Kaydet</button>
+        <button type="button" class="btn ${d.status === 'active' ? 'btn-danger' : ''}" data-toggle-dealer>${d.status === 'active' ? 'Askıya al' : 'Yeniden aç'}</button>
+      </form>
+      <h3 style="margin-top:16px">Stok yüklemeleri</h3>
+      <table><tbody>${orders.map((o) => `<tr><td><small>${dateTime(o.created_at)}</small></td><td class="num">${signed(o.coins)}</td><td class="num">${tl(o.paid_kurus)}</td><td>${esc(o.payment_ref)}</td><td><small>${esc(o.created_by?.display_name || '')}</small></td></tr>`).join('') || '<tr><td class="empty">Yok</td></tr>'}</tbody></table>
+      <h3 style="margin-top:16px">Son satışlar</h3>
+      <table><tbody>${sales.map((s) => `<tr><td><small>${dateTime(s.created_at)}</small></td><td>${userCell(s.user)}</td><td class="num">${formatCoins(s.coins)}</td></tr>`).join('') || '<tr><td class="empty">Yok</td></tr>'}</tbody></table>`;
+
+    const stockForm = box.querySelector('#dealer-stock');
+    stockForm.elements.coins.addEventListener('input', () => {
+      const coins = Number(stockForm.elements.coins.value);
+      if (coins > 0) box.querySelector('#suggest').textContent = `Önerilen tutar: ${tl(Math.round((coins * suggested) / 1000))}`;
+    });
+    stockForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const f = event.target.elements;
+      try {
+        await api.adminLoadDealerStock(userId, {
+          coins: Number(f.coins.value), paid_kurus: Math.round(Number(f.paid.value || 0) * 100), payment_ref: f.ref.value,
+        }, stockKey);
+        toast('Stok yüklendi', 'success');
+        await render();
+      } catch (error) {
+        toast(error.message, 'error');
+      }
+    });
+    box.querySelector('#dealer-update').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const f = event.target.elements;
+      try {
+        await api.adminUpdateDealer(userId, { daily_limit: Number(f.daily_limit.value), note: f.note.value });
+        toast('Kaydedildi', 'success');
+        await render();
+      } catch (error) {
+        toast(error.message, 'error');
+      }
+    });
+    box.querySelector('[data-toggle-dealer]').addEventListener('click', async (event) => {
+      if (!confirmTap(event.target)) return;
+      try {
+        await api.adminUpdateDealer(userId, { status: d.status === 'active' ? 'suspended' : 'active' });
+        await render();
+      } catch (error) {
+        toast(error.message, 'error');
+      }
+    });
+  }
+
+  main.onclick = (event) => {
+    const open = event.target.closest('[data-dealer]');
+    if (open) showDetail(Number(open.dataset.dealer)).catch((error) => toast(error.message, 'error'));
+  };
+  await render();
+}
+
 const RENDERERS = {
   overview: overviewPage, finance: financePage, transactions: transactionsPage, users: usersPage, messages: messagesPage,
   rooms: roomsPage, reports: reportsPage, catalog: catalogPage, agencies: agenciesPage, broadcast: broadcastPage,
-  settlements: settlementsPage, hosts: hostsPage,
+  settlements: settlementsPage, hosts: hostsPage, revenue: revenuePage, dealers: dealersPage,
   staff: staffPage, activity: activityPage,
 };
 

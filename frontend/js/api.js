@@ -116,9 +116,8 @@ async function request(path, options) {
 
 // Para harcayan isteklerde gönderilir: bağlantı kopup istek tekrarlansa bile
 // backend aynı anahtarı ikinci kez işlemez (çifte harcama olmaz).
-const idempotencyHeader = () => ({
-  'Idempotency-Key': crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-});
+export const newIdempotencyKey = () => crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+const idempotencyHeader = () => ({ 'Idempotency-Key': newIdempotencyKey() });
 
 export const api = {
   isAuthenticated: () => Boolean(localStorage.getItem(STORAGE_KEYS.accessToken)),
@@ -163,6 +162,13 @@ export const api = {
   getNotificationUnreadCount: async () => (await request('/notifications/unread-count')).unread_count,
   markNotificationsRead: () => request('/notifications/read', { method: 'POST' }),
   getIncome: () => request('/wallet/income'),
+  // Yayıncı / ajans payları ve coin fiyatı (Ajans, Yayıncı ol, Bayi ekranları)
+  getRevenueRates: () => request('/economy/rates'),
+  // Coin bayileri: resmi bayi listesi, bayinin kendi paneli ve satış.
+  // Satışta anahtarı ekran verir: aynı form iki kez gönderilse de (çift dokunuş, ağ tekrarı) bir kez satılır.
+  listDealers: () => request('/dealers'),
+  getMyDealerPanel: () => request('/dealers/me'),
+  sellCoins: (userId, coins, key) => request('/dealers/me/sales', { method: 'POST', body: { user_id: userId, coins }, headers: { 'Idempotency-Key': key } }),
   exchangeDiamonds: (diamonds) => request('/wallet/exchange', { method: 'POST', body: { diamonds }, headers: idempotencyHeader() }),
   getUser: (id) => request(`/users/${id}`),
   getProfileExtras: (id) => request(`/users/${id}/profile`),
@@ -260,6 +266,10 @@ export const api = {
   getEvent: (id) => request(`/events/${id}`),
   // ── Oda içi etkinlikler (PK, birlikte izleme, karaoke); iki kişilik oyunlar WebSocket'te ──
   getActivities: (roomId) => request(`/rooms/${roomId}/activities`),
+  // Kameralı canlı yayın: aç / kapat / görüntü kanalına bağlanma bilgisi
+  startCamera: (roomId) => request(`/rooms/${roomId}/camera`, { method: 'POST' }),
+  stopCamera: (roomId) => request(`/rooms/${roomId}/camera`, { method: 'DELETE' }),
+  getCameraJoin: (roomId) => request(`/rooms/${roomId}/camera/join`),
   startPk: (roomId, minutes) => request(`/rooms/${roomId}/pk`, { method: 'POST', body: { minutes } }),
   stopPk: (roomId) => request(`/rooms/${roomId}/pk`, { method: 'DELETE' }),
   setMedia: (roomId, url) => request(`/rooms/${roomId}/media`, { method: 'PUT', body: { url } }),
@@ -302,6 +312,13 @@ export const api = {
   adminAdjustBalance: (id, payload) => request(`/admin/users/${id}/balance`, { method: 'POST', body: payload }),
   adminRooms: () => request('/admin/rooms'),
   adminCloseRoom: (id) => request(`/admin/rooms/${id}`, { method: 'DELETE' }),
+  adminStopCamera: (id) => request(`/admin/rooms/${id}/camera`, { method: 'DELETE' }),
+  adminRevenueRates: () => request('/admin/economy/rates'),
+  adminDealers: () => request('/admin/dealers'),
+  adminDealer: (userId) => request(`/admin/dealers/${userId}`),
+  adminCreateDealer: (payload) => request('/admin/dealers', { method: 'POST', body: payload }),
+  adminUpdateDealer: (userId, changes) => request(`/admin/dealers/${userId}`, { method: 'PATCH', body: changes }),
+  adminLoadDealerStock: (userId, payload, key) => request(`/admin/dealers/${userId}/stock`, { method: 'POST', body: payload, headers: { 'Idempotency-Key': key } }),
   adminAgencies: () => request('/admin/agencies'),
   adminAgencySettlements: (month = '') => request(`/admin/agency-settlements${month ? `?month=${encodeURIComponent(month)}` : ''}`),
   adminSettleAgency: (agencyId, month) => request(`/admin/agencies/${agencyId}/settle`, { method: 'POST', body: { month } }),
