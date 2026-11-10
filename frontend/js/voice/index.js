@@ -13,6 +13,7 @@
 // onConnectionLost(true/false) = ses koptu, tuşu göster / bağlantı yeniden deneniyor, gizle.
 import { api } from '../api.js';
 import { retried } from './retry.js';
+import { mediaBlockedReason } from './secure.js';
 
 const CLIENTS = {
   mesh: () => import('./mesh.js'),
@@ -21,8 +22,10 @@ const CLIENTS = {
 };
 
 export async function joinVoice({ room, me, channel, onSpeaking, onError, onConnectionLost, isCancelled = () => false }) {
-  if (!window.RTCPeerConnection) {
-    onError('Bu tarayıcı sesli görüşmeyi desteklemiyor.');
+  // Güvensiz adreste (telefondan http://192.168...) mikrofon hiç açılamaz: sebebini söyle
+  const blocked = mediaBlockedReason();
+  if (blocked) {
+    onError(blocked);
     return null;
   }
   // Odaya girerken ağ bir an gittiyse kişi sessiz kalmasın. Odadan atılan için denemenin anlamı yok.

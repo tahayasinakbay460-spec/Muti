@@ -32,7 +32,7 @@ class MeshVoiceProvider(VoiceProvider):
         return VoiceJoinInfo(provider=self.name, can_publish=True, ice_servers=ice_servers_for(user_id))
 
     async def live_join_info(self, room_id: int, user_id: int, is_streamer: bool) -> VoiceJoinInfo:
-        # Yayıncının tarayıcısı görüntüyü her izleyiciye ayrı gönderir (sinyal: oda kanalında `live:signal`).
+        # Yayıncının tarayıcısı ses + görüntüyü her izleyiciye ayrı gönderir (sinyal: oda kanalında `live:signal`).
         # Telefonun yükleme hızı sınırlı olduğu için izleyici sayısı sınırlı (LIVE_MESH_MAX_VIEWERS).
         return VoiceJoinInfo(
             provider=self.name, can_publish=is_streamer, ice_servers=ice_servers_for(user_id),

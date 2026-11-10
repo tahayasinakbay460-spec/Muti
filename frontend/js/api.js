@@ -266,7 +266,8 @@ export const api = {
   getEvent: (id) => request(`/events/${id}`),
   // ── Oda içi etkinlikler (PK, birlikte izleme, karaoke); iki kişilik oyunlar WebSocket'te ──
   getActivities: (roomId) => request(`/rooms/${roomId}/activities`),
-  // Kameralı canlı yayın: aç / kapat / görüntü kanalına bağlanma bilgisi
+  // Tam ekran canlı yayın: yayın odamı aç (yoksa oluşur), yayına çık / bitir, ses + görüntü bağlantı bilgisi
+  openMyStream: (title) => request('/rooms/live', { method: 'POST', body: title ? { title } : {} }),
   startCamera: (roomId) => request(`/rooms/${roomId}/camera`, { method: 'POST' }),
   stopCamera: (roomId) => request(`/rooms/${roomId}/camera`, { method: 'DELETE' }),
   getCameraJoin: (roomId) => request(`/rooms/${roomId}/camera/join`),

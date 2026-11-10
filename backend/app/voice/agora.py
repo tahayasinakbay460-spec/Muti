@@ -141,8 +141,8 @@ class AgoraVoiceProvider(VoiceProvider):
 
     async def live_join_info(self, room_id: int, user_id: int, is_streamer: bool) -> VoiceJoinInfo:
         channel = agora_live_channel_name(room_id)
-        # Görüntü kanalında ses yok (can_publish=False): yayıncının sesi oda ses kanalından gider.
-        token = build_rtc_token(self.app_id, self.app_certificate, channel, user_id, False, can_publish_video=is_streamer)
+        # Yayıncı ses + görüntü gönderir, izleyici yalnızca alır (token'ında gönderme izni yok).
+        token = build_rtc_token(self.app_id, self.app_certificate, channel, user_id, is_streamer, can_publish_video=is_streamer)
         return VoiceJoinInfo(
             provider=self.name, can_publish=is_streamer, app_id=self.app_id, channel=channel, token=token,
             video_profile=settings.live_video_profile,

@@ -17,6 +17,11 @@ from app.core.database import Base, BigIntPk, utcnow
 # kategori değil, "hepsini göster" anlamına gelen filtredir).
 ROOM_CATEGORIES = ("chat", "music", "game", "new_people")
 
+# Oda türü: "voice" = koltuklu sesli oda, "live" = tek yayıncılı tam ekran kameralı yayın
+# (Bigo/TikTok canlısı gibi; koltuk yok, izleyiciler sohbet eder ve hediye atar).
+# Her yayıncının tek bir "live" odası olur; yayın açıp kapattıkça aynı oda kullanılır.
+ROOM_KINDS = ("voice", "live")
+
 
 class Room(Base):
     __tablename__ = "rooms"
@@ -24,6 +29,7 @@ class Room(Base):
     id: Mapped[int] = mapped_column(BigIntPk, primary_key=True)
     title: Mapped[str] = mapped_column(String(60))
     category: Mapped[str] = mapped_column(String(32), index=True)
+    kind: Mapped[str] = mapped_column(String(8), default="voice", server_default="voice", index=True)
     cover_url: Mapped[str | None] = mapped_column(String(500))
     announcement: Mapped[str] = mapped_column(String(300), default="")
     # Odanın sahibi (host).

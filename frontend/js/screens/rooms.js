@@ -61,13 +61,13 @@ function roomRow(room) {
 function liveCard(room) {
   const speakers = room.seats.filter((s) => s.user).length;
   return `
-    <a class="live-card" href="#/room/${room.id}">
+    <a class="live-card" href="#/${room.kind === 'live' ? 'live' : 'room'}/${room.id}">
       <span class="live-card-cover">
         <img src="${esc(room.cover_url)}" alt="" loading="lazy" />
         ${room.has_pk ? '<span class="pill pill-pk live-card-pk">PK</span>' : ''}
-        ${room.camera_user_id ? '<span class="pill pill-live live-card-camera">🎥 Kamera</span>' : ''}
+        ${room.kind === 'live' ? '<span class="pill pill-live live-card-camera">🎥 Canlı yayın</span>' : ''}
         <span class="live-card-heat">${icon('flame', 13)}${formatCount(room.listener_count)}</span>
-        <span class="live-card-mic">${icon('mic', 12)}${speakers}</span>
+        ${room.kind === 'live' ? '' : `<span class="live-card-mic">${icon('mic', 12)}${speakers}</span>`}
       </span>
       <b>${esc(room.title)}</b>
       <span class="live-card-host">${avatarImg(room.host, 'avatar-xs')}<span>${esc(room.host.display_name)}</span>${room.host.country ? `<i title="${esc(countryName(room.host.country))}">${flagEmoji(room.host.country)}</i>` : ''}</span>
@@ -241,8 +241,24 @@ export async function renderRooms(root, { query }) {
     paintPopular();
   }
 
+  // Yayıncıysa yayın odası açılır (yoksa oluşturulur) ve tam ekran yayına gidilir; değilse başvuru paneli
+  async function goLive() {
+    try {
+      const profile = await api.getMe();
+      if (!profile.is_host) {
+        toast('Canlı yayın onaylı yayıncılara açık. Önce başvur.');
+        openHostApplySheet();
+        return;
+      }
+      location.hash = `#/live/${(await api.openMyStream()).id}`;
+    } catch (error) {
+      toast(error.message, 'error');
+    }
+  }
+
   function paintLive() {
     body.innerHTML = `
+      <button class="go-live-btn" data-action="go-live">🎥 <span><b>Canlı yayın aç</b><small>Yüzünü göster, takipçilerin bildirim alsın</small></span>${icon('chevron-right', 18)}</button>
       ${eventStrip(events)}
       <div class="live-grid" id="room-list"></div>
       <div class="feed-sentinel" id="room-sentinel"></div>`;
@@ -260,7 +276,7 @@ export async function renderRooms(root, { query }) {
   }
 
   function emptyText() {
-    if (tab === 'live') return 'Şu an mikrofonda kimse yok. Bir odaya gir, sohbeti sen başlat.';
+    if (tab === 'live') return 'Şu an yayında kimse yok. İlk yayını sen aç!';
     if (country && !rooms.length) return `${countryName(country)} için bu türde oda yok. Genel'e göz at.`;
     if (filter === 'pk') return 'Şu an PK yapan oda yok.';
     return filter === 'for_you' ? 'Başka oda yok; yukarıdakilere göz at.' : 'Bu türde şu an oda yok.';
@@ -365,6 +381,7 @@ export async function renderRooms(root, { query }) {
   }
 
   root.addEventListener('click', (event) => {
+    if (event.target.closest('[data-action="go-live"]')) { goLive(); return; }
     const tabButton = event.target.closest('[data-tab]');
     if (tabButton && tabButton.dataset.tab !== tab) { showTab(tabButton.dataset.tab); return; }
     const chip = event.target.closest('[data-filter]');

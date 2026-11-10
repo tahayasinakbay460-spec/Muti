@@ -23,6 +23,8 @@ class RoomOut(BaseModel):
     id: int
     title: str
     category: str
+    # "voice" = koltuklu sesli oda (#/room/:id), "live" = tam ekran kameralı yayın (#/live/:id)
+    kind: str = "voice"
     cover_url: str | None
     is_live: bool
     listener_count: int       # şu an odada kaç kişi var (canlı sayı)

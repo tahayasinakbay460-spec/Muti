@@ -8,8 +8,10 @@
 // localEl/remoteEl (görüntülerin çizileceği kutular), sendSignal/onSignal (yalnızca mesh), refreshInfo,
 // onRemoteVideo(var mı), onError(mesaj).
 import { loadSdk } from './agora.js';
+import { requireMedia } from './secure.js';
 
 export async function connectCallMedia(options) {
+  requireMedia();
   const media = options.info.provider === 'agora' ? new AgoraCallMedia(options) : new MeshCallMedia(options);
   try {
     await media.start();

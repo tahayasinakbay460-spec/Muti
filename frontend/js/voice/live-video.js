@@ -1,15 +1,18 @@
-// Kameralı canlı yayının GÖRÜNTÜ bağlantısı. Ses buradan gitmez: yayıncının sesi odanın ses
-// kanalından (koltuk) gider; bu dosya yalnızca kamerayı taşır (bkz. backend voice/base.py live_join_info).
-// Sağlayıcıyı sunucu söyler:
+// Tam ekran kameralı canlı yayının ses + görüntü bağlantısı (bkz. backend services/live_service.py).
+// Yayıncı mikrofon + kamera gönderir, izleyiciler yalnızca alır. İkisi aynı kanalda: ses ile görüntü
+// senkron kalır, izleyicinin dakikası bir kez sayılır. Sağlayıcıyı sunucu söyler:
 //   agora → herkes Agora'daki "live-<oda id>" kanalına girer; yayıncı "host", izleyiciler "audience"
-//   mesh  → yayıncının tarayıcısı görüntüyü her izleyiciye ayrı gönderir; bağlantı mesajları oda
-//           kanalından (`live:signal`) taşınır. İzleyici sayısı sınırlı (info.max_viewers).
+//   mesh  → yayıncının tarayıcısı ses + görüntüyü her izleyiciye ayrı gönderir; bağlantı mesajları
+//           oda kanalından (`live:signal`) taşınır. İzleyici sayısı sınırlı (info.max_viewers).
 //
 // Ekran şunları verir: info (GET /rooms/:id/camera/join), me, stageEl (görüntünün çizileceği kutu),
-// channel (oda WebSocket'i, yalnızca mesh), refreshInfo, onError(mesaj).
+// channel (oda WebSocket'i, yalnızca mesh), refreshInfo, onError(mesaj), onNeedsTap() (tarayıcı sesi
+// dokunmadan çalmıyor: ekran "Sesi aç" tuşu gösterir).
 import { loadSdk } from './agora.js';
+import { requireMedia } from './secure.js';
 
 export async function connectLiveVideo(options) {
+  requireMedia();
   const video = options.info.provider === 'agora' ? new AgoraLiveVideo(options) : new MeshLiveVideo(options);
   try {
     await video.start();
@@ -20,12 +23,28 @@ export async function connectLiveVideo(options) {
   return video;
 }
 
-function cameraErrorText(error) {
+function mediaErrorText(error) {
   if (error?.name === 'NotAllowedError' || error?.code === 'PERMISSION_DENIED') {
-    return 'Kamera izni verilmedi. Tarayıcı ayarlarından izin ver.';
+    return 'Kamera/mikrofon izni verilmedi. Tarayıcı ayarlarından izin ver.';
   }
-  if (error?.name === 'NotFoundError' || error?.code === 'DEVICE_NOT_FOUND') return 'Kamera bulunamadı.';
+  if (error?.name === 'NotFoundError' || error?.code === 'DEVICE_NOT_FOUND') return 'Kamera ya da mikrofon bulunamadı.';
   return 'Kamera açılamadı.';
+}
+
+// Yayına çıkmadan önce yayıncının kendini görmesi (yalnızca bu tarayıcıda, kimseye gitmez)
+export async function startPreview(stageEl, facingMode = 'user') {
+  requireMedia();
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode, width: { ideal: 720 }, height: { ideal: 1280 } }, audio: false,
+    });
+  } catch (error) {
+    throw Object.assign(new Error(mediaErrorText(error)), { code: 'camera_denied' });
+  }
+  const element = videoElement(stageEl, { muted: true, mirror: facingMode === 'user' });
+  element.srcObject = stream;
+  return { stop: () => stream.getTracks().forEach((track) => track.stop()) };
 }
 
 function videoElement(stageEl, { muted = false, mirror = false } = {}) {
@@ -37,41 +56,62 @@ function videoElement(stageEl, { muted = false, mirror = false } = {}) {
 }
 
 class AgoraLiveVideo {
-  constructor({ info, me, stageEl, refreshInfo, onError = () => {} }) {
-    Object.assign(this, { info, me, stageEl, refreshInfo, onError });
+  constructor({ info, me, stageEl, refreshInfo, onError = () => {}, onNeedsTap = () => {} }) {
+    Object.assign(this, { info, me, stageEl, refreshInfo, onError, onNeedsTap });
     this.isStreamer = info.can_publish;
     this.closed = false;
+    this.facingMode = 'user';
   }
 
   async start() {
     const AgoraRTC = await loadSdk();
+    this.AgoraRTC = AgoraRTC;
+    // Tarayıcı sesi dokunmadan çalmadı: dokununca yayıncının sesini yeniden başlat
+    AgoraRTC.onAutoplayFailed = () => this.onNeedsTap(() => this.client?.remoteUsers.forEach((u) => u.audioTrack?.play()));
     this.client = AgoraRTC.createClient({ mode: 'live', codec: 'vp8' });
     await this.client.setClientRole(this.isStreamer ? 'host' : 'audience');
-    // Yalnızca sunucunun söylediği yayıncının görüntüsü çizilir; başkası görüntü gönderse de görünmez
+    // Yalnızca sunucunun söylediği yayıncı çizilir/duyulur; başkası gönderse de görünmez
     this.client.on('user-published', async (user, mediaType) => {
-      if (mediaType !== 'video' || user.uid !== this.info.streamer_id || this.closed) return;
-      await this.client.subscribe(user, 'video');
-      user.videoTrack.play(this.stageEl, { fit: 'cover' });
+      if (user.uid !== this.info.streamer_id || this.closed) return;
+      await this.client.subscribe(user, mediaType);
+      if (mediaType === 'video') user.videoTrack.play(this.stageEl, { fit: 'cover' });
+      else user.audioTrack.play();
     });
     this.client.on('token-privilege-will-expire', async () => {
       try {
         this.info = await this.refreshInfo();
         await this.client.renewToken(this.info.token);
-      } catch { /* yenilenemezse süre dolunca görüntü kapanır; ses etkilenmez */ }
+      } catch { /* yenilenemezse süre dolunca bağlantı kapanır; ekran "yayın bitti" der */ }
     });
     await this.client.join(this.info.app_id, this.info.channel, this.info.token, this.me.id);
     if (!this.isStreamer || this.closed) return;
     try {
-      this.camera = await AgoraRTC.createCameraVideoTrack({ encoderConfig: this.info.video_profile || '480p_1' });
+      [this.mic, this.camera] = await AgoraRTC.createMicrophoneAndCameraTracks(
+        { AEC: true, ANS: true, AGC: true },
+        { encoderConfig: this.info.video_profile || '480p_1', facingMode: this.facingMode },
+      );
     } catch (error) {
-      throw Object.assign(new Error(cameraErrorText(error)), { code: 'camera_denied' });
+      throw Object.assign(new Error(mediaErrorText(error)), { code: 'camera_denied' });
     }
     this.camera.play(this.stageEl, { mirror: true, fit: 'cover' });
-    if (!this.closed) await this.client.publish(this.camera);
+    if (!this.closed) await this.client.publish([this.mic, this.camera]);
+  }
+
+  async setMicEnabled(enabled) { await this.mic?.setEnabled(enabled); }
+
+  // Ön / arka kamera (telefonda)
+  async switchCamera() {
+    if (!this.camera) return;
+    const devices = await this.AgoraRTC.getCameras();
+    if (devices.length < 2) return;
+    const current = this.camera.getTrackLabel();
+    const next = devices.find((d) => d.label !== current) || devices[0];
+    await this.camera.setDevice(next.deviceId);
   }
 
   close() {
     this.closed = true;
+    this.mic?.close();
     this.camera?.close();
     this.client?.removeAllListeners();
     this.client?.leave().catch(() => {});
@@ -79,10 +119,11 @@ class AgoraLiveVideo {
 }
 
 class MeshLiveVideo {
-  constructor({ info, me, stageEl, channel, onError = () => {} }) {
-    Object.assign(this, { info, me, stageEl, channel, onError });
+  constructor({ info, me, stageEl, channel, onError = () => {}, onNeedsTap = () => {} }) {
+    Object.assign(this, { info, me, stageEl, channel, onError, onNeedsTap });
     this.isStreamer = info.can_publish;
     this.peers = new Map();   // karşı taraf id → RTCPeerConnection
+    this.facingMode = 'user';
     this.onSignal = (signal) => this.handleSignal(signal);
     this.onLeft = ({ user_id: userId }) => this.dropPeer(userId);
   }
@@ -92,16 +133,19 @@ class MeshLiveVideo {
     if (this.isStreamer) {
       try {
         this.stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }, audio: false,
+          audio: { echoCancellation: true, noiseSuppression: true },
+          video: { facingMode: this.facingMode, width: { ideal: 640 }, height: { ideal: 960 } },
         });
       } catch (error) {
-        throw Object.assign(new Error(cameraErrorText(error)), { code: 'camera_denied' });
+        throw Object.assign(new Error(mediaErrorText(error)), { code: 'camera_denied' });
       }
-      videoElement(this.stageEl, { muted: true, mirror: true }).srcObject = this.stream;
+      // Kendi sesimizi duymayalım (muted); izleyiciye giden akış etkilenmez
+      videoElement(this.stageEl, { muted: true, mirror: true }).srcObject = new MediaStream(this.stream.getVideoTracks());
       return;
     }
-    // İzleyici bağlantıyı kendisi ister: yalnızca görüntü alacağını söyleyen bir teklif gönderir
+    // İzleyici bağlantıyı kendisi ister: yalnızca alacağını söyleyen bir teklif gönderir
     const pc = this.createPeer(this.info.streamer_id);
+    pc.addTransceiver('audio', { direction: 'recvonly' });
     pc.addTransceiver('video', { direction: 'recvonly' });
     await pc.setLocalDescription(await pc.createOffer());
     this.send(this.info.streamer_id, { description: pc.localDescription.toJSON() });
@@ -117,12 +161,19 @@ class MeshLiveVideo {
       if (candidate) this.send(userId, { candidate: candidate.toJSON() });
     };
     pc.ontrack = ({ streams: [remote] }) => {
-      const element = videoElement(this.stageEl, { muted: true });
-      element.srcObject = remote;
-      element.play().catch(() => {});
+      // Ses de görüntü de aynı <video> öğesinde çalar
+      let element = this.stageEl.querySelector('video');
+      if (!element) element = videoElement(this.stageEl);
+      if (element.srcObject !== remote) element.srcObject = remote;
+      element.play().catch(() => {
+        // Tarayıcı sesli videoyu dokunmadan oynatmadı: önce sessiz başlat, "Sesi aç" tuşu çıksın
+        element.muted = true;
+        element.play().catch(() => {});
+        this.onNeedsTap(() => { element.muted = false; element.play().catch(() => {}); });
+      });
     };
     pc.onconnectionstatechange = () => {
-      if (pc.connectionState === 'failed' && !this.isStreamer) this.onError('Yayın görüntüsü alınamadı. Ağın izin vermiyor olabilir.');
+      if (pc.connectionState === 'failed' && !this.isStreamer) this.onError('Yayına bağlanılamadı. Ağın izin vermiyor olabilir.');
     };
     return pc;
   }
@@ -151,8 +202,31 @@ class MeshLiveVideo {
         for (const queued of pc.pendingCandidates.splice(0)) await pc.addIceCandidate(queued).catch(() => {});
       }
     } catch {
-      if (!this.isStreamer) this.onError('Yayın görüntüsü alınamadı.');
+      if (!this.isStreamer) this.onError('Yayına bağlanılamadı.');
     }
+  }
+
+  async setMicEnabled(enabled) { this.stream?.getAudioTracks().forEach((t) => { t.enabled = enabled; }); }
+
+  // Ön / arka kamera: yeni kamerayı açıp bütün izleyici bağlantılarında görüntüyü değiştirir
+  async switchCamera() {
+    if (!this.stream) return;
+    this.facingMode = this.facingMode === 'user' ? 'environment' : 'user';
+    let fresh;
+    try {
+      fresh = await navigator.mediaDevices.getUserMedia({ video: { facingMode: this.facingMode } });
+    } catch {
+      return;
+    }
+    const [track] = fresh.getVideoTracks();
+    const [old] = this.stream.getVideoTracks();
+    this.peers.forEach((pc) => pc.getSenders().find((s) => s.track?.kind === 'video')?.replaceTrack(track));
+    this.stream.removeTrack(old);
+    old.stop();
+    this.stream.addTrack(track);
+    const element = this.stageEl.querySelector('video');
+    element.style.transform = this.facingMode === 'user' ? 'scaleX(-1)' : '';
+    element.srcObject = new MediaStream([track]);
   }
 
   dropPeer(userId) {

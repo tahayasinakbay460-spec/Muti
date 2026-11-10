@@ -72,6 +72,11 @@ class DuelOut(BaseModel):
     deadline: datetime | None = None         # bu süreye kadar hamle yapılmazsa sıradaki kaybeder
 
 
+class LiveOpenRequest(BaseModel):
+    """Yayın odamı aç (yoksa oluşturulur). Başlık verilirse güncellenir."""
+    title: str | None = Field(default=None, min_length=1, max_length=60)
+
+
 class LiveCameraOut(BaseModel):
     """Odada açık kamera (kameralı canlı yayın): kimin, ne zamandan beri. Bkz. services/live_service.py."""
     user_id: int

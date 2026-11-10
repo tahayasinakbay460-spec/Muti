@@ -4,6 +4,7 @@ Oda içi etkinlik uçları (/api/v1/rooms/{room_id}/...):
   pk               — takım hediye yarışı (oda sahibi / yönetici başlatır)
   media            — birlikte izleme (YouTube)
   karaoke          — şarkı sırası
+  live / camera    — tam ekran kameralı canlı yayın (yalnızca onaylı yayıncılar açar)
 İki kişilik oyunlar (Dört Bağla, Taş-Kağıt-Makas) WebSocket üzerinden oynanır (bkz. realtime/duels.py).
 """
 from fastapi import APIRouter, Response, status
@@ -11,9 +12,10 @@ from fastapi import APIRouter, Response, status
 from app.core.deps import CurrentUserId, DbSession
 from app.realtime.duels import duels
 from app.schemas.activity import (
-    KaraokeOut, LiveCameraOut, MediaControlRequest, MediaOut, MediaSetRequest, PkOut, PkStartRequest, RoomActivities,
+    KaraokeOut, LiveCameraOut, LiveOpenRequest, MediaControlRequest, MediaOut, MediaSetRequest, PkOut, PkStartRequest, RoomActivities,
 )
 from app.services import activity_service, live_service, room_service
+from app.schemas.room import RoomOut
 from app.voice import VoiceJoinInfo
 
 router = APIRouter(prefix="/rooms", tags=["activities"])
@@ -71,20 +73,26 @@ async def next_singer(room_id: int, user_id: CurrentUserId, db: DbSession):
     return await activity_service.next_singer(db, user_id, room_id)
 
 
+@router.post("/live", response_model=RoomOut)
+async def open_my_stream(data: LiveOpenRequest, user_id: CurrentUserId, db: DbSession):
+    """Yayıncının canlı yayın odası (yoksa açılır). Yayını başlatmaz: önce kamera önizlenir."""
+    return await live_service.open_my_stream(db, user_id, data.title)
+
+
 @router.post("/{room_id}/camera", response_model=LiveCameraOut)
 async def start_camera(room_id: int, user_id: CurrentUserId, db: DbSession):
-    """Kameralı yayını başlatır: yalnızca oda sahibi, onaylı yayıncıysa ve koltuktaysa."""
+    """Yayını başlatır (yayına çıkar): yalnızca yayın odasının sahibi, onaylı yayıncıysa."""
     return await live_service.start(db, user_id, room_id)
 
 
 @router.delete("/{room_id}/camera", status_code=status.HTTP_204_NO_CONTENT)
 async def stop_camera(room_id: int, user_id: CurrentUserId, db: DbSession):
-    """Yayıncının kendisi ya da oda yöneticisi yayını kapatır."""
+    """Yayıncının kendisi (ya da odada yöneticilik verdiği kişi) yayını bitirir."""
     await live_service.stop(db, user_id, room_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/{room_id}/camera/join", response_model=VoiceJoinInfo)
 async def join_camera(room_id: int, user_id: CurrentUserId, db: DbSession):
-    """Yayının görüntü kanalına bağlanma bilgisi (ses odadaki ses kanalından gelir)."""
+    """Yayının ses + görüntü kanalına bağlanma bilgisi (yayıncı gönderir, izleyici alır)."""
     return await live_service.join_info(db, user_id, room_id)

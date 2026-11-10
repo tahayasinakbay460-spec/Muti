@@ -132,6 +132,7 @@ async def present_rooms(db: AsyncSession, rooms: list[Room], viewer_id: int | No
             id=room.id,
             title=room.title,
             category=room.category,
+            kind=room.kind,
             cover_url=room.cover_url,
             is_live=room.is_live,
             listener_count=listener_counts[room.id],
@@ -162,20 +163,27 @@ async def present_rooms(db: AsyncSession, rooms: list[Room], viewer_id: int | No
 LIVE_SCAN_LIMIT = 500
 
 
-async def _live_room_ids(candidate_ids: list[int]) -> list[int]:
+async def _live_room_ids(candidates: list[Room]) -> list[int]:
     """
-    "Canlı" = koltuğunda (mikrofonda) en az bir kişi olan oda. Kamerası açık odalar (kameralı yayın)
-    en üstte, sonra kalabalıktan tenhaya.
+    "Canlı" = şu an yayında olan kameralı yayınlar (en üstte) + koltuğunda (mikrofonda) en az bir kişi
+    olan sesli odalar; her grup kalabalıktan tenhaya. Yayını kapalı kameralı yayın odası görünmez.
     Koltuklar veritabanında değil canlı depoda durduğu için filtre burada, Python'da yapılır.
     DEMO KISAYOLU: aday odaları tek tek tarıyoruz; canlıda Redis'te "mikrofonu dolu odalar"
     sıralı kümesi (sorted set) tutulur ve sayfa doğrudan oradan okunur.
     """
-    if not candidate_ids:
+    if not candidates:
         return []
+    candidate_ids = [room.id for room in candidates]
     seats = await room_state.get_seats(candidate_ids)
     counts = await room_state.listener_counts(candidate_ids)
     cameras = _camera_user_ids()
-    live = [rid for rid in candidate_ids if rid in cameras or any(seat.user_id is not None for seat in seats.get(rid, []))]
+
+    def is_live(room: Room) -> bool:
+        if room.kind == "live":
+            return room.id in cameras
+        return any(seat.user_id is not None for seat in seats.get(room.id, []))
+
+    live = [room.id for room in candidates if is_live(room)]
     return sorted(live, key=lambda rid: (rid in cameras, counts.get(rid, 0)), reverse=True)
 
 
@@ -192,8 +200,10 @@ async def list_rooms(
         for room in candidates:
             await room_state.ensure_room(room.id, room.seat_count)
         by_id = {room.id: room for room in candidates}
-        page_ids = (await _live_room_ids(list(by_id)))[offset:offset + limit]
+        page_ids = (await _live_room_ids(candidates))[offset:offset + limit]
         return await present_rooms(db, [by_id[rid] for rid in page_ids], viewer_id)
+    # Kameralı yayınlar yalnızca Canlı sekmesinde (yayındayken) görünür; diğer listeler sesli odalar.
+    statement = statement.where(Room.kind == "voice")
     # "for_you" gerçek bir kategori değil, "hepsi" demek. "pk" de kategori değil: PK'si süren odalar.
     if category == "pk":
         statement = statement.where(Room.id.in_(_running_pk_room_ids() or {0}))
@@ -268,7 +278,7 @@ async def list_room_countries(db: AsyncSession) -> list[CountryRoomCount]:
     rows = await db.execute(
         select(User.country, func.count(Room.id))
         .join(User, User.id == Room.host_id)
-        .where(Room.is_active, User.country.is_not(None))
+        .where(Room.is_active, Room.kind == "voice", User.country.is_not(None))
         .group_by(User.country)
         .order_by(func.count(Room.id).desc(), User.country)
     )
@@ -334,7 +344,7 @@ async def list_my_rooms(db: AsyncSession, user_id: int) -> list[MyRoomStats]:
     DEMO KISAYOLU: her istekte toplanıyor; canlıda günlük özet tablosu kullanılır.
     """
     rooms = list(await db.scalars(
-        select(Room).where(Room.host_id == user_id, Room.is_active).order_by(Room.id.desc())
+        select(Room).where(Room.host_id == user_id, Room.is_active, Room.kind == "voice").order_by(Room.id.desc())
     ))
     if not rooms:
         return []

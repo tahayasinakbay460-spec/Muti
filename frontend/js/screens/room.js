@@ -4,7 +4,6 @@ import { connectRoom } from '../realtime.js';
 import { joinVoice } from '../voice/index.js';
 import { openReportSheet } from './report.js';
 import { mountRoomActivities } from './room-activities.js';
-import { mountRoomCamera } from './room-camera.js';
 import { openGiftSheet as openGiftPicker } from './gift-sheet.js';
 import { CATEGORY_LABELS } from '../config.js';
 import { esc, icon, avatarImg, framedAvatar, formatCoins, vipBadge, levelBadge, toast, openSheet, joinParts, goBack } from '../ui.js';
@@ -43,6 +42,11 @@ export const roomSession = { exit: () => {}, getRoom: () => null };
 
 export async function renderRoom(root, { params }) {
   let [room, me, gifts] = await Promise.all([api.getRoom(params[0]), api.getMe(), api.listGifts()]);
+  // Kameralı yayın odası bağlantısıyla gelindiyse tam ekran yayına geç
+  if (room.kind === 'live') {
+    location.replace(`#/live/${room.id}`);
+    return () => {};
+  }
   roomSession.getRoom = () => room;
   let speakingIndexes = [];
   // Zar atıp sonucunu bekliyorsak, sonuç gelince çağrılacak fonksiyon
@@ -105,11 +109,6 @@ export async function renderRoom(root, { params }) {
         <button class="btn btn-sm btn-primary" data-action="voice-reconnect">Yeniden bağlan</button>
       </div>
       <div class="pk-bar" id="pk-bar" hidden></div>
-      <div class="live-stage" id="live-stage" hidden>
-        <div class="live-video"></div>
-        <span class="live-badge">🎥 CANLI</span>
-        <button class="btn btn-sm btn-glass live-stop" data-action="camera-stop" hidden>Yayını bitir</button>
-      </div>
       <div class="seat-grid" id="seats"></div>
       <div class="media-slot" id="media-slot" hidden></div>
 
@@ -138,8 +137,6 @@ export async function renderRoom(root, { params }) {
   const micBtn = root.querySelector('#mic-btn');
   // Oda içi etkinlikler (PK, birlikte izleme, karaoke, iki kişilik oyunlar); aşağıda bağlanır
   let activities = null;
-  // Kameralı canlı yayın (görüntü alanı); aşağıda bağlanır
-  let camera = null;
 
   // ─── KOLTUKLAR ─────────────────────────────────────────────────────────────
   function renderSeats() {
@@ -923,7 +920,6 @@ export async function renderRoom(root, { params }) {
         <button data-menu="share">${icon('share', 20)} Odayı paylaş</button>
         <button data-menu="announcement">${icon('bell', 20)} Oda duyurusu</button>
         <button data-menu="members">${icon('users', 20)} Odadakiler</button>
-        ${camera.canStream() ? `<button data-menu="camera">${icon('video', 20)} ${camera.isStreaming() ? 'Kamerayı kapat' : 'Kameralı yayın başlat'}</button>` : ''}
         ${isModerator() ? `<button data-menu="settings">${icon('edit', 20)} Oda ayarları</button>` : ''}
         ${roleOf(me.id) === 'host'
           ? `<button data-menu="close-room" class="is-danger">${icon('lock', 20)} Odayı kapat</button>`
@@ -939,7 +935,6 @@ export async function renderRoom(root, { params }) {
       else if (menu === 'announcement') toast(room.announcement);
       else if (menu === 'members') openMembersSheet();
       else if (menu === 'settings') openRoomSettingsSheet();
-      else if (menu === 'camera') camera.toggle();
       else if (menu === 'close-room') openCloseRoomSheet();
       else if (menu === 'report') openReportSheet('room', room.id, room.title);
       else toast('Oda bağlantısı kopyalandı');
@@ -1125,7 +1120,6 @@ export async function renderRoom(root, { params }) {
   }
 
   activities = mountRoomActivities({ root, getRoom: () => room, me, channel, isModerator, addSystemLine });
-  camera = mountRoomCamera({ root, getRoom: () => room, me, channel });
   renderSeats();
   addSystemLine(`📢 ${esc(room.announcement)}`);
 
@@ -1133,7 +1127,6 @@ export async function renderRoom(root, { params }) {
     isDisposed = true;
     clearInterval(chestTimer);
     activities.dispose();
-    camera.dispose();
     voice?.close();
     channel.close();
   };

@@ -14,7 +14,7 @@ from app.models.media import MEDIA_KINDS, MediaUpload
 from app.models.family import FAMILY_ROLES, Couple, Family, FamilyMember, FamilyMessage
 from app.models.message import MESSAGE_KINDS, Conversation, Message, RoomMessage
 from app.models.moment import Moment, MomentComment, MomentLike, ProfileVisit
-from app.models.room import ROOM_CATEGORIES, ROOM_MEMBER_ROLES, Room, RoomFollow, RoomMember, RoomVisit
+from app.models.room import ROOM_CATEGORIES, ROOM_KINDS, ROOM_MEMBER_ROLES, Room, RoomFollow, RoomMember, RoomVisit
 from app.models.social import INBOX_SECTIONS, REPORT_REASONS, REPORT_TARGET_TYPES, InboxSeen, Notification, Report, UserBlock
 from app.models.staff import StaffAction
 from app.models.store import STORE_DURATIONS, STORE_ITEM_KINDS, StoreItem, UserItem
@@ -28,6 +28,6 @@ __all__ = [
     "CoinDealer", "DealerStockOrder", "DEALER_STATUSES",
     "CoinPackage", "Conversation", "Follow", "Gift", "Message", "Moment", "MomentComment", "MomentLike", "Notification", "ProfileVisit",
     "RefreshToken", "Report", "REPORT_REASONS", "REPORT_TARGET_TYPES", "Room", "RoomFollow", "RoomMember", "RoomVisit",
-    "ROOM_CATEGORIES", "ROOM_MEMBER_ROLES", "StaffAction", "STORE_DURATIONS", "STORE_ITEM_KINDS", "StoreItem", "Transaction",
+    "ROOM_CATEGORIES", "ROOM_KINDS", "ROOM_MEMBER_ROLES", "StaffAction", "STORE_DURATIONS", "STORE_ITEM_KINDS", "StoreItem", "Transaction",
     "User", "UserBlock", "UserItem", "InboxSeen", "INBOX_SECTIONS",
 ]

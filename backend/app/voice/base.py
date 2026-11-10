@@ -75,11 +75,9 @@ class VoiceProvider(ABC):
 
     async def live_join_info(self, room_id: int, user_id: int, is_streamer: bool) -> VoiceJoinInfo:
         """
-        Kameralı yayının GÖRÜNTÜ kanalı ("live-<oda id>"). Ses kanalından ayrıdır: yayıncının sesi
-        her zamanki gibi oda sesinden (koltuktan) gider, burada yalnızca kamera görüntüsü taşınır.
-        Neden ayrı? Sesli oda kodu (yeniden bağlanma, koltuk izinleri) hiç değişmeden kalsın; görüntü
-        koparsa ses etkilenmesin. Bedeli: ses ve görüntü iki ayrı akış olduğu için aralarında çok küçük
-        bir kayma olabilir (dudak senkronu). Yalnızca yayıncı (is_streamer) görüntü gönderebilir.
+        Kameralı canlı yayının ses + görüntü kanalı ("live-<oda id>"). Sesli odaların kanalından
+        ayrıdır (bkz. services/live_service.py). Yalnızca yayıncı (is_streamer) ses ve görüntü
+        gönderebilir; izleyiciler yalnızca alır. Ses ve görüntü aynı kanalda olduğu için senkron kalır.
         """
         raise UnavailableError("Kameralı yayın bu ses sağlayıcısında henüz yok.", code="live_unsupported")
 

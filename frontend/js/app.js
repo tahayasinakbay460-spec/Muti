@@ -15,6 +15,7 @@ import { renderRooms } from './screens/rooms.js';
 import { renderProfile } from './screens/profile.js';
 import { renderWallet } from './screens/wallet.js';
 import { renderDealer } from './screens/dealer.js';
+import { renderLive } from './screens/live.js';
 import { renderStore } from './screens/store.js';
 import { renderVip } from './screens/vip.js';
 import { renderTasks } from './screens/tasks.js';
@@ -31,6 +32,7 @@ const routes = [
   { pattern: /^\/explore$/, render: renderExplore, tab: 'rooms' },
   { pattern: /^\/rooms$/, render: renderRooms, tab: 'rooms' },
   { pattern: /^\/room\/(\d+)$/, render: renderRoom, isFixed: true },
+  { pattern: /^\/live\/(\d+)$/, render: renderLive, isFixed: true },
   { pattern: /^\/moments$/, render: renderMoments, tab: 'moments' },
   { pattern: /^\/messages$/, render: renderMessages, tab: 'messages' },
   { pattern: /^\/requests$/, render: renderRequests, tab: 'messages' },
@@ -153,8 +155,9 @@ async function handleRoute() {
   if (cleanup) cleanup();
   cleanup = null;
   const roomId = route.render === renderRoom ? match[1] : null;
-  // Aynı anda tek oda: çıkış yapınca ya da başka odaya girince açık oda gerçekten kapanır
-  if (route.isPublic || (roomId && roomId !== activeRoom?.id)) closeRoom();
+  // Aynı anda tek oda: çıkış yapınca ya da başka odaya girince açık oda gerçekten kapanır.
+  // Canlı yayına girerken de: arkadaki sesli odanın sesi yayının sesine karışmasın.
+  if (route.isPublic || route.render === renderLive || (roomId && roomId !== activeRoom?.id)) closeRoom();
   closeAllSheets();
   const token = ++renderToken;
 

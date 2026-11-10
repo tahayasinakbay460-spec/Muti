@@ -10,6 +10,7 @@ const TYPE_ICONS = {
 
 // Bildirime dokununca gidilecek yer
 function targetHref(notification) {
+  if (notification.data?.live_room_id) return `#/live/${notification.data.live_room_id}`;
   if (notification.data?.room_id) return `#/room/${notification.data.room_id}`;
   if (notification.type.startsWith('agency_')) return '#/agency';
   if (notification.type === 'moment_like' || notification.type === 'moment_comment') return '#/profile';
