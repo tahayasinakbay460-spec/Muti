@@ -24,7 +24,7 @@ class MomentOut(BaseModel):
 
 class MomentCreateRequest(BaseModel):
     text: str = Field(default="", max_length=500)
-    # Yalnızca hazır listeden (GET /moments/image-options) bir adres kabul edilir; kontrol serviste.
+    # Yalnızca kişinin anı için yüklediği fotoğrafın adresi (POST /media?kind=moment); kontrol serviste.
     image_url: str | None = Field(default=None, max_length=500)
 
     @field_validator("text", mode="before")
@@ -62,10 +62,6 @@ class MomentCommentCreateRequest(BaseModel):
 class MomentLikeResult(BaseModel):
     is_liked: bool
     like_count: int
-
-
-class MomentImageOptions(BaseModel):
-    images: list[str]
 
 
 MomentFeed = Literal["explore", "following"]

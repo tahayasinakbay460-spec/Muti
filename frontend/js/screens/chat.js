@@ -8,6 +8,7 @@ import { startOutgoingCall } from '../call.js';
 import { onInbox, setOpenConversation, refreshUnread } from '../inbox.js';
 import { clock, duration, needsSeparator, separatorLabel } from '../chat-format.js';
 import { esc, icon, avatarImg, toast } from '../ui.js';
+import { choosePhoto } from '../photo-upload.js';
 import { openGiftSheet } from './gift-sheet.js';
 
 const VOICE_MAX_SECONDS = 60;
@@ -133,14 +134,19 @@ export async function renderChat(root, { params, query = {} }) {
   input.addEventListener('input', syncButtons);
   syncButtons();   // hazır yazı (?draft=) geldiyse gönder tuşu görünsün
 
-  async function sendPhoto() {
+  // Fotoğraf: profil/anı ile aynı akış (izin paneli → galeri/kamera → küçült), sonra mesaj olarak gider.
+  // Gönderilirken tuş kilitlenir: iki kez basılıp aynı fotoğraf iki kez gitmesin.
+  async function sendPhoto(button) {
+    if (button?.disabled) return;
     try {
-      const { pickAndShrink } = await import('../image-picker.js');
-      const blob = await pickAndShrink();
+      const blob = await choosePhoto('chat');
       if (!blob) return;
+      if (button) button.disabled = true;
       appendMessage(await api.sendConversationImage(conversation.id, blob));
     } catch (error) {
       toast(error.message, 'error');
+    } finally {
+      if (button) button.disabled = false;
     }
   }
 
@@ -293,7 +299,7 @@ export async function renderChat(root, { params, query = {} }) {
     const photo = event.target.closest('[data-photo] img');
     if (voice) toggleVoice(voice);
     else if (photo) openPhoto(photo.src);
-    else if (action === 'photo') sendPhoto();
+    else if (action === 'photo') sendPhoto(event.target.closest('[data-action]'));
     else if (action === 'chat-menu') import('./messages.js').then(({ openPeerMenu }) => openPeerMenu(user));
     else if (action === 'call-voice') startOutgoingCall(user, 'voice');
     else if (action === 'call-video') startOutgoingCall(user, 'video');

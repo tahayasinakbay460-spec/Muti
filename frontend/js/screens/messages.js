@@ -27,17 +27,14 @@ export async function renderMessages(root) {
   const shortcutsEl = root.querySelector('#inbox-shortcuts');
 
   async function loadShortcuts() {
-    // Sayılar kritik değil: biri gelmezse kutucuk sayısız görünür
-    const [followers, visitors, events] = await Promise.all([
-      api.listFollowers().catch(() => []),
-      api.listVisitors().catch(() => []),
-      api.listEvents().catch(() => []),
-    ]);
+    // Rozet = son bakıştan beri YENİ olanlar (toplam değil). Ekran açılınca sunucuda sıfırlanır.
+    // Sayılar kritik değil: gelmezse kutucuklar sayısız görünür.
+    const badges = await api.getInboxBadges().catch(() => ({}));
     shortcutsEl.innerHTML = [
-      shortcut({ href: '#/requests', iconName: 'user-plus', label: 'Arkadaşlık isteği', count: followers.filter((u) => !u.is_following).length, tone: 'green' }),
-      shortcut({ href: '#/events', iconName: 'trophy', label: 'Etkinlik', count: events.filter((e) => e.status === 'active').length, tone: 'blue' }),
+      shortcut({ href: '#/requests', iconName: 'user-plus', label: 'Arkadaşlık isteği', count: badges.requests, tone: 'green' }),
+      shortcut({ href: '#/events', iconName: 'trophy', label: 'Etkinlik', count: badges.events, tone: 'blue' }),
       shortcut({ href: '#/notifications', iconName: 'bell', label: 'Bildirim', count: getUnreadNotificationCount(), tone: 'gold' }),
-      shortcut({ href: '#/visitors', iconName: 'eye', label: 'Ziyaretçi', count: visitors.length, tone: 'pink' }),
+      shortcut({ href: '#/visitors', iconName: 'eye', label: 'Ziyaretçi', count: badges.visitors, tone: 'pink' }),
     ].join('');
   }
 
@@ -123,6 +120,7 @@ const backHeader = (title) => `
 // Geri takip edince karşılıklı takip olur = arkadaş.
 export async function renderRequests(root) {
   let followers = await api.listFollowers();
+  api.markInboxSeen('requests').catch(() => {});   // görüldü: Mesajlar'daki rozet sıfırlanır
   const paint = () => {
     const pending = followers.filter((u) => !u.is_following);
     const friends = followers.filter((u) => u.is_following);
@@ -159,6 +157,7 @@ export async function renderRequests(root) {
 
 export async function renderVisitors(root) {
   const visitors = await api.listVisitors();
+  api.markInboxSeen('visitors').catch(() => {});   // görüldü: Mesajlar'daki rozet sıfırlanır
   root.innerHTML = `
     ${backHeader('Ziyaretçiler')}
     <p class="screen-note">Profiline bakan kişiler, en son bakan en üstte.</p>

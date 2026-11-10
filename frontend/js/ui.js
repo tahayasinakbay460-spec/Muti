@@ -125,7 +125,8 @@ export function toast(message, type = 'info') {
 }
 
 // Alttan açılan panel (bottom sheet). close() fonksiyonu ile kapatılır.
-export function openSheet(innerHtml, { className = '' } = {}) {
+// `onClose`: panel nasıl kapanırsa kapansın (dışına dokunma, ✕, kod) bir kez çağrılır.
+export function openSheet(innerHtml, { className = '', onClose } = {}) {
   const root = document.getElementById('overlay-root');
   const backdrop = document.createElement('div');
   backdrop.className = 'sheet-backdrop';
@@ -137,6 +138,7 @@ export function openSheet(innerHtml, { className = '' } = {}) {
   const close = () => {
     if (closed) return;
     closed = true;
+    onClose?.();
     backdrop.classList.remove('is-open');
     setTimeout(() => backdrop.remove(), 250);
   };

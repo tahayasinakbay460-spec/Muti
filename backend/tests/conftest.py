@@ -34,6 +34,12 @@ from fastapi.testclient import TestClient  # noqa: E402
 from app.main import app  # noqa: E402
 
 API = "/api/v1"
+PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 200          # imzası PNG olan küçük dosya
+
+
+def upload(client, headers, kind, data=PNG, content_type="image/png"):
+    """Fotoğraf yükler (POST /media). Profil, anı ve oda görseli yalnızca yüklenen fotoğraf olabilir."""
+    return client.post(f"{API}/media", headers={**headers, "Content-Type": content_type}, params={"kind": kind}, content=data)
 
 
 @pytest.fixture(scope="session")

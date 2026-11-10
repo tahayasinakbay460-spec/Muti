@@ -7,6 +7,7 @@ import { mountRoomActivities } from './room-activities.js';
 import { openGiftSheet as openGiftPicker } from './gift-sheet.js';
 import { CATEGORY_LABELS } from '../config.js';
 import { esc, icon, avatarImg, framedAvatar, formatCoins, vipBadge, levelBadge, toast, openSheet, joinParts, goBack } from '../ui.js';
+import { photoUploadField, uploadPhoto } from '../photo-upload.js';
 
 const MAX_CHAT_LINES = 60;
 const DICE_FACES = ['⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
@@ -775,7 +776,6 @@ export async function renderRoom(root, { params }) {
 
   // Oda ayarları (oda sahibi ve yöneticiler): ad, kategori, duyuru, kapak, koltuk kuralı
   async function openRoomSettingsSheet() {
-    const { covers } = await api.getMediaOptions();
     let coverUrl = room.cover_url;
     const sheet = openSheet(`
       <h2 class="sheet-title">Oda Ayarları</h2>
@@ -796,13 +796,7 @@ export async function renderRoom(root, { params }) {
         </div>
         <div class="field">
           <span>Kapak</span>
-          <div class="picker-row" data-picker="cover">
-            <button type="button" class="picker-cover picker-upload" data-upload-cover aria-label="Fotoğraf yükle">📷<small>Yükle</small></button>
-            ${(coverUrl && !covers.includes(coverUrl) ? [coverUrl, ...covers] : covers).map((url) => `
-              <button type="button" class="picker-cover ${url === coverUrl ? 'is-active' : ''}" data-url="${esc(url)}">
-                <img src="${esc(url)}" alt="" loading="lazy" />
-              </button>`).join('')}
-          </div>
+          ${photoUploadField({ kind: 'room_cover', url: coverUrl, shape: 'cover' })}
         </div>
         <label class="switch-row">
           <span><b>Koltuklar herkese açık</b><small>Kapalıysa yalnızca yönetici, VIP ve davet edilenler oturur.</small></span>
@@ -818,29 +812,11 @@ export async function renderRoom(root, { params }) {
       category = chip.dataset.category;
       chip.parentElement.querySelectorAll('.chip').forEach((el) => el.classList.toggle('is-active', el === chip));
     });
-    sheet.el.querySelector('[data-picker="cover"]').addEventListener('click', async (event) => {
-      const uploadButton = event.target.closest('[data-upload-cover]');
-      if (uploadButton) {
-        // Kendi fotoğrafını oda kapağı yap: küçültülür, yüklenir, satırın başına eklenip seçilir
-        try {
-          const { pickAndShrink } = await import('../image-picker.js');
-          const blob = await pickAndShrink();
-          if (!blob) return;
-          uploadButton.disabled = true;
-          const { url } = await api.uploadImage(blob, 'room_cover');
-          uploadButton.insertAdjacentHTML('afterend', `<button type="button" class="picker-cover" data-url="${esc(url)}"><img src="${esc(url)}" alt="" /></button>`);
-          uploadButton.nextElementSibling.click();
-        } catch (error) {
-          toast(error.message, 'error');
-        } finally {
-          uploadButton.disabled = false;
-        }
-        return;
-      }
-      const item = event.target.closest('[data-url]');
-      if (!item) return;
-      coverUrl = item.dataset.url;
-      item.parentElement.querySelectorAll('[data-url]').forEach((el) => el.classList.toggle('is-active', el === item));
+    // Kapak: kendi fotoğrafı (izin → seç → küçült → yükle); "Kaydet"e basınca odaya yazılır
+    const coverField = sheet.el.querySelector('[data-photo-upload]');
+    coverField.addEventListener('click', async () => {
+      const url = await uploadPhoto(coverField);
+      if (url) coverUrl = url;
     });
 
     const form = sheet.el.querySelector('#room-settings-form');

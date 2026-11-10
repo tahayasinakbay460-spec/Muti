@@ -7,12 +7,11 @@ from typing import Annotated
 from fastapi import APIRouter, Query, Response, status
 
 from app.core.deps import CurrentUser, CurrentUserId, DbSession
-from app.demo import content
 from app.schemas.auth import DeleteAccountRequest
 from app.schemas.social import BlockResult
 from app.schemas.moment import MomentOut
-from app.schemas.user import FollowResult, MediaOptions, ProfileExtras, ProfileUpdateRequest, UserOut, VisitorOut
-from app.services import auth_service, moment_service, profile_service, social_service, user_service
+from app.schemas.user import FollowResult, InboxBadges, InboxSection, ProfileExtras, ProfileUpdateRequest, UserOut, VisitorOut
+from app.services import auth_service, inbox_service, moment_service, profile_service, social_service, user_service
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -63,10 +62,17 @@ async def search_users(user_id: CurrentUserId, db: DbSession, query: Annotated[s
     return await user_service.search_users(db, user_id, query)
 
 
-@router.get("/me/media-options", response_model=MediaOptions)
-async def get_media_options(_user_id: CurrentUserId):
-    """Profil düzenlemede seçilebilecek hazır avatar/kapak listesi. DEMO KISAYOLU: görsel yükleme yok."""
-    return MediaOptions(avatars=content.AVATAR_CHOICES, covers=content.COVER_CHOICES)
+@router.get("/me/inbox-badges", response_model=InboxBadges)
+async def get_inbox_badges(user_id: CurrentUserId, db: DbSession):
+    """Mesajlar ekranındaki kısayol rozetleri: son bakıştan beri YENİ olan istek, etkinlik, ziyaretçi sayısı."""
+    return await inbox_service.badge_counts(db, user_id)
+
+
+@router.post("/me/inbox-badges/{section}/seen", status_code=status.HTTP_204_NO_CONTENT)
+async def mark_inbox_seen(section: InboxSection, user_id: CurrentUserId, db: DbSession):
+    """O bölümün ekranı açıldı: rozeti sıfırla (bundan sonra gelenler yeni sayılır)."""
+    await inbox_service.mark_seen(db, user_id, section)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/suggested", response_model=list[UserOut])

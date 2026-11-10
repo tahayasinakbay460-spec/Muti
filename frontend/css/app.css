@@ -349,13 +349,6 @@ small { font-size: 12px; color: var(--muted); }
 .field-row { display: grid; grid-template-columns: 1fr 2fr; gap: 10px; }
 
 /* Profil düzenleme: yatay kaydırılan görsel seçiciler */
-.picker-row { display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 6px; scrollbar-width: none; }
-.picker-row::-webkit-scrollbar { display: none; }
-.picker-avatar, .picker-cover { flex: none; border: 2px solid transparent; overflow: hidden; opacity: 0.7; transition: opacity 0.15s, border-color 0.15s; }
-.picker-avatar { width: 56px; height: 56px; border-radius: 50%; }
-.picker-cover { width: 92px; height: 56px; border-radius: 12px; }
-.picker-avatar img, .picker-cover img { width: 100%; height: 100%; object-fit: cover; }
-.picker-avatar.is-active, .picker-cover.is-active { opacity: 1; border-color: var(--pink); box-shadow: 0 0 0 2px rgba(255, 77, 157, 0.3); }
 .search-box {
   display: flex;
   align-items: center;
@@ -1213,10 +1206,6 @@ small { font-size: 12px; color: var(--muted); }
 .moment-tile-text { padding: 10px; background: linear-gradient(150deg, #3a2470, #7a2a6a); }
 .moment-tile-text span { display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; font-size: 12px; font-weight: 600; line-height: 1.35; text-align: left; }
 .sheet-moment { padding-left: 0; padding-right: 0; }
-.image-picker { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; max-height: 190px; overflow-y: auto; }
-.image-picker button { aspect-ratio: 1; border-radius: 10px; overflow: hidden; border: 2px solid transparent; }
-.image-picker button.is-active { border-color: var(--pink); }
-.image-picker img { width: 100%; height: 100%; object-fit: cover; }
 
 /* ── Mesajlar ───────────────────────────────────────────────────────────── */
 .screen-note { padding: 0 var(--pad) 10px; font-size: 13px; color: var(--muted); }
@@ -1359,9 +1348,6 @@ small { font-size: 12px; color: var(--muted); }
 .composer { display: grid; gap: 12px; }
 .composer-row { display: flex; gap: 10px; align-items: flex-start; }
 .composer-row textarea { flex: 1; min-height: 96px; resize: none; padding: 8px 0; border: 0; background: none; color: var(--text); font: inherit; font-size: 16px; outline: none; }
-.composer-preview { position: relative; border-radius: 16px; overflow: hidden; }
-.composer-preview img { width: 100%; max-height: 220px; object-fit: cover; }
-.composer-preview button { position: absolute; top: 8px; right: 8px; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: rgba(0, 0, 0, 0.6); }
 .composer-foot { display: flex; align-items: center; justify-content: space-between; }
 
 /* ── Ana sayfa: Popüler, filtreler ──────────────────────────────────────── */
@@ -1679,10 +1665,6 @@ small { font-size: 12px; color: var(--muted); }
 .agency-pitch + .btn, .agency-pitch ~ .btn { margin-top: 8px; }
 .agency-note { display: block; margin-top: 8px; text-align: center; }
 
-.picker-upload { display: grid; place-items: center; align-content: center; gap: 2px; font-size: 22px; border: 1.5px dashed rgba(255, 255, 255, 0.3); background: var(--surface-2); }
-.picker-upload small { font-size: 10px; }
-.image-picker-upload { display: grid; place-items: center; align-content: center; gap: 2px; font-size: 22px; border: 1.5px dashed rgba(255, 255, 255, 0.3) !important; background: var(--surface-2); }
-.image-picker-upload small { font-size: 10px; }
 
 .chat-composer-photo { background: none; }
 .chat-photo { display: grid; place-items: center; width: 200px; min-height: 140px; max-width: 100%; border-radius: 12px; overflow: hidden; background: rgba(0, 0, 0, 0.25); }
@@ -1692,3 +1674,86 @@ small { font-size: 12px; color: var(--muted); }
 .photo-viewer { position: absolute; inset: 0; z-index: 70; display: grid; place-items: center; background: rgba(0, 0, 0, 0.92); animation: view-in 0.2s ease; }
 .photo-viewer img { max-width: 100%; max-height: 100%; object-fit: contain; }
 .photo-viewer button { position: absolute; top: calc(14px + env(safe-area-inset-top, 0px)); right: 14px; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: rgba(255, 255, 255, 0.15); }
+
+/* ── Fotoğraf yükleme (bkz. js/photo-upload.js) ─────────────────────────────
+   Boşken: degrade çerçeveli, ortasında parlayan kamera rozeti olan alan.
+   Doluyken: fotoğrafın kendisi, üstünde buzlu cam "Değiştir" etiketi. */
+.photo-upload {
+  --ring: linear-gradient(135deg, #ffd27a 0%, #ff8fc7 45%, #9b7bff 100%);
+  position: relative; display: grid; place-items: center; overflow: hidden; width: 100%; padding: 0; color: #fff;
+  border: 1.5px solid transparent; border-radius: 20px;
+  background: linear-gradient(160deg, #1d1930, #121020) padding-box, var(--ring) border-box;
+  box-shadow: 0 10px 30px rgba(155, 123, 255, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  transition: transform 0.15s, box-shadow 0.2s;
+}
+.photo-upload:active { transform: scale(0.98); }
+.photo-upload:hover { box-shadow: 0 12px 34px rgba(255, 143, 199, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.08); }
+.photo-upload::before { /* hafif ışıltı */
+  content: ''; position: absolute; inset: -40% -10% auto; height: 80%;
+  background: radial-gradient(closest-side, rgba(255, 210, 122, 0.16), transparent); pointer-events: none;
+}
+.photo-upload-media, .photo-upload-media img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.photo-upload-cta { position: relative; display: grid; justify-items: center; gap: 6px; padding: 14px; text-align: center; }
+.photo-upload-cta b { font-size: 15px; font-weight: 800; letter-spacing: 0.2px; }
+.photo-upload-cta small { font-size: 11.5px; color: rgba(255, 255, 255, 0.62); }
+.photo-upload-icon {
+  width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; color: #2a1a05;
+  background: linear-gradient(135deg, #ffe3a3, #ffc53d 55%, #ff9f43);
+  box-shadow: 0 6px 18px rgba(255, 197, 61, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+.photo-upload-icon svg { width: 24px; height: 24px; }
+.photo-upload.has-photo .photo-upload-cta {
+  padding: 7px 14px 7px 8px; grid-auto-flow: column; align-items: center; gap: 8px; border-radius: 999px;
+  background: rgba(10, 8, 20, 0.55); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+.photo-upload.has-photo .photo-upload-cta small { display: none; }
+.photo-upload.has-photo .photo-upload-cta b { font-size: 13px; }
+.photo-upload.has-photo .photo-upload-icon { width: 30px; height: 30px; }
+.photo-upload.has-photo .photo-upload-icon svg { width: 16px; height: 16px; }
+.photo-upload-busy {
+  position: absolute; inset: 0; display: none; place-items: center; align-content: center; gap: 8px;
+  background: rgba(10, 8, 20, 0.6); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+}
+.photo-upload-busy i { width: 30px; height: 30px; border-radius: 50%; border: 3px solid rgba(255, 255, 255, 0.2); border-top-color: var(--gold); animation: spin 0.8s linear infinite; }
+.photo-upload-busy small { font-size: 11px; font-weight: 700; }
+.photo-upload.is-busy { pointer-events: none; }
+.photo-upload.is-busy .photo-upload-busy { display: grid; }
+
+/* Şekiller */
+.photo-upload-tile { min-height: 170px; }
+.photo-upload-tile.has-photo { min-height: 0; aspect-ratio: 4 / 3; }
+.photo-upload-cover { aspect-ratio: 16 / 7; }
+.photo-upload-cover.has-photo { place-items: end; }
+.photo-upload-cover.has-photo .photo-upload-cta { margin: 10px; }
+.photo-upload-avatar { width: 92px; height: 92px; border-radius: 50%; border-width: 2.5px; overflow: visible; }
+.photo-upload-avatar .photo-upload-media, .photo-upload-avatar .photo-upload-busy { border-radius: 50%; overflow: hidden; }
+.photo-upload-avatar::before { display: none; }
+.photo-upload-avatar .photo-upload-cta, .photo-upload-avatar.has-photo .photo-upload-cta { padding: 0; background: none; border: 0; backdrop-filter: none; -webkit-backdrop-filter: none; }
+.photo-upload-avatar.has-photo .photo-upload-cta { position: absolute; right: -2px; bottom: -2px; }
+.photo-upload-avatar.has-photo .photo-upload-icon { border: 2px solid var(--surface); }
+
+/* Profili Düzenle: kapak üstte, avatar kapağın altına taşar (profil sayfasındaki gibi) */
+.profile-photos { position: relative; margin-bottom: 58px; }
+.profile-photos .photo-upload-avatar { position: absolute; left: 16px; bottom: -46px; }
+
+/* Anı paylaşma: fotoğrafı kaldır tuşu */
+.composer-photo { position: relative; }
+.composer-photo-clear { position: absolute; top: 10px; right: 10px; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(6px); }
+
+/* İzin / kaynak paneli */
+.sheet-photo-access { background: radial-gradient(120% 70% at 50% 0%, rgba(155, 123, 255, 0.22), transparent 60%), #12101c; }
+.photo-access { display: grid; justify-items: center; gap: 10px; padding: 6px 4px 2px; text-align: center; }
+.photo-access-badge {
+  width: 72px; height: 72px; border-radius: 22px; display: grid; place-items: center; color: #2a1a05; margin-bottom: 4px;
+  background: linear-gradient(135deg, #ffe3a3, #ffc53d 55%, #ff9f43);
+  box-shadow: 0 12px 30px rgba(255, 197, 61, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+.photo-access-badge svg { width: 34px; height: 34px; }
+.photo-access h2 { font-size: 19px; font-weight: 800; }
+.photo-access p { margin: 0 0 6px; max-width: 320px; color: var(--muted); font-size: 13.5px; line-height: 1.5; }
+.photo-access-actions { display: grid; gap: 10px; width: 100%; }
+.photo-access-actions .btn { display: flex; align-items: center; justify-content: center; gap: 8px; }
+.photo-access-actions .btn svg { width: 19px; height: 19px; }
+.photo-access-actions .btn-ghost { color: var(--text); background: var(--surface-2); border: 1px solid var(--line); }
+.photo-access-later { height: 40px; color: var(--muted); font-weight: 700; }

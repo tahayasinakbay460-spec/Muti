@@ -185,6 +185,7 @@ async function handleRoute() {
     if (token !== renderToken) result?.();
     else if (roomId) activeRoom = { id: roomId, view, cleanup: result };
     else cleanup = result || null;
+    if (token === renderToken && !roomId) restoreScroll(token);
   } catch (error) {
     console.error(error);
     if (token !== renderToken) return;
@@ -216,10 +217,48 @@ if (!API_BASE_URL.startsWith(location.origin)) {
 // adresine (href, ör. #/home) gidilir.
 let navDepth = 0;
 
+// ── Kaydırma konumu ──────────────────────────────────────────────────────────
+// Geri tuşuyla bir sayfaya dönünce sayfa en üstten değil, bırakıldığı yerden açılsın.
+// Kaydırdıkça konum o sayfanın geçmiş kaydına (history.state.scroll) yazılır. Neden kaydırırken?
+// Başka sayfaya geçildiğinde (hashchange) tarayıcı geçmişte çoktan yeni kayda geçmiş olur;
+// eski sayfanın konumunu o an yazacak yer kalmaz.
+// Sayfalar kendi kaydırma kutumuzda (#screen) kaydığı için tarayıcının kendi hatırlaması işe yaramaz.
+let returnScroll = null;   // geri/ileri ile dönülen sayfanın kayıtlı konumu; yeni sayfada null
+let scrollSaveTimer = null;
+
+screenEl.addEventListener('scroll', () => {
+  // Her kaydırma olayında değil, durunca bir kez yaz (tarayıcı sık replaceState'i yavaşlatır/sınırlar)
+  clearTimeout(scrollSaveTimer);
+  scrollSaveTimer = setTimeout(() => {
+    history.replaceState({ ...(history.state || {}), scroll: Math.round(screenEl.scrollTop) }, '');
+  }, 150);
+}, { passive: true });
+
+// Ekran çizildikten sonra kayıtlı konuma in. Liste parça parça yükleniyorsa (sonsuz kaydırma)
+// sayfa henüz o kadar uzun olmayabilir: 2 saniye boyunca her karede yeniden denenir.
+// Kullanıcı bu arada başka sayfaya geçerse (token değişir) ya da kendisi kaydırırsa bırakılır.
+function restoreScroll(token) {
+  const target = returnScroll;
+  returnScroll = null;
+  if (!target) return;
+  const startedAt = performance.now();
+  let last = null;
+  const step = () => {
+    if (token !== renderToken) return;
+    if (last !== null && Math.abs(screenEl.scrollTop - last) > 2) return;   // kullanıcı kaydırdı
+    screenEl.scrollTop = target;
+    last = screenEl.scrollTop;
+    if (last < target - 2 && performance.now() - startedAt < 2000) requestAnimationFrame(step);
+  };
+  step();
+}
+
 function rememberDepth() {
   const known = history.state?.depth;
-  // Geçmişte zaten numarası olan sayfaya (geri/ileri ile) dönüldü: o numarayı kullan
+  // Geçmişte zaten numarası olan sayfaya (geri/ileri ile) dönüldü: o numarayı ve kaydırma konumunu kullan
   navDepth = known || navDepth + 1;
+  returnScroll = known ? history.state.scroll ?? null : null;
+  clearTimeout(scrollSaveTimer);   // önceki sayfanın bekleyen kaydı yeni sayfaya yazılmasın
   if (!known) history.replaceState({ ...(history.state || {}), depth: navDepth }, '');
 }
 

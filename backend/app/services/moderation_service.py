@@ -18,7 +18,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import utcnow
 from app.core.errors import AppError, ConflictError, ForbiddenError, NotFoundError
 from app.core.logs import audit
-from app.demo.content import COVER_CHOICES
 from app.models import Room, RoomMember, RoomMessage
 from app.realtime import events
 from app.realtime.duels import duels
@@ -279,7 +278,8 @@ async def update_room(db: AsyncSession, actor_id: int, room_id: int, data: RoomU
     changes = data.model_dump(exclude_unset=True)
     # `null` gönderilen alanları yok say: bu alanların hiçbiri boş bırakılamaz.
     changes = {field: value for field, value in changes.items() if value is not None}
-    if "cover_url" in changes and changes["cover_url"] not in COVER_CHOICES \
+    # Kapak yalnızca bu kişinin oda kapağı olarak yüklediği fotoğraf olabilir (ya da odanın şu anki kapağı)
+    if "cover_url" in changes and changes["cover_url"] != room.cover_url \
             and not await media_service.is_own_upload(db, actor_id, changes["cover_url"], ("room_cover",)):
         raise AppError("Bu kapak seçilemez.", code="invalid_cover")
     for field, value in changes.items():

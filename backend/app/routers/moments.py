@@ -4,9 +4,8 @@
 from fastapi import APIRouter, Response, status
 
 from app.core.deps import CurrentUser, CurrentUserId, DbSession
-from app.demo import content
 from app.schemas.moment import (
-    MomentCommentCreateRequest, MomentCommentOut, MomentCreateRequest, MomentFeed, MomentImageOptions,
+    MomentCommentCreateRequest, MomentCommentOut, MomentCreateRequest, MomentFeed,
     MomentLikeResult, MomentOut,
 )
 from app.services import moment_service
@@ -21,12 +20,6 @@ async def list_moments(user_id: CurrentUserId, db: DbSession, feed: MomentFeed =
     Daha eskileri için `before_id` = listedeki son anının id'si.
     """
     return await moment_service.list_feed(db, user_id, feed, before_id)
-
-
-@router.get("/image-options", response_model=MomentImageOptions)
-async def get_image_options(_user_id: CurrentUserId):
-    """Paylaşımda seçilebilecek hazır görseller. DEMO KISAYOLU: görsel yükleme yok."""
-    return MomentImageOptions(images=content.MOMENT_IMAGE_CHOICES)
 
 
 @router.post("", response_model=MomentOut, status_code=status.HTTP_201_CREATED)

@@ -3,12 +3,11 @@ Yayıncılık (başvuru, onay, ajans şartı), ajans ay sonu komisyonu ve fotoğ
 """
 from datetime import date
 
-from tests.conftest import API
+from tests.conftest import API, PNG, upload
 from tests.test_admin import adult_birth_date, make_host, staff_headers
 from tests.test_api import me, new_guest
 from tests.test_social import register
 
-PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 200          # imzası PNG olan küçük dosya
 FAKE_JPEG = b"<html><script>alert(1)</script></html>"  # adı jpeg, içi değil
 
 
@@ -108,10 +107,6 @@ def test_agency_month_settlement_pays_once(client):
 
 
 # ── Fotoğraf ──────────────────────────────────────────────────────────────────
-
-def upload(client, headers, kind, data=PNG, content_type="image/png"):
-    return client.post(f"{API}/media", headers={**headers, "Content-Type": content_type}, params={"kind": kind}, content=data)
-
 
 def test_image_upload_rules_and_ownership(client, guest):
     assert upload(client, guest, "avatar").json()["code"] == "guest_cannot_upload"

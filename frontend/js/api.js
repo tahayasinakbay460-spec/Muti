@@ -170,7 +170,6 @@ export const api = {
   // feed: 'explore' (herkes) | 'following' (takip ettiklerim); beforeId: daha eskileri için son anının id'si
   listMoments: ({ feed = 'explore', beforeId = '' } = {}) => request(`/moments?feed=${feed}${beforeId ? `&before_id=${beforeId}` : ''}`),
   listUserMoments: (userId) => request(`/users/${userId}/moments`),
-  getMomentImageOptions: () => request('/moments/image-options'),
   createMoment: (payload) => request('/moments', { method: 'POST', body: payload }),
   deleteMoment: (id) => request(`/moments/${id}`, { method: 'DELETE' }),
   toggleMomentLike: (id) => request(`/moments/${id}/like`, { method: 'POST' }),
@@ -183,12 +182,14 @@ export const api = {
   // Beni takip edenler: is_following=false olanlar "arkadaşlık isteği" (geri takip edince arkadaş)
   listFollowers: () => request('/users/me/followers'),
   listVisitors: () => request('/users/me/visitors'),
+  // Mesajlar ekranı kısayol rozetleri: son bakıştan beri yeni olanlar. Ekran açılınca markInboxSeen ile sıfırlanır.
+  getInboxBadges: () => request('/users/me/inbox-badges'),
+  markInboxSeen: (section) => request(`/users/me/inbox-badges/${section}/seen`, { method: 'POST' }),
   // Yayın odam: sahibi olduğum odalar + takipçi/hediye sayıları
   listMyRooms: () => request('/rooms/mine'),
   listRoomFollowers: (roomId) => request(`/rooms/${roomId}/followers`),
   toggleFollow: (id) => request(`/users/${id}/follow`, { method: 'POST' }),
   updateProfile: (changes) => request('/users/me', { method: 'PATCH', body: changes }),
-  getMediaOptions: () => request('/users/me/media-options'),
   toggleRoomFollow: (id) => request(`/rooms/${id}/follow`, { method: 'POST' }),
   listFollowedRooms: () => request('/rooms/followed'),
   // Giriş yapmadan okunur: örnek veri yüklüyse giriş ekranında demo hesabı gösterilir

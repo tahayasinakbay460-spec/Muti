@@ -4,7 +4,7 @@ Her test, bozulursa kullanıcıya zarar verecek bir davranışı korur.
 """
 from concurrent.futures import ThreadPoolExecutor
 
-from tests.conftest import API, auth_headers
+from tests.conftest import API, auth_headers, upload
 
 
 def me(client, headers) -> dict:
@@ -149,27 +149,30 @@ def test_follow_toggle_updates_counter(client, guest):
     assert client.post(f"{API}/users/2002/follow", headers=guest).json() == {"is_following": False}
 
 
-def test_profile_update_changes_only_sent_fields(client, guest):
+def test_profile_update_changes_only_sent_fields(client):
+    guest = registered(client, "profileeditor")   # misafir hesap fotoğraf yükleyemez
     before = me(client, guest)
+    avatar = upload(client, guest, "avatar").json()["url"]
     response = client.patch(f"{API}/users/me", headers=guest, json={
-        "display_name": "  Yeni Ad  ", "bio": "Merhaba", "city": "İzmir", "avatar_url": "assets/avatars/w3.jpg",
+        "display_name": "  Yeni Ad  ", "bio": "Merhaba", "city": "İzmir", "avatar_url": avatar,
     })
     assert response.status_code == 200, response.text
     updated = response.json()
     assert updated["display_name"] == "Yeni Ad" and updated["bio"] == "Merhaba" and updated["city"] == "İzmir"
-    assert updated["avatar_url"] == "assets/avatars/w3.jpg"
+    assert updated["avatar_url"] == avatar
     # Gönderilmeyen alanlar olduğu gibi kalır.
     assert updated["age"] == before["age"] and updated["cover_url"] == before["cover_url"]
     assert me(client, guest)["display_name"] == "Yeni Ad"
 
-    # Boş görünen ad, listede olmayan görsel ve sınır dışı yaş reddedilir.
+    # Boş görünen ad, kendi yüklemediği görsel (eski hazır liste dahil) ve sınır dışı yaş reddedilir.
     assert client.patch(f"{API}/users/me", headers=guest, json={"display_name": "   "}).status_code == 422
     bad_avatar = client.patch(f"{API}/users/me", headers=guest, json={"avatar_url": "https://evil.example/x.jpg"})
     assert bad_avatar.json()["code"] == "invalid_avatar"
+    preset = client.patch(f"{API}/users/me", headers=guest, json={"avatar_url": "assets/avatars/w3.jpg"})
+    assert preset.json()["code"] == "invalid_avatar"
+    # Profilde zaten duran adres yeniden gönderilirse sorun çıkmaz
+    assert client.patch(f"{API}/users/me", headers=guest, json={"cover_url": before["cover_url"]}).status_code == 200
     assert client.patch(f"{API}/users/me", headers=guest, json={"age": 7}).status_code == 422
-
-    options = client.get(f"{API}/users/me/media-options", headers=guest).json()
-    assert "assets/avatars/w3.jpg" in options["avatars"] and options["covers"]
 
 
 def test_room_follow_toggle_and_followed_list(client, guest):
@@ -256,6 +259,15 @@ def test_room_socket_rejects_bad_token(client):
 
 
 # ── Moderasyon ────────────────────────────────────────────────────────────────
+
+def registered(client, username: str) -> dict:
+    """Kayıtlı hesap (misafir fotoğraf yükleyemez). test_social.register'ın kopyası: o dosya bunu import ediyor."""
+    response = client.post(f"{API}/auth/register", json={
+        "username": username, "email": f"{username}@example.com", "password": "gizli123",
+    })
+    assert response.status_code == 201, response.text
+    return auth_headers(response.json())
+
 
 def new_guest(client) -> dict:
     return auth_headers(client.post(f"{API}/auth/guest").json())
@@ -404,8 +416,8 @@ def test_member_list_and_seat_invites(client, guest):
         assert client.post(f"{rooms}/seats/1", headers=member).json()["code"] == "seat_requires_invite"
 
 
-def test_room_settings_and_closing(client, guest):
-    host = guest
+def test_room_settings_and_closing(client):
+    host = registered(client, "roomsettingshost")   # kapak yüklemek için kayıtlı hesap
     room = client.post(f"{API}/rooms", headers=host, json={"title": "Ayarlar"}).json()
     rooms = f"{API}/rooms/{room['id']}"
     member = new_guest(client)
@@ -416,8 +428,10 @@ def test_room_settings_and_closing(client, guest):
         # Dinleyici ayar değiştiremez; geçersiz kapak reddedilir; null gönderilen alan değişmez.
         assert client.patch(rooms, headers=member, json={"title": "X"}).status_code == 403
         assert client.patch(rooms, headers=host, json={"cover_url": "http://kotu.site/a.jpg"}).json()["code"] == "invalid_cover"
+        assert client.patch(rooms, headers=host, json={"cover_url": "assets/covers/night.jpg"}).json()["code"] == "invalid_cover"
+        cover = upload(client, host, "room_cover").json()["url"]
         updated = client.patch(rooms, headers=host, json={
-            "title": " Yeni Ad ", "announcement": "Kurallar: saygı", "cover_url": "assets/covers/night.jpg", "category": None,
+            "title": " Yeni Ad ", "announcement": "Kurallar: saygı", "cover_url": cover, "category": None,
         }).json()
         assert updated["title"] == "Yeni Ad" and updated["category"] == "chat"
         assert receive_until(socket, "room:updated")["announcement"] == "Kurallar: saygı"

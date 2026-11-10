@@ -37,6 +37,7 @@ function eventCard(event) {
 
 export async function renderEvents(root) {
   const events = await api.listEvents();
+  api.markInboxSeen('events').catch(() => {});   // görüldü: Mesajlar'daki "Etkinlik" rozeti sıfırlanır
   root.innerHTML = `
     <header class="topbar">
       <a class="icon-btn icon-btn-plain" href="#/home" data-back aria-label="Geri">${icon('chevron-left', 22)}</a>

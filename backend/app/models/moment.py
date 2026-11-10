@@ -22,7 +22,7 @@ class Moment(Base):
     id: Mapped[int] = mapped_column(BigIntPk, primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     text: Mapped[str] = mapped_column(String(500), default="")
-    # DEMO KISAYOLU: görsel yükleme yokken yalnızca hazır listeden (demo/content.py) seçilebilir.
+    # Kişinin yüklediği fotoğrafın adresi (bkz. services/media_service.py).
     image_url: Mapped[str | None] = mapped_column(String(500))
     # Hazır hesaplanmış beğeni sayısı: her listede moment_likes tablosunu saymamak için.
     like_count: Mapped[int] = mapped_column(Integer, default=0)

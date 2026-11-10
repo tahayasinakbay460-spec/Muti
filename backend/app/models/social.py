@@ -78,3 +78,20 @@ class Notification(Base):
     data: Mapped[dict] = mapped_column(JSON, default=dict)
     is_read: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+# Mesajlar ekranındaki kısayollar: her biri için "en son ne zaman bakıldı" tutulur.
+INBOX_SECTIONS = ("requests", "events", "visitors")
+
+
+class InboxSeen(Base):
+    """
+    Kişi bir bölümün ekranını (arkadaşlık istekleri, etkinlikler, ziyaretçiler) en son ne zaman açtı.
+    Rozetteki sayı "bu andan sonra gelenler"dir; ekran açılınca `seen_at` şimdiye çekilir ve rozet sıfırlanır.
+    Neden sunucuda, tarayıcıda değil? Telefon uygulaması ve başka cihaz aynı "görüldü" bilgisini görsün.
+    """
+    __tablename__ = "inbox_seen"
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    section: Mapped[str] = mapped_column(String(16), primary_key=True)
+    seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

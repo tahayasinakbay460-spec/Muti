@@ -12,7 +12,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.errors import AppError, ForbiddenError, NotFoundError
 from app.core.database import utcnow
 from app.core.timefmt import as_utc, days_since
-from app.demo import content
 from app.models import Family, FamilyMember, Follow, User, UserBlock
 from app.realtime.state import room_state
 from app.schemas.user import FamilyBadge, ProfileUpdateRequest, UserOut
@@ -262,13 +261,13 @@ async def update_profile(db: AsyncSession, user: User, data: ProfileUpdateReques
         changes["city"] = None
     if "country" in changes and not changes["country"]:
         changes["country"] = None
-    # Görsel ya hazır listeden (bkz. demo/content.py) ya da kişinin kendi yüklediği fotoğraf olabilir.
+    # Görsel yalnızca kişinin kendi yüklediği fotoğraf olabilir (ya da zaten profilinde duran adres).
     # Başkasının yüklediği bir fotoğrafın adresini yazıp kullanamaz (bkz. media_service.is_own_upload).
     avatar, cover = changes.get("avatar_url"), changes.get("cover_url")
-    if avatar is not None and avatar not in content.AVATAR_CHOICES \
+    if avatar is not None and avatar != user.avatar_url \
             and not await media_service.is_own_upload(db, user.id, avatar, ("avatar",)):
         raise AppError("Bu avatar seçilemez.", code="invalid_avatar")
-    if cover is not None and cover not in content.COVER_CHOICES \
+    if cover is not None and cover != user.cover_url \
             and not await media_service.is_own_upload(db, user.id, cover, ("cover",)):
         raise AppError("Bu kapak seçilemez.", code="invalid_cover")
 

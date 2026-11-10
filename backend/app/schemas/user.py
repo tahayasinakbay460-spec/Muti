@@ -5,6 +5,7 @@ Kullanıcıyla ilgili JSON şemaları.
 tabloda `password_hash` vardır ama şemada yoktur, böylece yanlışlıkla dışarı sızmaz.
 """
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -80,7 +81,7 @@ class ProfileUpdateRequest(BaseModel):
     age: int | None = Field(default=None, ge=13, le=99)
     city: str | None = Field(default=None, max_length=60)
     country: str | None = Field(default=None, pattern=r"^[A-Za-z]{2}$")
-    # Yalnızca hazır listeden (demo/content.py) bir adres kabul edilir; kontrol serviste.
+    # Yalnızca kişinin kendi yüklediği fotoğraf (POST /media) ya da zaten profilde olan adres; kontrol serviste.
     avatar_url: str | None = Field(default=None, max_length=500)
     cover_url: str | None = Field(default=None, max_length=500)
 
@@ -95,12 +96,6 @@ class ProfileUpdateRequest(BaseModel):
     def upper_country(cls, value):
         # "tr" ile "TR" aynı ülke: veritabanında hep büyük harf dursun.
         return value.upper() if isinstance(value, str) else value
-
-
-class MediaOptions(BaseModel):
-    """Profil düzenlemede seçilebilecek hazır avatar ve kapak görselleri."""
-    avatars: list[str]
-    covers: list[str]
 
 
 class Achievement(BaseModel):
@@ -129,3 +124,14 @@ class VisitorOut(BaseModel):
     """Profilime bakan kişi ve en son ne zaman baktığı."""
     user: UserOut
     visited_at: datetime
+
+
+# Mesajlar ekranındaki kısayol bölümleri (models/social.py INBOX_SECTIONS ile aynı)
+InboxSection = Literal["requests", "events", "visitors"]
+
+
+class InboxBadges(BaseModel):
+    """Son bakıştan beri yeni olanların sayısı. 0 ise rozet gösterilmez."""
+    requests: int
+    events: int
+    visitors: int

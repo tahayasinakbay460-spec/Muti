@@ -6,13 +6,20 @@
 
 const MAX_SIDE = 1280;
 const QUALITY = 0.85;
+// Telefondan seçilen ham dosya için üst sınır. Küçültmeden önce bakılır: çok büyük dosya tarayıcıyı kilitler.
+const MAX_INPUT_BYTES = 25 * 1024 * 1024;
 
 // Kullanıcıya dosya seçtirir. Vazgeçerse null döner.
-export function pickImageFile() {
+// `capture` = 'user' (ön kamera) ya da 'environment' (arka kamera): telefonda galeri yerine kamera açılır,
+// kamera iznini telefonun kendisi sorar. Bilgisayarda yok sayılır, normal dosya penceresi açılır.
+// DİKKAT: tarayıcı dosya penceresini yalnızca bir dokunuşun içinde açar. Bu fonksiyon tıklama
+// olayının içinde, öncesinde hiç `await` olmadan çağrılmalı; yoksa pencere sessizce açılmaz.
+export function pickImageFile(capture = null) {
   return new Promise((resolve) => {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = 'image/jpeg,image/png,image/webp';
+    if (capture) input.setAttribute('capture', capture);
     input.addEventListener('change', () => resolve(input.files?.[0] || null), { once: true });
     // Pencere kapatılınca "change" gelmez; odak geri dönünce boş say
     window.addEventListener('focus', () => setTimeout(() => resolve(input.files?.[0] || null), 400), { once: true });
@@ -22,6 +29,9 @@ export function pickImageFile() {
 
 // Dosyayı en uzun kenarı MAX_SIDE olacak şekilde küçültür ve JPEG Blob olarak döner.
 export async function shrinkImage(file, maxSide = MAX_SIDE) {
+  // Türü boş gelebilir (bazı telefonlar); o zaman açmayı deneriz, açılamazsa aşağıda hata verilir.
+  if (file.type && !file.type.startsWith('image/')) throw new Error('Yalnızca fotoğraf seçebilirsin.');
+  if (file.size > MAX_INPUT_BYTES) throw new Error('Bu fotoğraf çok büyük (en fazla 25 MB).');
   const bitmap = await createImageBitmap(file).catch(() => null);
   if (!bitmap) throw new Error('Bu dosya açılamadı. Başka bir fotoğraf seç.');
   const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
@@ -33,10 +43,4 @@ export async function shrinkImage(file, maxSide = MAX_SIDE) {
   const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', QUALITY));
   if (!blob) throw new Error('Fotoğraf hazırlanamadı.');
   return blob;
-}
-
-// Seç + küçült. Vazgeçilirse null.
-export async function pickAndShrink(maxSide) {
-  const file = await pickImageFile();
-  return file ? shrinkImage(file, maxSide) : null;
 }

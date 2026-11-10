@@ -48,7 +48,7 @@ function openGame(gameId) {
   const item = GAMES.find((g) => g.id === gameId);
   if (!item) return;
   if (item.inRoom) {
-    location.hash = '#/rooms?filter=game';
+    location.hash = '#/rooms?filter=game&jump=1';
     toast(`${item.name} odada oynanır: bir odaya gir, alttaki oyun düğmesine dokun`);
   } else {
     toast(`${item.name} yakında geliyor`);

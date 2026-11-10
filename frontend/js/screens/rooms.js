@@ -309,6 +309,7 @@ export async function renderRooms(root, { query }) {
 
   // Tür ya da ülke değişti: liste baştan yüklenir
   function reloadList() {
+    syncUrl();
     loadToken += 1;
     rooms = [];
     hasMore = true;
@@ -320,8 +321,22 @@ export async function renderRooms(root, { query }) {
     loadMore();
   }
 
+  // Seçili sekme / tür / ülke adrese yazılır (#/rooms?tab=mine...). Neden? Odaya girip geri tuşuna
+  // basınca tarayıcı bu adrese döner; adreste yoksa ekran varsayılanla (Keşfet) açılırdı.
+  // replaceState geçmişe yeni kayıt eklemez (sekme değiştirmek "geri" ile tek tek gezilmesin) ve
+  // hashchange olayı çıkarmaz (ekran yeniden çizilmez). Geçmişteki derinlik bilgisi (state) korunur.
+  function syncUrl() {
+    const params = new URLSearchParams();
+    if (tab !== 'explore') params.set('tab', tab);
+    if (filter !== 'for_you') params.set('filter', filter);
+    if (country) params.set('country', country);
+    const search = params.toString();
+    history.replaceState(history.state, '', `#/rooms${search ? `?${search}` : ''}`);
+  }
+
   async function showTab(id) {
     tab = id;
+    syncUrl();
     loadToken += 1;
     root.querySelectorAll('#rooms-tabs button').forEach((b) => b.classList.toggle('is-active', b.dataset.tab === id));
     if (id === 'mine') {
@@ -368,7 +383,7 @@ export async function renderRooms(root, { query }) {
   });
 
   await showTab(tab);
-  // Oyuna dokunup gelindiyse doğrudan listeye in
-  if (query.filter) body.querySelector('#room-filters')?.scrollIntoView({ block: 'start' });
+  // Ana sayfada oyuna dokunup gelindiyse doğrudan listeye in (geri ile dönünce değil)
+  if (query.jump) body.querySelector('#room-filters')?.scrollIntoView({ block: 'start' });
   return () => observer?.disconnect();
 }

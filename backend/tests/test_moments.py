@@ -1,7 +1,7 @@
 """
 Anılar, ziyaretçiler, takipçiler (arkadaşlık istekleri), profil başarıları, yayın odam ve ajans başvurusu.
 """
-from tests.conftest import API, auth_headers
+from tests.conftest import API, auth_headers, upload
 from tests.test_admin import make_host
 from tests.test_social import register
 
@@ -31,15 +31,16 @@ def test_moment_feeds_and_paging(client, muti):
 
 
 def test_create_like_delete_moment(client, muti):
-    images = client.get(f"{API}/moments/image-options", headers=muti).json()["images"]
-    assert images
+    image = upload(client, muti, "moment").json()["url"]
 
-    # Boş paylaşım ve listede olmayan görsel reddedilir
+    # Boş paylaşım ve kendi yüklemediği görsel (eski hazır liste dahil) reddedilir
     assert client.post(f"{API}/moments", headers=muti, json={"text": "   "}).status_code == 422
     bad = client.post(f"{API}/moments", headers=muti, json={"text": "x", "image_url": "https://evil.example/a.jpg"})
     assert bad.status_code == 400 and bad.json()["code"] == "invalid_image"
+    preset = client.post(f"{API}/moments", headers=muti, json={"text": "x", "image_url": "assets/covers/sky.jpg"})
+    assert preset.json()["code"] == "invalid_image"
 
-    created = client.post(f"{API}/moments", headers=muti, json={"text": " Merhaba anılar ", "image_url": images[0]})
+    created = client.post(f"{API}/moments", headers=muti, json={"text": " Merhaba anılar ", "image_url": image})
     assert created.status_code == 201
     moment = created.json()
     assert moment["text"] == "Merhaba anılar" and moment["is_mine"] and moment["like_count"] == 0
@@ -237,3 +238,33 @@ def test_agency_application_flow(client):
     assert member_state["role"] == "member" and member_state["agency"]["id"] == agency_id
     # Sahibi olmayan kabul edemez
     assert client.post(f"{API}/agencies/me/applications/{host_id}/accept", headers=host).status_code == 403
+
+
+# ── Mesajlar ekranı rozetleri ─────────────────────────────────────────────────
+
+def test_inbox_badges_count_only_new_since_last_seen(client):
+    owner = register(client, "badgeowner")
+    owner_id = client.get(f"{API}/users/me", headers=owner).json()["id"]
+    badges = f"{API}/users/me/inbox-badges"
+
+    # Hiç bakılmadıysa süren etkinlik yeni sayılır (örnek veride bir tane var)
+    first = client.get(badges, headers=owner).json()
+    assert first["events"] >= 1 and first["requests"] == 0 and first["visitors"] == 0
+
+    fan = register(client, "badgefan")
+    client.post(f"{API}/users/{owner_id}/follow", headers=fan)
+    client.get(f"{API}/users/{owner_id}", headers=fan)
+    assert client.get(badges, headers=owner).json() | {"events": 0} == {"requests": 1, "events": 0, "visitors": 1}
+
+    # Etkinliklere bakıp çıkınca etkinlik rozeti 0 olur, ötekiler değişmez (eski hata: hep 1 kalıyordu)
+    assert client.post(f"{badges}/events/seen", headers=owner).status_code == 204
+    assert client.get(badges, headers=owner).json() == {"requests": 1, "events": 0, "visitors": 1}
+    for section in ("requests", "visitors"):
+        assert client.post(f"{badges}/{section}/seen", headers=owner).status_code == 204
+    assert client.post(f"{badges}/events/seen", headers=owner).status_code == 204   # ikinci kez: güncellenir
+    assert client.get(badges, headers=owner).json() == {"requests": 0, "events": 0, "visitors": 0}
+
+    # Bakıldıktan sonra gelen yeni ziyaret yine rozet olur
+    client.get(f"{API}/users/{owner_id}", headers=register(client, "badgefan2"))
+    assert client.get(badges, headers=owner).json()["visitors"] == 1
+    assert client.post(f"{badges}/nope/seen", headers=owner).status_code == 422
