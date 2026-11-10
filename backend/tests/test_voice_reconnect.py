@@ -23,8 +23,14 @@ def seat_user(client, room_id: int, headers: dict, index: int = 1) -> int | None
     return client.get(f"{API}/rooms/{room_id}", headers=headers).json()["seats"][index]["user_id"]
 
 
+# Bekleme üst sınırı. Koşul sağlanınca hemen çıkılır, normalde milisaniyeler sürer; sınır yalnızca
+# yavaş makinede (GitHub CI, kapsam ölçümü açıkken) testin boşuna düşmemesi için cömert.
+# 3 saniyeyken CI bir kez 0,04 saniye geç kaldı (2026-11-10).
+WAIT_SECONDS = 10
+
+
 def wait_for_seat(client, room_id: int, headers: dict, expected: int | None) -> None:
-    deadline = time.monotonic() + 3
+    deadline = time.monotonic() + WAIT_SECONDS
     while seat_user(client, room_id, headers) != expected:
         assert time.monotonic() < deadline, "koltuk beklenen duruma gelmedi"
         time.sleep(0.02)
@@ -32,7 +38,7 @@ def wait_for_seat(client, room_id: int, headers: dict, expected: int | None) -> 
 
 def wait_for_pending(room: dict) -> None:
     """Sunucu kopmayı işleyip bekleme süresini başlatana kadar bekler."""
-    deadline = time.monotonic() + 3
+    deadline = time.monotonic() + WAIT_SECONDS
     while (room["id"], room["member_id"]) not in room_socket._pending_departures:
         assert time.monotonic() < deadline, "bekleme başlamadı"
         time.sleep(0.01)

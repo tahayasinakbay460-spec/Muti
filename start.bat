@@ -21,7 +21,7 @@ echo ===================================================
 echo [3/3] Garson (Frontend) baslatiliyor... (Port 5500)
 echo ===================================================
 cd frontend
-start "TopTop FRONTEND" cmd /c "title FRONTEND SUNUCUSU && color 0B && echo Garson calisiyor! Tarayicidan http://127.0.0.1:5500 adresine git. && echo. && python -m http.server 5500"
+start "TopTop FRONTEND" cmd /c "title FRONTEND SUNUCUSU && color 0B && echo Garson calisiyor! Tarayicidan http://127.0.0.1:5500 adresine git. && echo. && python dev_server.py"
 cd ..
 
 echo.
